@@ -371,6 +371,11 @@ input[type=checkbox]{width:auto;accent-color:#1a1a5e;width:16px;height:16px;curs
 .hours-badge.daw{background:#cffafe;color:#0e7490;}
 
 /* -- Responsive -- */
+@media print{
+  .app-header,.nav-tabs,.no-print,[class*="trip-tabs"]{display:none !important}
+  .card{box-shadow:none;border:1px solid #ddd;page-break-inside:avoid}
+  body{background:#fff}
+}
 @media(max-width:600px){
   input,select,textarea{font-size:16px !important;} /* stop iOS focus-zoom */
   .card{padding:14px 12px;border-radius:14px}
@@ -1454,6 +1459,9 @@ function buildTripReport(t){
   const endLbl=tm.endedAt?new Date(tm.endedAt).toLocaleDateString():'';
 
   return `
+    <div class="card no-print" style="text-align:right;padding:10px 14px;">
+      <button onclick="window.print()" style="background:#fff;border:1.5px solid #1a1a5e;color:#1a1a5e;border-radius:9px;padding:8px 16px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;">🖨 Print / Save as PDF</button>
+    </div>
     <div class="card" style="text-align:center;padding:20px;">
       <div style="font-size:30px;">🏁</div>
       <div style="font-size:19px;font-weight:900;color:#1a1a5e;margin:4px 0 2px;">${esc(t.name)} — Trip Report</div>
@@ -1505,6 +1513,158 @@ function buildTripReport(t){
       ${journalHtml}
     </div>`:`<div class="card" style="text-align:center;color:#aaa;font-size:13px;">No notes taken this trip.</div>`}
   `;
+}
+
+// ═══════════════ KEY BOOKING DATES ═══════════════
+function computeKeyDates(t){
+  if(!t.startDate)return[];
+  const s=new Date(t.startDate+'T00:00:00');
+  const D=function(n){const d=new Date(s);d.setDate(d.getDate()-n);return d.toISOString().split('T')[0];};
+  const hasResort=!!(t.resort&&t.resort.name)||((t.hotelLegs||[]).length>0);
+  const out=[];
+  if(t.tripType==='dlp'){
+    out.push({id:'adr',date:D(60),icon:'🍽️',label:'Restaurant reservations open',hint:'Book table-service dining'});
+    out.push({id:'pa',date:D(3),icon:'🎫',label:'Plan Premier Access strategy',hint:'PA is bought day-of in the app — lock your picks now'});
+  }else if(t.tripType==='aulani'){
+    out.push({id:'adr',date:D(60),icon:'🍽️',label:'Dining & spa reservations open',hint:'\u02bbAma\u02bbAma and Laniwai book fast'});
+    out.push({id:'checkin',date:D(5),icon:'🏨',label:'Online check-in opens'});
+  }else{
+    out.push({id:'adr',date:D(60),icon:'🍽️',label:'ADR window opens (60 days)',hint:'Dining reservations, book at 5:45am ET'});
+    out.push({id:'ll',date:D(hasResort?7:3),icon:'⚡',label:'Lightning Lane booking opens ('+(hasResort?'7 days — resort guest':'3 days')+')',hint:'Then confirm your windows in the Today tab'});
+    if(hasResort)out.push({id:'checkin',date:D(5),icon:'🏨',label:'Online check-in opens (5 days)'});
+    out.push({id:'mobileorder',date:D(1),icon:'📱',label:'Download / update the Disney app & set up mobile order'});
+  }
+  if(t.cruise&&t.cruiseStartDate){
+    const cs=new Date(t.cruiseStartDate+'T00:00:00');
+    const CD=function(n){const d=new Date(cs);d.setDate(d.getDate()-n);return d.toISOString().split('T')[0];};
+    out.push({id:'dclcheckin',date:CD(30),icon:'🚢',label:'DCL online check-in opens (30 days)',hint:'Port arrival times go fast'});
+    out.push({id:'dclact',date:CD(75),icon:'🎯',label:'Cruise activities booking (~75 days)',hint:'Varies by Castaway Club level'});
+  }
+  out.sort(function(a,b){return a.date<b.date?-1:1;});
+  return out;
+}
+function kdToggle(id){
+  const t=trip();if(!t)return;
+  t.keyDatesDone=t.keyDatesDone||{};
+  t.keyDatesDone[id]=!t.keyDatesDone[id];
+  persist();render();
+}
+function buildKeyDates(t){
+  const items=computeKeyDates(t);
+  if(!items.length)return'';
+  const today=todayISO();
+  const doneMap=t.keyDatesDone||{};
+  const allPast=items.every(function(k){return k.date<today||doneMap[k.id];});
+  const rows=items.map(function(k){
+    const done=!!doneMap[k.id];
+    const past=k.date<today;
+    const days=Math.ceil((new Date(k.date+'T00:00:00')-new Date(today+'T00:00:00'))/86400000);
+    const lbl=new Date(k.date+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const soon=!done&&!past&&days<=7;
+    const missed=!done&&past;
+    return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border:1.5px solid ${soon?'#fde68a':done?'#bbf7d0':'#eee'};border-radius:10px;background:${soon?'#fffbeb':done?'#f0fdf4':'#fff'};margin-bottom:6px;${done?'opacity:.65;':''}">
+      <button onclick="kdToggle('${k.id}')" style="width:26px;height:26px;flex-shrink:0;border-radius:8px;border:2px solid ${done?'#16a34a':'#ddd'};background:${done?'#16a34a':'#fff'};color:#fff;font-size:13px;cursor:pointer;font-family:inherit;line-height:1;">${done?'✓':''}</button>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;color:#333;${done?'text-decoration:line-through;':''}">${k.icon} ${k.label}</div>
+        <div style="font-size:11.5px;color:${soon?'#b45309':missed?'#dc2626':'#999'};font-weight:${soon?'800':'600'};">
+          ${lbl}${done?'':past?' · passed':days===0?' · TODAY':days===1?' · tomorrow':' · in '+days+' days'}
+        </div>
+        ${k.hint&&!done?`<div style="font-size:11px;color:#aaa;">${k.hint}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="card">
+    <div class="card-header">📆 Key Dates ${allPast?'<span style="font-size:11px;color:#16a34a;font-weight:700;">all handled ✓</span>':''}</div>
+    ${rows}
+  </div>`;
+}
+
+// ═══════════════ DAY-OF WEATHER (Open-Meteo, no key needed) ═══════════════
+var _WX={cache:{},pending:{}};
+function wxCoords(t){
+  if(t.tripType==='dlp')return[48.872,2.776];
+  if(t.tripType==='aulani')return[21.339,-158.121];
+  return[28.372,-81.549]; // WDW
+}
+function wxIcon(code){
+  if(code===0)return'☀️';if(code<=2)return'🌤️';if(code===3)return'☁️';
+  if(code<=48)return'🌫️';if(code<=57)return'🌦️';if(code<=67)return'🌧️';
+  if(code<=77)return'🌨️';if(code<=82)return'🌧️';if(code<=86)return'🌨️';
+  return'⛈️';
+}
+function wxFetch(t,date){
+  const key=t.tripType+'|'+date;
+  if(_WX.cache[key]||_WX.pending[key])return;
+  const days=Math.ceil((new Date(date+'T00:00:00')-new Date())/86400000);
+  if(days<-1||days>15){_WX.cache[key]={na:true};return;}
+  _WX.pending[key]=true;
+  const c=wxCoords(t);
+  fetch('https://api.open-meteo.com/v1/forecast?latitude='+c[0]+'&longitude='+c[1]+
+    '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode'+
+    '&temperature_unit=fahrenheit&timezone=auto&start_date='+date+'&end_date='+date)
+  .then(function(r){return r.json();})
+  .then(function(d){
+    delete _WX.pending[key];
+    if(d&&d.daily&&d.daily.time&&d.daily.time.length){
+      _WX.cache[key]={hi:Math.round(d.daily.temperature_2m_max[0]),lo:Math.round(d.daily.temperature_2m_min[0]),rain:d.daily.precipitation_probability_max[0],code:d.daily.weathercode[0]};
+    }else{_WX.cache[key]={na:true};}
+    render();
+  })
+  .catch(function(){delete _WX.pending[key];_WX.cache[key]={na:true};});
+}
+function wxStrip(t,date){
+  const key=t.tripType+'|'+date;
+  const w=_WX.cache[key];
+  if(!w){wxFetch(t,date);return'<span style="font-size:11px;color:#bbb;">loading weather…</span>';}
+  if(w.na)return'';
+  return '<span style="font-size:12px;color:#555;font-weight:600;">'+wxIcon(w.code)+' '+w.hi+'° / '+w.lo+'°'+(w.rain!=null?' · ☔ '+w.rain+'%':'')+'</span>';
+}
+
+// ═══════════════ LIVE WAIT TIMES (Queue-Times.com) ═══════════════
+var _QT={cache:{},pending:{},fetchedAt:{}};
+var QT_PARK_IDS={mk:6,ep:5,hs:7,ak:8,dp:4,daw:28};
+function qtFetch(parkKey){
+  const id=QT_PARK_IDS[parkKey];if(!id)return;
+  const now=Date.now();
+  if(_QT.pending[parkKey])return;
+  if(_QT.cache[parkKey]&&now-(_QT.fetchedAt[parkKey]||0)<5*60*1000)return; // 5-min freshness
+  _QT.pending[parkKey]=true;
+  fetch('https://queue-times.com/parks/'+id+'/queue_times.json')
+  .then(function(r){return r.json();})
+  .then(function(d){
+    delete _QT.pending[parkKey];
+    const rides=[];
+    (d.lands||[]).forEach(function(l){(l.rides||[]).forEach(function(r){rides.push(r);});});
+    (d.rides||[]).forEach(function(r){rides.push(r);});
+    _QT.cache[parkKey]=rides;_QT.fetchedAt[parkKey]=Date.now();
+    render();
+  })
+  .catch(function(){delete _QT.pending[parkKey];_QT.cache[parkKey]='err';});
+}
+function qtSection(parkKey){
+  if(!QT_PARK_IDS[parkKey])return'';
+  const data=_QT.cache[parkKey];
+  if(!data){qtFetch(parkKey);return'<div class="card" style="text-align:center;color:#bbb;font-size:12px;">⏳ Loading live wait times…</div>';}
+  if(data==='err')return''; // fail silently — signal in parks is rough
+  const open=data.filter(function(r){return r.is_open;}).sort(function(a,b){return (b.wait_time||0)-(a.wait_time||0);});
+  if(!open.length)return'';
+  const rows=open.slice(0,10).map(function(r){
+    const w=r.wait_time||0;
+    const col=w>=60?'#dc2626':w>=30?'#d97706':'#16a34a';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed #f0f0f0;">
+      <span style="font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.name)}</span>
+      <span style="font-size:13px;font-weight:900;color:${col};flex-shrink:0;">${w} min</span>
+    </div>`;
+  }).join('');
+  const age=Math.round((Date.now()-(_QT.fetchedAt[parkKey]||Date.now()))/60000);
+  return `<div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      <div style="font-size:13px;font-weight:800;color:#1a1a5e;">⏱️ Live waits — longest right now</div>
+      <button onclick="_QT.fetchedAt['${parkKey}']=0;qtFetch('${parkKey}')" style="background:none;border:1px solid #e4e4f0;border-radius:7px;padding:3px 9px;font-size:10.5px;color:#888;cursor:pointer;font-family:inherit;">↻ ${age<1?'now':age+'m ago'}</button>
+    </div>
+    <div style="margin-top:6px;">${rows}</div>
+    <div style="font-size:9.5px;color:#ccc;margin-top:6px;text-align:right;">Powered by <a href="https://queue-times.com/" target="_blank" rel="noopener" style="color:#ccc;">Queue-Times.com</a></div>
+  </div>`;
 }
 
 // ═══════════════ LIGHTNING LANE — WISHED → BOOKED ═══════════════
@@ -1939,11 +2099,13 @@ function buildTodayLive(t,tm,dates,today){
         <div style="text-align:center;flex:1;min-width:0;">
           <div style="font-size:15px;font-weight:900;color:#1a1a5e;">${dayNum}${parkLbl?' · '+parkLbl:''}</div>
           <div style="font-size:11.5px;color:#888;">${dateLbl}${isToday?' · today':''} · ${doneCount} of ${entries.length} done${estToday?' · day est $'+Math.round(estToday):''}</div>
+          <div style="margin-top:2px;">${wxStrip(t,sel)}</div>
         </div>
         <button onclick="tmSetDate('${nextD}')" ${di===dates.length-1?'disabled style="opacity:.25;width:36px;height:36px;border-radius:9px;border:1.5px solid #e4e4f0;background:#fff;font-size:15px;"':'style="background:#fff;border:1.5px solid #e4e4f0;border-radius:9px;width:36px;height:36px;font-size:15px;cursor:pointer;"'}>›</button>
       </div>
     </div>
     ${llBanner}
+    ${isToday&&parkDay&&QT_PARK_IDS[parkDay.park]?qtSection(parkDay.park):''}
     <div style="display:flex;flex-direction:column;gap:8px;">${rows||'<div class="card" style="text-align:center;color:#aaa;font-size:13px;">Nothing scheduled this day — add entries in Run of Show, or just enjoy it. 🏖️</div>'}</div>
     <div class="card" style="margin-top:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
@@ -2123,6 +2285,7 @@ function buildOverview(t) {
   const primaryHotel = hotelLegs[0];
 
   return `
+    ${buildKeyDates(t)}
 
     <!-- -- Live Countdown -- -->
     <div class="countdown-card">
@@ -8270,7 +8433,7 @@ function logSpend(catId) {
   const amt  = parseFloat(document.getElementById('spend-amt')?.value)||0;
   const note = document.getElementById('spend-note')?.value?.trim()||'';
   const date = document.getElementById('spend-date')?.value||'';
-  if (amt<=0) { alert('Enter an amount greater than 0'); return; }
+  if (!amt) { alert('Enter an amount (use a negative number for refunds)'); return; }
   const tx = {id:uid(), amount:amt, note, date, createdAt:Date.now()};
   const t  = trip();
   patchTrip({budget:{...t.budget,categories:t.budget.categories.map(c=>{
@@ -9163,6 +9326,15 @@ function fmtDateShort(d) {
 loadStorage();
 
 // ═══ CLOUD SYNC (Firebase Realtime Database) ═══
+var DEFAULT_FB_CONFIG={
+  apiKey:"AIzaSyC_qFRRlSCHHfU16I-y5QvcTesSF0b19fo",
+  authDomain:"heath-19fe4.firebaseapp.com",
+  databaseURL:"https://heath-19fe4-default-rtdb.firebaseio.com",
+  projectId:"heath-19fe4",
+  storageBucket:"heath-19fe4.firebasestorage.app",
+  messagingSenderId:"372731899046",
+  appId:"1:372731899046:web:f4266e7899961288961867"
+};
 var SYNC={cfg:null,code:null,ref:null,clientId:uid()+uid(),status:'off',applying:false,localStamp:0,debounce:null};
 
 function syncDotColor(){
@@ -9173,6 +9345,7 @@ function syncDotTitle(){
 }
 function syncLoadSettings(){
   try{var r=localStorage.getItem('skipper_sync');if(r){var d=JSON.parse(r);SYNC.cfg=d.cfg||null;SYNC.code=d.code||null;}}catch(e){}
+  if(!SYNC.cfg)SYNC.cfg=DEFAULT_FB_CONFIG; // built in — only the sync code is needed
   try{SYNC.localStamp=parseInt(localStorage.getItem('skipper_sync_stamp'))||0;}catch(e){}
 }
 function syncSetStatus(s,msg){
@@ -9252,11 +9425,11 @@ function openSyncModal(){
     '<div onclick="if(event.target===this)closeSyncModal()" style="position:fixed;inset:0;background:rgba(10,10,40,.75);z-index:900;display:flex;align-items:flex-start;justify-content:center;padding:30px 10px;overflow-y:auto;">'+
       '<div style="background:#fff;border-radius:14px;max-width:520px;width:100%;padding:22px;font-family:inherit;">'+
         '<div style="font-size:18px;font-weight:900;color:#1a1a5e;margin-bottom:6px;">☁ Cloud Sync</div>'+
-        '<div style="font-size:12px;color:#777;margin-bottom:14px;line-height:1.6;">Paste your Firebase config and pick a sync code. Use the <b>same sync code on every device</b> — the code is the key to your trips, so keep it long and private. <b>Use a different code than Heath</b> — each app needs its own.</div>'+
-        '<label style="font-size:11px;font-weight:800;color:#555;letter-spacing:.5px;">FIREBASE CONFIG (PASTE THE WHOLE SNIPPET)</label>'+
-        '<textarea id="sy-cfg" rows="6" autocapitalize="none" autocorrect="off" spellcheck="false" style="width:100%;font-family:monospace;font-size:12px;padding:8px;border:1.5px solid #ddd;border-radius:8px;margin:4px 0 12px;resize:vertical;box-sizing:border-box;">'+esc(cfgTxt)+'</textarea>'+
-        '<label style="font-size:11px;font-weight:800;color:#555;letter-spacing:.5px;">DATABASE URL (ONLY IF NOT IN THE CONFIG ABOVE)</label>'+
-        '<input id="sy-dburl" type="url" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="https://your-project-default-rtdb.firebaseio.com" style="width:100%;font-size:13px;padding:8px;border:1.5px solid #ddd;border-radius:8px;margin:4px 0 12px;box-sizing:border-box;">'+
+        '<div style="font-size:12px;color:#777;margin-bottom:14px;line-height:1.6;">Just enter your sync code — the connection is built in. Use the <b>same sync code on every device</b> — the code is the key to your trips, so keep it long and private. <b>Use a different code than Heath</b> — each app needs its own.</div>'+
+        '<details style="margin-bottom:12px;"><summary style="font-size:11px;font-weight:800;color:#999;cursor:pointer;">⚙ Advanced — custom Firebase config (built in; only change if you know why)</summary>'+
+        '<textarea id="sy-cfg" rows="6" autocapitalize="none" autocorrect="off" spellcheck="false" style="width:100%;font-family:monospace;font-size:12px;padding:8px;border:1.5px solid #ddd;border-radius:8px;margin:8px 0;resize:vertical;box-sizing:border-box;">'+esc(cfgTxt)+'</textarea>'+
+        '<input id="sy-dburl" type="url" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Database URL (only if not in config)" style="width:100%;font-size:13px;padding:8px;border:1.5px solid #ddd;border-radius:8px;margin:0 0 4px;box-sizing:border-box;">'+
+        '</details>'+
         '<label style="font-size:11px;font-weight:800;color:#555;letter-spacing:.5px;">SYNC CODE (SAME ON ALL DEVICES — DIFFERENT FROM HEATH\'S)</label>'+
         '<div style="display:flex;gap:6px;margin:4px 0 12px;">'+
           '<input id="sy-code" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off" placeholder="long-random-code" value="'+esc(SYNC.code||'')+'" style="flex:1;font-size:13px;padding:8px;border:1.5px solid #ddd;border-radius:8px;box-sizing:border-box;">'+
@@ -9278,9 +9451,8 @@ function syncSaveAndConnect(){
   var cfg=parseFbConfig(txt);
   var dbUrl=(document.getElementById('sy-dburl')?.value||'').trim();
   if(dbUrl)cfg.databaseURL=dbUrl;
+  if(!cfg.apiKey||!cfg.databaseURL)cfg=DEFAULT_FB_CONFIG; // built in — most people only need the code
   var code=(document.getElementById('sy-code')?.value||'').trim().toLowerCase(); // case-insensitive: phones auto-capitalize
-  if(!cfg.apiKey){alert('Couldn\'t find an apiKey in the pasted config. Paste the full firebaseConfig snippet from the Firebase console.');return;}
-  if(!cfg.databaseURL){alert('No databaseURL found. Paste the database URL into its field.');return;}
   if(!code||code.length<8){alert('Sync code must be at least 8 characters — use 🎲 Generate for a strong one.');return;}
   if(code!==SYNC.code){
     // Connecting to a (new or different) code: defer to whatever the cloud already has.
@@ -9317,7 +9489,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-03-E";
+var SKIPPER_BUILD="2026-07-03-F";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
@@ -9339,6 +9511,8 @@ setTimeout(checkForUpdate,4000);
 setInterval(checkForUpdate,15*60*1000);
 document.addEventListener('visibilitychange',function(){if(!document.hidden)checkForUpdate();});
 
+// Offline shell (service worker) — fails silently if sw.js isn't deployed
+if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js');}catch(e){}}
 // Boot sync
 syncLoadSettings();
 syncInit();
