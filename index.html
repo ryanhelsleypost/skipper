@@ -373,6 +373,37 @@ input[type=checkbox]{width:auto;accent-color:#1a1a5e;width:16px;height:16px;curs
 /* -- Responsive -- */
 @media(max-width:600px){
   input,select,textarea{font-size:16px !important;} /* stop iOS focus-zoom */
+  .card{padding:14px 12px;border-radius:14px}
+  .bpills{display:grid !important;grid-template-columns:1fr 1fr;gap:6px}
+  /* Budget table becomes stacked cards on phones */
+  .budget-tbl, .budget-tbl tbody, .budget-tbl tr, .budget-tbl td{display:block;width:100%;box-sizing:border-box}
+  .budget-tbl thead{display:none}
+  .budget-tbl tbody tr{border:1.5px solid #eee;border-radius:12px;padding:10px 12px;margin-bottom:10px;background:#fff}
+  .budget-tbl td{border:none;padding:4px 0}
+  .budget-tbl td[data-l]{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .budget-tbl td[data-l]::before{content:attr(data-l);font-size:10.5px;color:#999;text-transform:uppercase;letter-spacing:.5px;font-weight:800;flex-shrink:0}
+  .budget-tbl td.mb-empty{display:none}
+  .budget-tbl td.mb-prog{padding-top:7px}
+  .budget-tbl td.mb-acts{padding-top:8px;border-top:1px dashed #eee;margin-top:5px}
+  .budget-tbl td.mb-acts .btn{padding:8px 12px;font-size:12px}
+  .budget-tbl tr.spend-inline{border:none;background:transparent;padding:0;margin:-4px 0 10px}
+  .budget-tbl tr.spend-inline td{padding:0}
+  /* ── whole-app mobile pass ── */
+  .main-content{overflow-x:hidden}
+  .card-header{font-size:15px;margin-bottom:12px}
+  th{padding:7px 6px;font-size:10px}
+  td{padding:8px 6px;font-size:12.5px}
+  .hdr-cta{top:8px !important;right:8px !important;gap:4px !important}
+  .hdr-cta button{padding:4px 8px !important;font-size:10px !important;border-radius:7px !important}
+  /* input tables (Early Entry, Dining) scroll sideways instead of crushing */
+  .tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -12px;padding:0 12px}
+  .tbl-scroll table{min-width:560px}
+  /* spend panel fields stack two-up */
+  .spend-panel div[style*="flex:0 0 110px"],.spend-panel div[style*="flex:0 0 120px"]{flex:1 1 45% !important}
+  /* itinerary planner day rows: park + LL columns stack */
+  .pd-grid{grid-template-columns:44px 58px 1fr !important;gap:6px !important}
+  .pd-grid > :nth-child(4){grid-column:2 / -1}
+  .pd-grid > :nth-child(5){grid-column:1 / -1}
   .form-row,.form-row-3{grid-template-columns:1fr}
   .stats-grid{grid-template-columns:1fr 1fr}
   .main-content{padding:14px 10px}
@@ -1274,7 +1305,7 @@ function buildApp() {
           ${t ? buildNameDisplay(t) : ''}
         </div>
       </div>
-      <div style="position:absolute;top:10px;right:14px;display:flex;gap:6px;align-items:center;">
+      <div class="hdr-cta" style="position:absolute;top:10px;right:14px;display:flex;gap:6px;align-items:center;">
         <button onclick="openSyncModal()"
           style="background:rgba(255,215,0,.15);border:1.5px solid rgba(255,215,0,.4);color:#FFD700;
                  padding:5px 11px;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;
@@ -2500,16 +2531,16 @@ function buildBudget(t) {
           + '</div>';
       })()}
 
-      <table ondragover="budgetTableDragOver(event)" ondrop="budgetTableDrop(event)">
+      <table class="budget-tbl" ondragover="budgetTableDragOver(event)" ondrop="budgetTableDrop(event)">
         <thead><tr><th>Category</th><th>Due Date</th><th>Budget Goal</th><th>Actual / Est.</th><th>Spent</th><th>Still Owed</th><th>Progress</th><th style="width:80px;"></th></tr></thead>
         <tbody>
-          ${resolved.map(({cat,info}) => buildCatRow(cat, info, t)).join('')}
+          ${resolved.map(({cat,info}) => buildCatRow(cat, info, t)
+            + (S.ui.spendCatId===cat.id && !S.ui.editCatId ? `<tr class="spend-inline"><td colspan="8" style="padding:0 6px 10px;">${buildSpendPanel(t)}</td></tr>` : '')
+            + (S.ui.editCatId===cat.id ? `<tr class="spend-inline"><td colspan="8" style="padding:0 6px 10px;">${buildCatEditPanel(t)}</td></tr>` : '')
+          ).join('')}
           ${!cats.length?`<tr><td colspan="7"><div class="empty-rich" style="margin:8px 0;"><div class="er-icon">💰</div><div class="er-title">No budget categories yet</div><div class="er-body">Add categories like Hotel, Flights, Food, and Park Tickets. You can set how much you've budgeted and track what you've spent.</div></div></td></tr>`:''}
         </tbody>
       </table>
-
-      ${S.ui.spendCatId && !S.ui.editCatId ? buildSpendPanel(t) : ''}
-      ${S.ui.editCatId ? buildCatEditPanel(t) : ''}
 
       <div style="margin-top:14px;"><button class="btn btn-primary" onclick="toggleAddCat()">＋ Add Category</button></div>
       ${S.ui.addCat ? buildAddCatForm() : ''}
@@ -2575,25 +2606,25 @@ function buildCatRow(c, info, t) {
           </div>
         </div>
       </td>
-      <td style="font-size:12px;color:${dueDate?'#374151':'#ccc'};white-space:nowrap;">${dueFmt}</td>
-      <td style="color:${isLive?'#aaa':'#374151'};${isLive?'text-decoration:line-through;font-size:11px;':''}" title="${isLive?'Overridden by live data':'Your budget goal'}">
+      <td class="${dueDate?'':'mb-empty'}" data-l="Due" style="font-size:12px;color:${dueDate?'#374151':'#ccc'};white-space:nowrap;">${dueFmt}</td>
+      <td data-l="Budget goal" style="color:${isLive?'#aaa':'#374151'};${isLive?'text-decoration:line-through;font-size:11px;':''}" title="${isLive?'Overridden by live data':'Your budget goal'}">
         ${fmtDual(c.budgeted||0, t)}
       </td>
-      <td style="font-weight:800;color:${isLive?'#15803d':'#4338ca'};" title="${isLive?'From your trip data':'Estimated — no live data yet'}">
+      <td data-l="Actual / est." style="font-weight:800;color:${isLive?'#15803d':'#4338ca'};" title="${isLive?'From your trip data':'Estimated — no live data yet'}">
         ${isLive?'':'~'}${fmtDual(effective, t)}
         ${!isLive&&info.source!=='manual'?`<div style="font-size:10px;color:#aaa;font-weight:400;">placeholder</div>`:''}
       </td>
-      <td style="color:${spent>0?'#374151':'#ccc'};">
+      <td data-l="Spent" style="color:${spent>0?'#374151':'#ccc'};">
         ${spent>0 ? fmtDual(spent, t) : '<span style="font-size:11px;">tap 💳 Pay</span>'}
       </td>
-      <td style="font-weight:800;color:${owedColor};">${fmtDual(Math.abs(owed), t)}${owed<0?' 🚨':''}</td>
-      <td style="min-width:90px;">
+      <td data-l="Still owed" style="font-weight:800;color:${owedColor};">${fmtDual(Math.abs(owed), t)}${owed<0?' 🚨':''}</td>
+      <td class="mb-prog" style="min-width:90px;">
         <div style="display:flex;align-items:center;gap:6px;">
           <div class="prog-wrap"><div class="prog-fill ${pClass}" style="width:${pct}%"></div></div>
           <span style="font-size:10px;color:#aaa;white-space:nowrap;">${Math.round(pct)}%</span>
         </div>
       </td>
-      <td onclick="event.stopPropagation()">
+      <td class="mb-acts" onclick="event.stopPropagation()">
         <div style="display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap;">
           <button class="btn btn-xs" onclick="toggleSpend('${c.id}')"
             style="background:${isSpend?'#16a34a':'#f0fdf4'};color:${isSpend?'#fff':'#16a34a'};border-color:#86efac;font-weight:800;"
@@ -2709,7 +2740,7 @@ function buildEETracker(t) {
   return `
     <div class="card">
       <div class="card-header">⚡ Early Entry Tracker</div>
-      <table>
+      <div class="tbl-scroll"><table>
         <thead><tr><th>Date</th><th>Park</th><th>Ride / Experience</th><th>Status</th><th></th></tr></thead>
         <tbody>
           ${entries.map((e,i)=>`
@@ -2728,7 +2759,7 @@ function buildEETracker(t) {
             </tr>`).join('')}
           ${!entries.length?`<tr><td colspan="5" style="text-align:center;color:#ccc;padding:18px;">No entries yet.</td></tr>`:''}
         </tbody>
-      </table>
+      </table></div>
       <div style="margin-top:12px;"><button class="btn btn-primary btn-sm" onclick="addEE()">＋ Add Entry</button></div>
     </div>`;
 }
@@ -4675,7 +4706,7 @@ function buildDayRow(day, i, t, parkOpts) {
 
   return `
     <div class="ll-wrap" style="background:${bg};border-left:4px solid ${parkColor(day.park)};${isSwapSelected?'box-shadow:0 0 0 3px #7c3aed;':''}">
-      <div style="display:grid;grid-template-columns:52px 75px 1fr 1fr auto;gap:7px;align-items:start;padding:8px 11px;">
+      <div class="pd-grid" style="display:grid;grid-template-columns:52px 75px 1fr 1fr auto;gap:7px;align-items:start;padding:8px 11px;">
         <div style="text-align:center;padding-top:4px;cursor:${isSwapMode?'pointer':'default'};"
           onclick="${isSwapMode?'selectSwapDay('+i+')':''}">
           ${isSwapMode
@@ -4850,7 +4881,7 @@ function buildDiningSection(t) {
   return `
     <div class="card">
       <div class="card-header">🍽️ Dining Reservations (ADRs)</div>
-      <table>
+      <div class="tbl-scroll"><table>
         <thead>
           <tr>
             <th>Restaurant</th>
@@ -4880,7 +4911,7 @@ function buildDiningSection(t) {
             </tr>`).join('')}
           ${!reservations.length?`<tr><td colspan="7" style="text-align:center;color:#ccc;padding:20px;">No dining reservations yet. Add your ADRs below!</td></tr>`:''}
         </tbody>
-      </table>
+      </table></div>
       <div style="margin-top:12px;">
         <button class="btn btn-primary btn-sm" onclick="addDining()">＋ Add Reservation</button>
       </div>
@@ -8183,6 +8214,14 @@ function toggleSpend(id) {
   S.ui.editCatId=null;
   S.ui.spendCatId = S.ui.spendCatId===id ? null : id;
   render();
+  if (S.ui.spendCatId) {
+    requestAnimationFrame(function(){
+      var p=document.querySelector('.spend-inline');
+      if(p)p.scrollIntoView({block:'nearest',behavior:'smooth'});
+      var a=document.getElementById('spend-amt');
+      if(a)a.focus();
+    });
+  }
 }
 
 function toggleEditCat(id) {
@@ -9278,7 +9317,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-03-B";
+var SKIPPER_BUILD="2026-07-03-E";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
