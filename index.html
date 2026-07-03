@@ -1306,10 +1306,10 @@ function buildApp() {
       ${t ? `
       <div class="nav-tabs">
         ${(t.tripType==='aulani'
-          ? ['overview','budget','transportation','activities','hotel','countdown','map','photos','packing','settings']
+          ? ['today','overview','budget','transportation','activities','hotel','countdown','map','photos','packing','settings']
           : t.tripType==='dlp'
-          ? ['overview','budget','transportation','parks','hotel','countdown','map','photos','packing','settings']
-          : ['overview','budget','transportation','parks','hotel','countdown','photos','packing','settings']
+          ? ['today','overview','budget','transportation','parks','hotel','countdown','map','photos','packing','settings']
+          : ['today','overview','budget','transportation','parks','hotel','countdown','photos','packing','settings']
         ).map(tab => `
           <button class="nav-tab${S.tab===tab?' active':''}" onclick="setTab('${tab}')">
             ${tabIcon(tab)} ${tabLabel(tab,t)}
@@ -1336,12 +1336,474 @@ function buildNameDisplay(t) {
   </div>`;
 }
 
-function tabIcon(t) { return {overview:'🏰',budget:'💰',transportation:'✈️',parks:'🗓️',activities:'🌺',hotel:'🏨',runofshow:'📋',map:'🗺️',countdown:'📅',photos:'📸',packing:'🧳',settings:'⚙️'}[t]||''; }
-function tabLabel(tab,t) { const labels={overview:'Overview',budget:'Budget',transportation:'Transportation',parks:'Itinerary',activities:t&&t.tripType==='aulani'?'Aloha Days':'Activities',hotel:'Hotel',runofshow:'Run of Show',map:'Map',countdown:'Countdown',photos:'Photo Spots',packing:'Packing',settings:'Settings'}; return labels[tab]||tab; }
+function tabIcon(t) { return {today:'🎯',overview:'🏰',budget:'💰',transportation:'✈️',parks:'🗓️',activities:'🌺',hotel:'🏨',runofshow:'📋',map:'🗺️',countdown:'📅',photos:'📸',packing:'🧳',settings:'⚙️'}[t]||''; }
+function tabLabel(tab,t) { const labels={today:'Today',overview:'Overview',budget:'Budget',transportation:'Transportation',parks:'Itinerary',activities:t&&t.tripType==='aulani'?'Aloha Days':'Activities',hotel:'Hotel',runofshow:'Run of Show',map:'Map',countdown:'Countdown',photos:'Photo Spots',packing:'Packing',settings:'Settings'}; return labels[tab]||tab; }
 function cap(s) { return s.charAt(0).toUpperCase()+s.slice(1); }
+
+// ═══════════════ LIGHTNING LANE — WISHED → BOOKED ═══════════════
+// Gather a day's LL picks from its ll config (WDW: tier1/tier2/ILL · DLP: oneSelected)
+function llPicksForDay0(day){
+  const ll=day&&day.ll;if(!ll)return[];
+  if(ll.passType==='premier'||ll.passType==='ultimate')return[]; // covers everything, no bookings needed
+  const out=[];
+  if(ll.tier1Pick)out.push({name:ll.tier1Pick,ill:false});
+  (ll.tier2Picks||[]).forEach(function(r){out.push({name:r,ill:false});});
+  (ll.illSelected||[]).forEach(function(r){out.push({name:r,ill:true});});
+  (ll.oneSelected||[]).forEach(function(r){out.push({name:r,ill:true});}); // DLP Premier Access one-shots
+  return out;
+}
+function llPicksForDate(t,date){
+  const d=(t.parks||[]).find(function(p){return p.date===date;});
+  return d?llPicksForDay0(d):[];
+}
+function llBookings(t,date){
+  const d=(t.parks||[]).find(function(p){return p.date===date;});
+  return (d&&d.llBookings)||{};
+}
+function llBookedCount(t,date){
+  const bk=llBookings(t,date);
+  return llPicksForDate(t,date).filter(function(p){return bk[p.name]&&bk[p.name].start;}).length;
+}
+function llAddHour(hm){
+  if(!hm)return'';
+  const parts=hm.split(':');const h=parseInt(parts[0]),m=parts[1]||'00';
+  return String(Math.min(23,h+1)).padStart(2,'0')+':'+m;
+}
+function llSetBooking(date,name){
+  const t=trip();if(!t)return;
+  const d=(t.parks||[]).find(function(p){return p.date===date;});if(!d)return;
+  const start=document.getElementById('llb-start')?.value;
+  let end=document.getElementById('llb-end')?.value;
+  if(!start){alert('Enter the window start time.');return;}
+  if(!end)end=llAddHour(start);
+  d.llBookings=d.llBookings||{};
+  d.llBookings[name]={start:start,end:end};
+  S.ui.llEditRide=null;
+  persist();render();
+}
+function llClearBooking(date,name){
+  const t=trip();if(!t)return;
+  const d=(t.parks||[]).find(function(p){return p.date===date;});if(!d||!d.llBookings)return;
+  delete d.llBookings[name];
+  persist();render();
+}
+function llOpenEdit(date,name){
+  S.ui.llEditRide=date+'||'+name;render();
+  setTimeout(function(){var el=document.getElementById('llb-start');if(el)el.focus();},60);
+}
+function llGoToPicks(date){
+  const t=trip();if(!t)return;
+  const idx=(t.parks||[]).findIndex(function(p){return p.date===date;});
+  S.ui.expandedLLDay=idx>-1?idx:null;
+  setTab('parks');
+}
+function llToggleConfirm(date){
+  S.ui.llConfirmDate=S.ui.llConfirmDate===date?null:date;render();
+}
+// The per-day confirm sheet
+function buildLLConfirm(t,date){
+  const picks=llPicksForDate(t,date);
+  if(!picks.length)return'';
+  const bk=llBookings(t,date);
+  const rows=picks.map(function(p){
+    const b=bk[p.name];
+    const booked=b&&b.start;
+    const editing=S.ui.llEditRide===date+'||'+p.name;
+    const nameAttr=esc(p.name).replace(/'/g,'&#39;');
+    return `<div style="padding:9px 11px;border:1.5px solid ${booked?'#bbf7d0':'#e9d5ff'};border-radius:10px;background:${booked?'#f0fdf4':'#fff'};margin-bottom:6px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <span style="font-size:13px;font-weight:700;color:#3b0764;">${esc(p.name)}${p.ill?' <span class="ll-ill">ILL</span>':''}</span>
+        <span style="font-size:11px;font-weight:800;padding:2px 9px;border-radius:9px;background:${booked?'#dcfce7':'#f3e8ff'};color:${booked?'#16a34a':'#7c3aed'};">${booked?'booked':'wished'}</span>
+      </div>
+      ${booked&&!editing?`<div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
+        <span style="font-size:12px;color:#555;">🕐 ${fmt12(b.start)}${b.end?' – '+fmt12(b.end):''}</span>
+        <button onclick="llOpenEdit('${date}','${nameAttr}')" style="background:#fff;border:1.5px solid #e4e4f0;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">✎ Time</button>
+        <button onclick="llClearBooking('${date}','${nameAttr}')" style="background:#fff;border:1.5px solid #e4e4f0;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;color:#999;cursor:pointer;font-family:inherit;">✕ Unbook</button>
+      </div>`:''}
+      ${(!booked&&!editing)?`<div style="display:flex;gap:6px;margin-top:7px;">
+        <button onclick="llOpenEdit('${date}','${nameAttr}')" style="flex:1;background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:7px 0;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">⚡ Got it — set time</button>
+      </div>`:''}
+      ${editing?`<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;align-items:center;">
+        <span style="font-size:11px;color:#888;">window</span>
+        <input id="llb-start" type="time" value="${booked?b.start:''}" style="padding:7px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">
+        <span style="font-size:11px;color:#888;">to</span>
+        <input id="llb-end" type="time" value="${booked&&b.end?b.end:''}" style="padding:7px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">
+        <button onclick="llSetBooking('${date}','${nameAttr}')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button>
+        <button onclick="S.ui.llEditRide=null;render()" style="background:none;border:none;color:#999;font-size:12px;cursor:pointer;font-family:inherit;">cancel</button>
+      </div>`:''}
+    </div>`;
+  }).join('');
+  return `<div style="margin-top:8px;">
+    ${rows}
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:2px;">
+      <span style="font-size:11px;color:#888;">Booked windows drop into Run of Show &amp; Today automatically.</span>
+      <button onclick="llGoToPicks('${date}')" style="background:none;border:none;color:#7c3aed;font-size:11.5px;font-weight:800;cursor:pointer;font-family:inherit;">✎ Change picks →</button>
+    </div>
+  </div>`;
+}
+// Summary card for the launcher: every park day with picks + booked count
+function buildLLPreflight(t){
+  const days=(t.parks||[]).filter(function(d){return llPicksForDay0(d).length>0;});
+  if(!days.length)return'';
+  const rows=days.map(function(d){
+    const picks=llPicksForDay0(d).length;
+    const booked=llBookedCount(t,d.date);
+    const allSet=booked>=picks;
+    const open=S.ui.llConfirmDate===d.date;
+    const lbl=new Date(d.date+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    return `<div style="border:1.5px solid ${allSet?'#bbf7d0':'#fde68a'};border-radius:10px;background:${allSet?'#f0fdf4':'#fffbeb'};padding:9px 11px;margin-bottom:6px;">
+      <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;">
+        <span style="font-size:13px;font-weight:700;color:#333;">${allSet?'✅':'⚠️'} Day ${d.dayNum||''} · ${parkName(d.park)} <span style="color:#999;font-weight:600;">${lbl}</span></span>
+        <button onclick="llToggleConfirm('${d.date}')" style="background:${allSet?'#fff':'#f59e0b'};border:1.5px solid ${allSet?'#e4e4f0':'#f59e0b'};color:${allSet?'#555':'#fff'};border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:800;cursor:pointer;font-family:inherit;">${booked} of ${picks} booked ${open?'▴':'▾'}</button>
+      </div>
+      ${open?buildLLConfirm(t,d.date):''}
+    </div>`;
+  }).join('');
+  return `<div class="card">
+    <div style="font-size:13px;font-weight:800;color:#1a1a5e;margin-bottom:4px;">⚡ Lightning Lanes — wished → booked</div>
+    <div style="font-size:12px;color:#888;margin-bottom:10px;">When your booking window opens, confirm what you actually got and at what time. Booked windows flow into Run of Show and Today.</div>
+    ${rows}
+  </div>`;
+}
+
+// ═══════════════ TODAY TAB — TRIP MODE ═══════════════
+function ensureTripMode(t){
+  if(!t.tripMode)t.tripMode={active:false,startedAt:null,endedAt:null,baseline:{},journal:{},dayNotes:{}};
+  if(!t.tripMode.journal)t.tripMode.journal={};
+  if(!t.tripMode.dayNotes)t.tripMode.dayNotes={};
+  if(!t.tripMode.baseline)t.tripMode.baseline={};
+  return t.tripMode;
+}
+function tripDates(t){
+  const out=[];
+  if(!t.startDate||!t.endDate)return out;
+  let cur=new Date(t.startDate+'T00:00:00');const end=new Date(t.endDate+'T00:00:00');
+  while(cur<=end){out.push(cur.toISOString().split('T')[0]);cur.setDate(cur.getDate()+1);}
+  return out;
+}
+function todayISO(){return new Date().toISOString().split('T')[0];}
+function catSpent(c){return (c.transactions||[]).reduce((s,tx)=>s+(tx.amount||0),0);}
+function onTripSpent(t,date){
+  let sum=0;
+  ((t.budget||{}).categories||[]).forEach(c=>(c.transactions||[]).forEach(tx=>{
+    if(tx.onTrip&&(date?tx.tripDate===date:true))sum+=(tx.amount||0);
+  }));
+  return sum;
+}
+function startTrip(){
+  const t=trip();if(!t)return;
+  if(!confirm('Start trip mode? Budgets get snapshotted now — everything you log from here counts as on-trip spending, starting from $0.'))return;
+  const tm=ensureTripMode(t);
+  tm.active=true;tm.startedAt=new Date().toISOString();tm.endedAt=null;
+  tm.baseline={};
+  ((t.budget||{}).categories||[]).forEach(c=>{tm.baseline[c.id]=catSpent(c);});
+  S.ui.todayDate=null;
+  persist();render();
+}
+function endTrip(){
+  const t=trip();if(!t)return;
+  if(!confirm('End trip mode? Your journal and on-trip spending are kept — this just closes out the live day view.'))return;
+  const tm=ensureTripMode(t);
+  tm.active=false;tm.endedAt=new Date().toISOString();
+  persist();render();
+}
+function resumeTrip(){
+  const t=trip();if(!t)return;
+  const tm=ensureTripMode(t);
+  tm.active=true;tm.endedAt=null;
+  persist();render();
+}
+function tmEntry(t,date,eKey){
+  const tm=ensureTripMode(t);
+  if(!tm.journal[date])tm.journal[date]={};
+  if(!tm.journal[date][eKey])tm.journal[date][eKey]={done:false,skipped:false,note:'',actual:null};
+  return tm.journal[date][eKey];
+}
+function tmToggleDone(date,eKey){
+  const t=trip();if(!t)return;
+  const j=tmEntry(t,date,eKey);j.done=!j.done;if(j.done)j.skipped=false;
+  persist();render();
+}
+function tmToggleSkip(date,eKey){
+  const t=trip();if(!t)return;
+  const j=tmEntry(t,date,eKey);j.skipped=!j.skipped;if(j.skipped)j.done=false;
+  persist();render();
+}
+function tmOpenNote(date,eKey){S.ui.todayNote=date+'||'+eKey;S.ui.todayCash=null;render();
+  setTimeout(function(){var el=document.getElementById('tm-note-input');if(el)el.focus();},60);}
+function tmSaveNote(date,eKey){
+  const t=trip();if(!t)return;
+  const v=document.getElementById('tm-note-input')?.value||'';
+  tmEntry(t,date,eKey).note=v.trim();
+  S.ui.todayNote=null;persist();render();
+}
+function tmOpenCash(date,eKey){S.ui.todayCash=date+'||'+eKey;S.ui.todayNote=null;render();
+  setTimeout(function(){var el=document.getElementById('tm-cash-amt');if(el){el.focus();el.select();}},60);}
+function tmGuessCat(t,e){
+  const cats=(t.budget||{}).categories||[];
+  const byName=function(n){return cats.find(c=>(c.name||'').toLowerCase().includes(n));};
+  if(e.cls==='meal'||/lunch|dinner|breakfast|snack/i.test(e.text||''))return byName('food')||cats[0];
+  if(e.cls==='ll'||/lightning|premier|\bLL\b/i.test(e.text||''))return cats.find(c=>c.liveSource==='ll'||c.liveSource==='pa')||byName('lightning')||cats[0];
+  if(e.cls==='flight')return byName('flight')||cats[0];
+  if(e.cls==='hotel')return byName('hotel')||cats[0];
+  return byName('extras')||byName('merch')||cats[0];
+}
+function tmSaveCash(date,eKey,entryText){
+  const t=trip();if(!t)return;
+  const amt=parseFloat(document.getElementById('tm-cash-amt')?.value);
+  const catId=document.getElementById('tm-cash-cat')?.value;
+  if(isNaN(amt)){S.ui.todayCash=null;render();return;}
+  const c=(((t.budget||{}).categories)||[]).find(cc=>cc.id===catId)||(((t.budget||{}).categories)||[])[0];
+  if(c){
+    c.transactions=c.transactions||[];
+    c.transactions.push({id:uid(),amount:amt,note:'📍 '+entryText,date:date,createdAt:Date.now(),onTrip:true,tripDate:date});
+    c.spent=catSpent(c);
+  }
+  const j=tmEntry(t,date,eKey);j.actual=amt;j.done=true;
+  S.ui.todayCash=null;persist();render();
+}
+function tmQuickSpend(date){S.ui.todayCash=date+'||__quick__';S.ui.todayNote=null;render();
+  setTimeout(function(){var el=document.getElementById('tm-cash-amt');if(el)el.focus();},60);}
+function tmSaveQuick(date){
+  const t=trip();if(!t)return;
+  const amt=parseFloat(document.getElementById('tm-cash-amt')?.value);
+  const catId=document.getElementById('tm-cash-cat')?.value;
+  const label=(document.getElementById('tm-cash-label')?.value||'').trim()||'Quick spend';
+  if(isNaN(amt)){S.ui.todayCash=null;render();return;}
+  const c=(((t.budget||{}).categories)||[]).find(cc=>cc.id===catId)||(((t.budget||{}).categories)||[])[0];
+  if(c){
+    c.transactions=c.transactions||[];
+    c.transactions.push({id:uid(),amount:amt,note:'📍 '+label,date:date,createdAt:Date.now(),onTrip:true,tripDate:date});
+    c.spent=catSpent(c);
+  }
+  S.ui.todayCash=null;persist();render();
+}
+function tmSaveDayNote(date){
+  const t=trip();if(!t)return;
+  ensureTripMode(t).dayNotes[date]=(document.getElementById('tm-daynote')?.value||'').trim();
+  persist();
+  var el=document.getElementById('tm-daynote-saved');
+  if(el){el.style.opacity='1';setTimeout(function(){el.style.opacity='0';},1200);}
+}
+function tmSetDate(d){S.ui.todayDate=d;S.ui.todayNote=null;S.ui.todayCash=null;render();}
+
+function buildToday(t){
+  const tm=ensureTripMode(t);
+  const dates=tripDates(t);
+  const today=todayISO();
+  if(!dates.length){
+    return `<div class="empty-rich" style="margin:8px 0;"><div class="er-icon">🎯</div><div class="er-title">Set your trip dates first</div><div class="er-body">The Today tab comes alive once your trip has dates.</div><button class="btn btn-primary" onclick="setTab('settings')">Go to Settings →</button></div>`;
+  }
+  if(!tm.active)return buildTodayLauncher(t,tm,dates,today);
+  return buildTodayLive(t,tm,dates,today);
+}
+
+function buildTodayLauncher(t,tm,dates,today){
+  const daysOut=Math.ceil((new Date(dates[0]+'T00:00:00')-new Date(today+'T00:00:00'))/86400000);
+  const cats=(t.budget||{}).categories||[];
+  const catRows=cats.map(function(c){
+    const spent=catSpent(c),bud=c.budgeted||0;
+    const settled=bud>0&&spent>=bud-0.01;
+    const zero=bud===0&&spent===0;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1.5px solid ${settled?'#bbf7d0':'#eee'};border-radius:9px;background:${settled?'#f0fdf4':'#fff'};">
+      <span style="font-size:16px;">${c.emoji||'💰'}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;color:#333;">${esc(c.name)}</div>
+        <div style="font-size:11px;color:#888;">$${Math.round(spent).toLocaleString()} logged of $${Math.round(bud).toLocaleString()} budgeted</div>
+      </div>
+      <span style="font-size:11px;font-weight:800;color:${settled?'#16a34a':zero?'#bbb':'#d97706'};">${settled?'✓ settled':zero?'—':'open'}</span>
+    </div>`;
+  }).join('');
+  const wasEnded=!!tm.endedAt;
+  const recap=wasEnded?buildTripRecap(t,tm):'';
+  return `
+    <div class="card" style="text-align:center;padding:26px 18px;">
+      <div style="font-size:36px;">🎯</div>
+      <div style="font-size:20px;font-weight:900;color:#1a1a5e;margin:6px 0 2px;">${wasEnded?'Trip complete':'Trip Mode'}</div>
+      <div style="font-size:13px;color:#777;">${wasEnded?'Ended '+new Date(tm.endedAt).toLocaleDateString():daysOut>0?`Trip starts in ${daysOut} day${daysOut===1?'':'s'}`:daysOut===0?'Trip starts today! 🎉':'Trip dates have started'}</div>
+    </div>
+    ${recap}
+    <div class="card">
+      <div style="font-size:13px;font-weight:800;color:#1a1a5e;margin-bottom:4px;">🧾 Pre-flight — budget check</div>
+      <div style="font-size:12px;color:#888;margin-bottom:10px;">Pre-trip costs (hotel, flights, tickets) should be logged and paid before you start. When you hit Start, budgets are snapshotted and on-trip spending counts up from $0.</div>
+      <div style="display:flex;flex-direction:column;gap:7px;">${catRows||'<div style="font-size:12px;color:#aaa;">No budget categories yet.</div>'}</div>
+    </div>
+    ${buildLLPreflight(t)}
+    <div class="card" style="text-align:center;">
+      <button onclick="${wasEnded?'resumeTrip()':'startTrip()'}"
+        style="background:#1a1a5e;color:#FFD700;border:none;border-radius:12px;padding:15px 34px;font-size:16px;font-weight:900;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(26,26,94,.25);">
+        ${wasEnded?'↺ Resume trip':'🚀 Start Trip'}
+      </button>
+      <div style="font-size:11px;color:#aaa;margin-top:8px;">${wasEnded?'Re-opens the live day view — nothing is lost':'Snapshots budgets · unlocks the live day view'}</div>
+    </div>`;
+}
+
+function buildTripRecap(t,tm){
+  const total=onTripSpent(t,null);
+  const cats=(((t.budget||{}).categories)||[]).map(function(c){
+    const ot=(c.transactions||[]).reduce(function(s,tx){return s+(tx.onTrip?(tx.amount||0):0);},0);
+    return ot>0?`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;"><span>${c.emoji||''} ${esc(c.name)}</span><span style="font-weight:700;">$${Math.round(ot).toLocaleString()}</span></div>`:'';
+  }).join('');
+  let notes='';
+  Object.entries(tm.journal||{}).forEach(function(pair){
+    const date=pair[0];
+    Object.values(pair[1]||{}).forEach(function(j){
+      if(j.note)notes+=`<div style="font-size:12px;padding:4px 0;border-bottom:1px dashed #eee;"><span style="color:#888;">${new Date(date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}:</span> ${esc(j.note)}</div>`;
+    });
+  });
+  Object.entries(tm.dayNotes||{}).forEach(function(pair){
+    if(pair[1])notes+=`<div style="font-size:12px;padding:4px 0;border-bottom:1px dashed #eee;"><span style="color:#888;">${new Date(pair[0]+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} (day):</span> ${esc(pair[1])}</div>`;
+  });
+  return `<div class="card">
+    <div style="font-size:13px;font-weight:800;color:#1a1a5e;margin-bottom:6px;">🧾 Trip recap</div>
+    <div style="font-size:24px;font-weight:900;color:#1a1a5e;">$${Math.round(total).toLocaleString()} <span style="font-size:12px;font-weight:600;color:#888;">spent on-trip</span></div>
+    <div style="margin-top:8px;">${cats}</div>
+    ${notes?`<div style="margin-top:12px;"><div style="font-size:12px;font-weight:800;color:#1a1a5e;margin-bottom:4px;">📓 Trip journal</div>${notes}</div>`:''}
+  </div>`;
+}
+
+function buildTodayLive(t,tm,dates,today){
+  let sel=S.ui.todayDate;
+  if(!sel||dates.indexOf(sel)===-1){
+    sel=dates.indexOf(today)>-1?today:(today<dates[0]?dates[0]:dates[dates.length-1]);
+  }
+  const di=dates.indexOf(sel);
+  const isToday=sel===today;
+  const entries=rosEntriesForDate(t,sel).filter(function(e){return !e.isSentinel;});
+  const journal=(tm.journal||{})[sel]||{};
+  const nowD=new Date();const nowMins=nowD.getHours()*60+nowD.getMinutes();
+  let nowKey=null,nextKey=null;
+  if(isToday){
+    entries.forEach(function(e){
+      const k=e.id||(e.cls+'|'+e.text);const j=journal[k]||{};
+      if(j.done||j.skipped)return;
+      const m=timeToMins(e.time);
+      if(m<=nowMins)nowKey=k;
+      else if(nextKey===null)nextKey=k;
+    });
+  }
+  const doneCount=entries.filter(function(e){const k=e.id||(e.cls+'|'+e.text);return (journal[k]||{}).done;}).length;
+  const parkDay=(t.parks||[]).find(function(d){return d.date===sel;});
+  const parkLbl=parkDay&&parkDay.park&&parkDay.park!=='rest'&&parkDay.park!=='unassigned'?parkName(parkDay.park):'';
+  const dayNum=parkDay&&parkDay.dayNum?('Day '+parkDay.dayNum):('Day '+(di+1));
+  const dateLbl=new Date(sel+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const spentToday=onTripSpent(t,sel);
+  const spentTrip=onTripSpent(t,null);
+  const estToday=entries.reduce(function(s,e){return s+(e.est||0);},0);
+
+  const cats=(t.budget||{}).categories||[];
+  const catOpts=function(selId){return cats.map(function(c){return `<option value="${c.id}" ${c.id===selId?'selected':''}>${c.emoji||''} ${esc(c.name)}</option>`;}).join('');};
+
+  const rows=entries.map(function(e){
+    const k=e.id||(e.cls+'|'+e.text);
+    const j=journal[k]||{};
+    const kAttr=esc(k).replace(/'/g,'&#39;');
+    const txtAttr=esc(e.text).replace(/'/g,'&#39;');
+    const isNow=k===nowKey,isNext=k===nextKey;
+    const noteOpen=S.ui.todayNote===sel+'||'+k;
+    const cashOpen=S.ui.todayCash===sel+'||'+k;
+    const dim=j.done||j.skipped;
+    return `<div style="border:${isNow?'2.5px solid #6366f1':'1.5px solid #eee'};border-radius:11px;padding:10px 12px;background:${dim?'#fafafa':'#fff'};${dim?'opacity:.62;':''}">
+      <div style="display:flex;align-items:flex-start;gap:10px;">
+        <button onclick="tmToggleDone('${sel}','${kAttr}')" title="${j.done?'Undo':'Mark done'}"
+          style="width:30px;height:30px;flex-shrink:0;border-radius:9px;border:2px solid ${j.done?'#16a34a':'#ddd'};background:${j.done?'#16a34a':'#fff'};color:#fff;font-size:15px;cursor:pointer;font-family:inherit;line-height:1;">${j.done?'✓':''}</button>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            ${isNow?'<span style="background:#eef2ff;color:#4338ca;font-size:10px;font-weight:900;padding:2px 8px;border-radius:9px;">NOW</span>':''}
+            ${isNext?'<span style="background:#fffbeb;color:#b45309;font-size:10px;font-weight:900;padding:2px 8px;border-radius:9px;">NEXT</span>':''}
+            <span style="font-size:11px;color:#999;font-weight:700;">${e.time?fmt12(e.time):'—'}</span>
+          </div>
+          <div style="font-size:14px;font-weight:700;color:${j.skipped?'#bbb':'#333'};${dim?'text-decoration:line-through;':''}">${e.icon} ${e.text}</div>
+          ${e.sub&&!String(e.sub).startsWith('auto:dp-')?`<div style="font-size:11px;color:#999;">${e.sub}</div>`:''}
+          ${(e.est||j.actual!=null)?`<div style="font-size:11px;margin-top:3px;">
+            ${e.est?`<span style="color:#888;">est $${e.est}</span>`:''}
+            ${j.actual!=null?`${e.est?'<span style="color:#888;"> → </span>':''}<span style="font-weight:800;color:${e.est&&j.actual>e.est?'#dc2626':'#16a34a'};">actual $${j.actual}${e.est?(j.actual>e.est?' 🔺+'+Math.round(j.actual-e.est):j.actual<e.est?' 🔻−'+Math.round(e.est-j.actual):''):''}</span>`:''}
+          </div>`:''}
+          ${j.note&&!noteOpen?`<div style="font-size:12px;color:#6366f1;margin-top:4px;">📝 ${esc(j.note)}</div>`:''}
+          ${j.skipped?'<div style="font-size:11px;color:#bbb;margin-top:2px;">skipped</div>':''}
+        </div>
+      </div>
+      ${noteOpen?`<div style="margin-top:8px;display:flex;gap:6px;">
+        <input id="tm-note-input" value="${esc(j.note||'')}" placeholder="Ride broke down · food was meh · pure magic…"
+          onkeydown="if(event.key==='Enter')tmSaveNote('${sel}','${kAttr}')"
+          style="flex:1;min-width:0;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">
+        <button onclick="tmSaveNote('${sel}','${kAttr}')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button>
+      </div>`:''}
+      ${cashOpen?`<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <span style="font-size:12px;color:#888;">actual $</span>
+        <input id="tm-cash-amt" type="number" step="0.01" min="0" value="${j.actual!=null?j.actual:(e.est||'')}"
+          onkeydown="if(event.key==='Enter')tmSaveCash('${sel}','${kAttr}','${txtAttr}')"
+          style="width:90px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">
+        <select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:150px;">${catOpts((tmGuessCat(t,e)||{}).id)}</select>
+        <button onclick="tmSaveCash('${sel}','${kAttr}','${txtAttr}')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Log it</button>
+      </div>`:''}
+      ${(!dim||j.done)?`<div style="display:flex;gap:6px;margin-top:8px;">
+        ${!noteOpen?`<button onclick="tmOpenNote('${sel}','${kAttr}')" style="flex:1;background:#fff;border:1.5px solid #e4e4f0;border-radius:8px;padding:7px 0;font-size:11.5px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">📝 ${j.note?'Edit note':'Note'}</button>`:''}
+        ${!cashOpen?`<button onclick="tmOpenCash('${sel}','${kAttr}')" style="flex:1;background:#fff;border:1.5px solid #e4e4f0;border-radius:8px;padding:7px 0;font-size:11.5px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">💵 ${j.actual!=null?'$'+j.actual:'Actualize'}</button>`:''}
+        ${!j.done?`<button onclick="tmToggleSkip('${sel}','${kAttr}')" style="flex:1;background:#fff;border:1.5px solid #e4e4f0;border-radius:8px;padding:7px 0;font-size:11.5px;font-weight:700;color:#999;cursor:pointer;font-family:inherit;">${j.skipped?'↺ Unskip':'⏭ Skip'}</button>`:''}
+      </div>`:''}
+    </div>`;
+  }).join('');
+
+  const quickOpen=S.ui.todayCash===sel+'||__quick__';
+  const dayNote=(tm.dayNotes||{})[sel]||'';
+  const prevD=dates[Math.max(0,di-1)],nextD=dates[Math.min(dates.length-1,di+1)];
+  // Lightning Lane status for this day
+  const llPicks=llPicksForDate(t,sel).length;
+  const llBooked=llBookedCount(t,sel);
+  const llOpen=S.ui.llConfirmDate===sel;
+  const llBanner=llPicks>0?`<div style="border:1.5px solid ${llBooked>=llPicks?'#bbf7d0':'#fde68a'};border-radius:11px;background:${llBooked>=llPicks?'#f0fdf4':'#fffbeb'};padding:9px 12px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <span style="font-size:12.5px;font-weight:800;color:${llBooked>=llPicks?'#16a34a':'#b45309'};">⚡ Lightning Lanes: ${llBooked} of ${llPicks} booked</span>
+        <button onclick="llToggleConfirm('${sel}')" style="background:#fff;border:1.5px solid #e4e4f0;border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:800;color:#555;cursor:pointer;font-family:inherit;">${llOpen?'Hide ▴':(llBooked>=llPicks?'Manage ▾':'Confirm ▾')}</button>
+      </div>
+      ${llOpen?buildLLConfirm(t,sel):''}
+    </div>`:'';
+
+  return `
+    <div class="card" style="padding:12px 14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <button onclick="tmSetDate('${prevD}')" ${di===0?'disabled style="opacity:.25;width:36px;height:36px;border-radius:9px;border:1.5px solid #e4e4f0;background:#fff;font-size:15px;"':'style="background:#fff;border:1.5px solid #e4e4f0;border-radius:9px;width:36px;height:36px;font-size:15px;cursor:pointer;"'}>‹</button>
+        <div style="text-align:center;flex:1;min-width:0;">
+          <div style="font-size:15px;font-weight:900;color:#1a1a5e;">${dayNum}${parkLbl?' · '+parkLbl:''}</div>
+          <div style="font-size:11.5px;color:#888;">${dateLbl}${isToday?' · today':''} · ${doneCount} of ${entries.length} done${estToday?' · day est $'+Math.round(estToday):''}</div>
+        </div>
+        <button onclick="tmSetDate('${nextD}')" ${di===dates.length-1?'disabled style="opacity:.25;width:36px;height:36px;border-radius:9px;border:1.5px solid #e4e4f0;background:#fff;font-size:15px;"':'style="background:#fff;border:1.5px solid #e4e4f0;border-radius:9px;width:36px;height:36px;font-size:15px;cursor:pointer;"'}>›</button>
+      </div>
+    </div>
+    ${llBanner}
+    <div style="display:flex;flex-direction:column;gap:8px;">${rows||'<div class="card" style="text-align:center;color:#aaa;font-size:13px;">Nothing scheduled this day — add entries in Run of Show, or just enjoy it. 🏖️</div>'}</div>
+    <div class="card" style="margin-top:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:11px;color:#888;">Spent this day · on-trip total</div>
+          <div style="font-size:18px;font-weight:900;color:#1a1a5e;">$${Math.round(spentToday).toLocaleString()} <span style="font-size:12px;color:#888;font-weight:600;">· $${Math.round(spentTrip).toLocaleString()} trip</span></div>
+        </div>
+        ${!quickOpen?`<button onclick="tmQuickSpend('${sel}')" style="background:#FFD700;color:#1a1a5e;border:none;border-radius:9px;padding:10px 16px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;">＋ Quick spend</button>`:''}
+      </div>
+      ${quickOpen?`<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <input id="tm-cash-label" placeholder="Churros 🥨" style="flex:1;min-width:110px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">
+        <span style="font-size:12px;color:#888;">$</span>
+        <input id="tm-cash-amt" type="number" step="0.01" min="0" onkeydown="if(event.key==='Enter')tmSaveQuick('${sel}')"
+          style="width:80px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">
+        <select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:150px;">${catOpts((cats.find(function(c){return /extras|merch|food/i.test(c.name||'');})||{}).id)}</select>
+        <button onclick="tmSaveQuick('${sel}')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Log it</button>
+      </div>`:''}
+    </div>
+    <div class="card">
+      <div style="font-size:12px;font-weight:800;color:#1a1a5e;margin-bottom:6px;">📓 Day note <span id="tm-daynote-saved" style="opacity:0;transition:opacity .3s;color:#16a34a;font-weight:700;font-size:11px;">saved ✓</span></div>
+      <textarea id="tm-daynote" rows="2" placeholder="Anything about the day — meltdowns, magic, weather, lessons for next time…"
+        onchange="tmSaveDayNote('${sel}')"
+        style="width:100%;padding:9px 11px;border:1.5px solid #e4e4f0;border-radius:9px;font-size:16px;font-family:inherit;resize:vertical;box-sizing:border-box;">${esc(dayNote)}</textarea>
+    </div>
+    <div style="text-align:center;margin:14px 0 4px;">
+      <button onclick="endTrip()" style="background:none;border:1.5px solid #e4e4f0;border-radius:9px;padding:8px 18px;font-size:12px;font-weight:700;color:#999;cursor:pointer;font-family:inherit;">🏁 End trip</button>
+    </div>`;
+}
 
 function buildTabContent(t) {
   switch(S.tab) {
+    case 'today':          return buildToday(t);
     case 'overview':       return buildOverview(t);
     case 'budget':         return buildBudget(t);
     case 'transportation': return buildTransportation(t);
@@ -6352,51 +6814,12 @@ function endTour() {
 // RUN OF SHOW TAB
 // ===================================================
 
-function buildRunOfShow(t) {
-  // Build map of rosEntries by date
+// Shared: generate the full, deduped, override-applied entry list for one date.
+// Used by both the Run of Show view and the Today (trip mode) tab.
+function rosEntriesForDate(t, date) {
   const manualByDate = {};
-  (t.rosEntries||[]).forEach(e => {
-    if (!manualByDate[e.date]) manualByDate[e.date] = [];
-    manualByDate[e.date].push(e);
-  });
-
-  // Gather all days in trip chronologically
-  const allDates = [];
-  if (t.startDate && t.endDate) {
-    let cur = new Date(t.startDate+'T00:00:00');
-    const end = new Date(t.endDate+'T00:00:00');
-    while (cur <= end) {
-      allDates.push(cur.toISOString().split('T')[0]);
-      cur.setDate(cur.getDate()+1);
-    }
-  }
-
-  if (!allDates.length) {
-    return `<div class="empty-rich" style="margin:8px 0;"><div class="er-icon">📋</div><div class="er-title">Set your trip dates first</div><div class="er-body">Head to Settings and enter your start and end dates. The Run of Show will auto-build from your parks, flights, hotel check-ins, and dining reservations.</div><button class="btn btn-primary" onclick="setTab('settings')">Go to Settings →</button></div>`;
-  }
-
+  (t.rosEntries||[]).forEach(e => { if (!manualByDate[e.date]) manualByDate[e.date] = []; manualByDate[e.date].push(e); });
   const md = t.mealDefaults || blankMealDefaults();
-
-  let html = `
-    <div class="card" style="margin-bottom:12px;background:#f0f4ff;border:2px solid #c7d2fe;">
-      <div style="font-size:13px;color:#3730a3;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        📋 <strong>Run of Show</strong> — auto-built from your trip data.
-        Times editable · Drag to reorder · ⠿ handle to drag
-        <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
-          <button onclick="exportRosMobile()" title="Export for iPhone"
-            style="background:#1a1a5e;color:#FFD700;border:none;border-radius:7px;padding:5px 11px;
-                   font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;">
-            📱 iPhone Export
-          </button>
-          <a href="${t.tripType==='aulani'?'https://www.disneyaulani.com/resort-activities/':t.tripType==='dlp'?'https://www.disneylandparis.com/en-int/opening-hours-calendar/':'https://disneyworld.disney.go.com/calendars/'}" target="_blank"
-            style="font-size:11px;color:#1a1a5e;font-weight:700;white-space:nowrap;">
-            ${t.tripType==='aulani'?'🌺 Aulani →':t.tripType==='dlp'?'📅 Park Hours →':'📅 Park Hours →'}
-          </a>
-        </div>
-      </div>
-    </div>`;
-
-  allDates.forEach(date => {
     const parkDay   = (t.parks||[]).find(d=>d.date===date);
     const cruise    = parkDay && isCruiseDay(parkDay, t);
     const hotelCIs  = (t.hotelLegs||[]).filter(l=>l.checkInDate===date);
@@ -6527,6 +6950,27 @@ function buildRunOfShow(t) {
         }
         if (parkDay.dayExtras?.afterHours) entries.push({time:'21:30', icon:'🎉', text:'After Hours Event Begins', sub:'Exclusive access — fewer crowds!', cls:'auto'});
         // Meals for theme park days
+        // Booked Lightning Lanes — confirmed windows appear as timed entries
+        (function(){
+          const bk=(parkDay.llBookings)||{};
+          llPicksForDay0(parkDay).forEach(function(p){
+            const b=bk[p.name];
+            if(b&&b.start){
+              const illP=p.ill?((parkDay.ll&&parkDay.ll.illPrices&&parkDay.ll.illPrices[p.name])||(parkDay.ll&&parkDay.ll.onePrices&&parkDay.ll.onePrices[p.name])||null):null;
+              const pty=(parkDay.ll&&parkDay.ll.partySize)||t.partySize||1;
+              entries.push({
+                time:b.start,
+                icon:'⚡',
+                text:'LL: '+p.name,
+                sub:'Window '+fmt12(b.start)+(b.end?'–'+fmt12(b.end):'')+(p.ill?' · ILL':''),
+                cls:'ll',
+                id:'ll-'+p.name,
+                llRide:p.name,
+                est:illP?Math.round(illP*pty):null
+              });
+            }
+          });
+        })();
         if (!cruise) {
           const meals = parkDay.meals || blankMeals();
           ['breakfast','lunch','dinner','snacks'].forEach(mt => {
@@ -6540,7 +6984,9 @@ function buildRunOfShow(t) {
                 icon: mIcon,
                 text: cap(mt)+': '+(meal.place||'TBD'),
                 sub: fmtDual(cost,t)+(meal.adrBooked?' · ✓ ADR'+(meal.adrConfNum?' #'+esc(meal.adrConfNum):''):(meal.adrTime?' · ADR time set':'')),
-                cls:'meal'
+                cls:'meal',
+                est:(cost&&cost>0)?cost:null,
+                mealType:mt
               });
             }
           });
@@ -6603,7 +7049,7 @@ function buildRunOfShow(t) {
           if (meal.place || meal.note) {
             const mIcon = {breakfast:'🥞',lunch:'🥙',dinner:'🍽️',snacks:'🍦'}[mt];
             const defTime = {breakfast:'08:00',lunch:'12:30',dinner:'18:30',snacks:'15:00'}[mt];
-            entries.push({time:defTime, icon:mIcon, text:`${cap(mt)}: ${meal.place||'TBD'}`, sub:meal.note||'', cls:'meal'});
+            entries.push({time:defTime, icon:mIcon, text:`${cap(mt)}: ${meal.place||'TBD'}`, sub:meal.note||'', cls:'meal', est:(meal.cost!=null&&meal.cost>0)?meal.cost:null, mealType:mt});
           }
         });
       }
@@ -6699,6 +7145,56 @@ function buildRunOfShow(t) {
 
     // Insert sentinels — SOD always first, EOD always last
     const renderEntries = [sodEntry, ...deduped, eodEntry];
+    return renderEntries;
+}
+
+function buildRunOfShow(t) {
+  // Build map of rosEntries by date
+  const manualByDate = {};
+  (t.rosEntries||[]).forEach(e => {
+    if (!manualByDate[e.date]) manualByDate[e.date] = [];
+    manualByDate[e.date].push(e);
+  });
+
+  // Gather all days in trip chronologically
+  const allDates = [];
+  if (t.startDate && t.endDate) {
+    let cur = new Date(t.startDate+'T00:00:00');
+    const end = new Date(t.endDate+'T00:00:00');
+    while (cur <= end) {
+      allDates.push(cur.toISOString().split('T')[0]);
+      cur.setDate(cur.getDate()+1);
+    }
+  }
+
+  if (!allDates.length) {
+    return `<div class="empty-rich" style="margin:8px 0;"><div class="er-icon">📋</div><div class="er-title">Set your trip dates first</div><div class="er-body">Head to Settings and enter your start and end dates. The Run of Show will auto-build from your parks, flights, hotel check-ins, and dining reservations.</div><button class="btn btn-primary" onclick="setTab('settings')">Go to Settings →</button></div>`;
+  }
+
+  const md = t.mealDefaults || blankMealDefaults();
+
+  let html = `
+    <div class="card" style="margin-bottom:12px;background:#f0f4ff;border:2px solid #c7d2fe;">
+      <div style="font-size:13px;color:#3730a3;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        📋 <strong>Run of Show</strong> — auto-built from your trip data.
+        Times editable · Drag to reorder · ⠿ handle to drag
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+          <button onclick="exportRosMobile()" title="Export for iPhone"
+            style="background:#1a1a5e;color:#FFD700;border:none;border-radius:7px;padding:5px 11px;
+                   font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;">
+            📱 iPhone Export
+          </button>
+          <a href="${t.tripType==='aulani'?'https://www.disneyaulani.com/resort-activities/':t.tripType==='dlp'?'https://www.disneylandparis.com/en-int/opening-hours-calendar/':'https://disneyworld.disney.go.com/calendars/'}" target="_blank"
+            style="font-size:11px;color:#1a1a5e;font-weight:700;white-space:nowrap;">
+            ${t.tripType==='aulani'?'🌺 Aulani →':t.tripType==='dlp'?'📅 Park Hours →':'📅 Park Hours →'}
+          </a>
+        </div>
+      </div>
+    </div>`;
+
+  allDates.forEach(date => {
+    const parkDay = (t.parks||[]).find(d=>d.date===date);
+    const renderEntries = rosEntriesForDate(t, date);
 
     const dateLabel = new Date(date+'T00:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
     const actDay2 = t.tripType==='aulani' ? (t.activityDays||[]).find(d=>d.date===date) : null;
@@ -8639,6 +9135,14 @@ window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout
 // Boot sync
 syncLoadSettings();
 syncInit();
+// Land on Today when a trip is live and we're inside its dates
+try{
+  const _bt=trip();
+  if(_bt&&_bt.tripMode&&_bt.tripMode.active){
+    const _bd=tripDates(_bt),_bnow=todayISO();
+    if(_bd.length&&_bnow>=_bd[0]&&_bnow<=_bd[_bd.length-1])S.tab='today';
+  }
+}catch(e){}
 render();
 </script>
 </body>
