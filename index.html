@@ -1659,7 +1659,12 @@ function qtFetch(parkKey){
   if(_QT.cache[parkKey]&&now-(_QT.fetchedAt[parkKey]||0)<5*60*1000)return; // 5-min freshness
   _QT.pending[parkKey]=true;
   const direct='https://queue-times.com/parks/'+id+'/queue_times.json';
-  const relay='https://api.allorigins.win/raw?url='+encodeURIComponent(direct);
+  // queue-times.com blocks browser CORS — try a chain of public relays
+  const relays=[
+    'https://corsproxy.io/?url='+encodeURIComponent(direct),
+    'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(direct),
+    'https://thingproxy.freeboard.io/fetch/'+direct
+  ];
   function handle(d){
     delete _QT.pending[parkKey];
     const rides=[];
@@ -1668,19 +1673,28 @@ function qtFetch(parkKey){
     _QT.cache[parkKey]=rides;_QT.fetchedAt[parkKey]=Date.now();
     render();
   }
-  // queue-times.com blocks browser CORS — try direct, then fall back to a public relay
-  fetch(direct).then(function(r){return r.json();}).then(handle)
-  .catch(function(){
-    fetch(relay).then(function(r){return r.json();}).then(handle)
-    .catch(function(){delete _QT.pending[parkKey];_QT.cache[parkKey]='err';render();});
-  });
+  function tryRelay(i){
+    if(i>=relays.length){delete _QT.pending[parkKey];_QT.cache[parkKey]='err';render();return;}
+    fetch(relays[i]).then(function(r){
+      if(!r.ok)throw new Error('http '+r.status);
+      return r.json();
+    }).then(handle).catch(function(){tryRelay(i+1);});
+  }
+  // Try direct first (works in native apps / Electron), then relays
+  fetch(direct).then(function(r){if(!r.ok)throw new Error();return r.json();}).then(handle)
+  .catch(function(){tryRelay(0);});
 }
 function qtSection(parkKey,parkLabel){
   parkLabel=parkLabel||parkName(parkKey)||parkKey;
   if(!QT_PARK_IDS[parkKey])return'';
   const data=_QT.cache[parkKey];
   if(!data){qtFetch(parkKey);return'<div class="card" style="text-align:center;color:#bbb;font-size:12px;">⏳ Loading live wait times…</div>';}
-  if(data==='err')return `<div class="card" style="text-align:center;color:#bbb;font-size:11.5px;padding:10px;">⏱️ Live wait times unavailable right now <button onclick="_QT.cache['${parkKey}']=null;_QT.fetchedAt['${parkKey}']=0;qtFetch('${parkKey}')" style="background:none;border:1px solid #e4e4f0;border-radius:6px;padding:2px 8px;font-size:10.5px;color:#999;cursor:pointer;font-family:inherit;margin-left:6px;">↻ retry</button></div>`;
+  if(data==='err')return `<div class="card" style="text-align:center;padding:10px;">
+    <div style="color:#bbb;font-size:11.5px;">⏱️ Live wait times unavailable
+      <button onclick="_QT.cache['${parkKey}']=null;_QT.fetchedAt['${parkKey}']=0;qtFetch('${parkKey}')" style="background:none;border:1px solid #e4e4f0;border-radius:6px;padding:2px 8px;font-size:10.5px;color:#999;cursor:pointer;font-family:inherit;margin-left:6px;">↻ retry</button>
+    </div>
+    <a href="https://queue-times.com/parks/${QT_PARK_IDS[parkKey]}/queue_times" target="_blank" rel="noopener" style="font-size:11px;color:#6366f1;">View on Queue-Times.com ↗</a>
+  </div>`;
   const open=data.filter(function(r){return r.is_open;}).sort(function(a,b){return (b.wait_time||0)-(a.wait_time||0);});
   if(!open.length)return'';
   const rows=open.slice(0,10).map(function(r){
@@ -9567,7 +9581,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-03-J";
+var SKIPPER_BUILD="2026-07-03-K";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
