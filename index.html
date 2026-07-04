@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>✨ Skipper Tripper v1.0</title>
+<link rel="icon" href="data:,">
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -459,6 +460,18 @@ const LL_DATA = {
     tier2:["Alien Swirling Saucers","Beauty and the Beast Live on Stage","For the First Time in Forever: A Frozen Sing-Along Celebration","Indiana Jones Epic Stunt Spectacular","The Little Mermaid – A Musical Adventure","Star Tours – The Adventures Continue","The Twilight Zone Tower of Terror","Toy Story Mania!"],
     llmp:[], ill:[{name:"Star Wars: Rise of the Resistance",price:24}]
   },
+  dl: {
+    name:'Disneyland Park', tiered:false,
+    tier1:[], tier2:[],
+    llmp:["Autopia","Big Thunder Mountain Railroad","Buzz Lightyear Astro Blasters","Haunted Mansion","Indiana Jones Adventure","it's a small world","Matterhorn Bobsleds","Millennium Falcon: Smugglers Run","Roger Rabbit's Car Toon Spin","Space Mountain","Star Tours – The Adventures Continue","Tiana's Bayou Adventure"],
+    ill:[{name:"Star Wars: Rise of the Resistance",price:25}]
+  },
+  dca: {
+    name:'Disney California Adventure', tiered:false,
+    tier1:[], tier2:[],
+    llmp:["Goofy's Sky School","Grizzly River Run","Guardians of the Galaxy – Mission: BREAKOUT!","Incredicoaster","Monsters, Inc. Mike & Sulley to the Rescue!","Soarin' Around the World","Toy Story Midway Mania!","WEB SLINGERS: A Spider-Man Adventure"],
+    ill:[{name:"Radiator Springs Racers",price:22}]
+  },
   ak: {
     name:'Animal Kingdom', tiered:false,
     tier1:[], tier2:[],
@@ -541,6 +554,9 @@ const DISNEY_RESORTS = [
   "Disney's BoardWalk Villas",
   '— Partner/Other —',
   "Four Seasons Resort Orlando",
+  "Disneyland Hotel (DLR)",
+  "Disney's Grand Californian Hotel & Spa",
+  "Pixar Place Hotel",
   "Walt Disney World Swan",
   "Walt Disney World Dolphin",
   "Swan Reserve",
@@ -764,6 +780,12 @@ const PA_ULTIMATE_TIERS = [
 const DLP_PARK_HOURS = {
   dp:  { open:'9:30 AM',  close:'9:00 PM',  note:'' },
   daw: { open:'9:30 AM',  close:'8:00 PM',  note:'Disney Cascade of Lights at closing' },
+};
+
+// Disneyland Resort typical hours (actuals release ~6 weeks out)
+const DLR_PARK_HOURS = {
+  dl:  { open:'8:00 AM', close:'12:00 AM', note:'Early entry 7:30 AM for hotel guests (select days)' },
+  dca: { open:'8:00 AM', close:'10:00 PM', note:'' },
 };
 
 // Disney Hotels at Disneyland Paris
@@ -1522,7 +1544,12 @@ function computeKeyDates(t){
   const D=function(n){const d=new Date(s);d.setDate(d.getDate()-n);return d.toISOString().split('T')[0];};
   const hasResort=!!(t.resort&&t.resort.name)||((t.hotelLegs||[]).length>0);
   const out=[];
-  if(t.tripType==='dlp'){
+  if(t.tripType==='dlr'){
+    out.push({id:'parkres',date:D(90),icon:'🎟️',label:'Make theme park reservations',hint:'Required with tickets — book as soon as you have them'});
+    out.push({id:'adr',date:D(60),icon:'🍽️',label:'Dining reservations open (60 days)',hint:'Oga\'s, Lamplight Lounge & Blue Bayou go fast'});
+    out.push({id:'llplan',date:D(1),icon:'⚡',label:'Set your Lightning Lane strategy',hint:'At Disneyland, LL Multi Pass is purchased day-of in the app at park open — lock your picks in the Itinerary now'});
+    out.push({id:'mobileorder',date:D(1),icon:'📱',label:'Update the Disneyland app & set up mobile order'});
+  }else if(t.tripType==='dlp'){
     out.push({id:'adr',date:D(60),icon:'🍽️',label:'Restaurant reservations open',hint:'Book table-service dining'});
     out.push({id:'pa',date:D(3),icon:'🎫',label:'Plan Premier Access strategy',hint:'PA is bought day-of in the app — lock your picks now'});
   }else if(t.tripType==='aulani'){
@@ -1583,6 +1610,7 @@ function buildKeyDates(t){
 var _WX={cache:{},pending:{}};
 function wxCoords(t){
   if(t.tripType==='dlp')return[48.872,2.776];
+  if(t.tripType==='dlr')return[33.812,-117.919]; // Anaheim
   if(t.tripType==='aulani')return[21.339,-158.121];
   return[28.372,-81.549]; // WDW
 }
@@ -1596,7 +1624,7 @@ function wxFetch(t,date){
   const key=t.tripType+'|'+date;
   if(_WX.cache[key]||_WX.pending[key])return;
   const days=Math.ceil((new Date(date+'T00:00:00')-new Date())/86400000);
-  if(days<-1||days>15){_WX.cache[key]={na:true};return;}
+  if(days<-1||days>15){_WX.cache[key]={na:true,at:Date.now()+86400000};return;}
   _WX.pending[key]=true;
   const c=wxCoords(t);
   fetch('https://api.open-meteo.com/v1/forecast?latitude='+c[0]+'&longitude='+c[1]+
@@ -1610,11 +1638,12 @@ function wxFetch(t,date){
     }else{_WX.cache[key]={na:true};}
     render();
   })
-  .catch(function(){delete _WX.pending[key];_WX.cache[key]={na:true};});
+  .catch(function(){delete _WX.pending[key];_WX.cache[key]={na:true,at:Date.now()};render();});
 }
 function wxStrip(t,date){
   const key=t.tripType+'|'+date;
-  const w=_WX.cache[key];
+  let w=_WX.cache[key];
+  if(w&&w.na&&w.at&&Date.now()-w.at>5*60*1000){delete _WX.cache[key];w=null;} // retry failures after 5 min
   if(!w){wxFetch(t,date);return'<span style="font-size:11px;color:#bbb;">loading weather…</span>';}
   if(w.na)return'';
   return '<span style="font-size:12px;color:#555;font-weight:600;">'+wxIcon(w.code)+' '+w.hi+'° / '+w.lo+'°'+(w.rain!=null?' · ☔ '+w.rain+'%':'')+'</span>';
@@ -1622,26 +1651,32 @@ function wxStrip(t,date){
 
 // ═══════════════ LIVE WAIT TIMES (Queue-Times.com) ═══════════════
 var _QT={cache:{},pending:{},fetchedAt:{}};
-var QT_PARK_IDS={mk:6,ep:5,hs:7,ak:8,dp:4,daw:28};
+var QT_PARK_IDS={mk:6,ep:5,hs:7,ak:8,dp:4,daw:28,dl:16,dca:17};
 function qtFetch(parkKey){
   const id=QT_PARK_IDS[parkKey];if(!id)return;
   const now=Date.now();
   if(_QT.pending[parkKey])return;
   if(_QT.cache[parkKey]&&now-(_QT.fetchedAt[parkKey]||0)<5*60*1000)return; // 5-min freshness
   _QT.pending[parkKey]=true;
-  fetch('https://queue-times.com/parks/'+id+'/queue_times.json')
-  .then(function(r){return r.json();})
-  .then(function(d){
+  const direct='https://queue-times.com/parks/'+id+'/queue_times.json';
+  const relay='https://api.allorigins.win/raw?url='+encodeURIComponent(direct);
+  function handle(d){
     delete _QT.pending[parkKey];
     const rides=[];
     (d.lands||[]).forEach(function(l){(l.rides||[]).forEach(function(r){rides.push(r);});});
     (d.rides||[]).forEach(function(r){rides.push(r);});
     _QT.cache[parkKey]=rides;_QT.fetchedAt[parkKey]=Date.now();
     render();
-  })
-  .catch(function(){delete _QT.pending[parkKey];_QT.cache[parkKey]='err';});
+  }
+  // queue-times.com blocks browser CORS — try direct, then fall back to a public relay
+  fetch(direct).then(function(r){return r.json();}).then(handle)
+  .catch(function(){
+    fetch(relay).then(function(r){return r.json();}).then(handle)
+    .catch(function(){delete _QT.pending[parkKey];_QT.cache[parkKey]='err';render();});
+  });
 }
-function qtSection(parkKey){
+function qtSection(parkKey,parkLabel){
+  parkLabel=parkLabel||parkName(parkKey)||parkKey;
   if(!QT_PARK_IDS[parkKey])return'';
   const data=_QT.cache[parkKey];
   if(!data){qtFetch(parkKey);return'<div class="card" style="text-align:center;color:#bbb;font-size:12px;">⏳ Loading live wait times…</div>';}
@@ -1659,7 +1694,7 @@ function qtSection(parkKey){
   const age=Math.round((Date.now()-(_QT.fetchedAt[parkKey]||Date.now()))/60000);
   return `<div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-      <div style="font-size:13px;font-weight:800;color:#1a1a5e;">⏱️ Live waits — longest right now</div>
+      <div style="font-size:13px;font-weight:800;color:#1a1a5e;">⏱️ Live waits — ${esc(parkLabel)}</div>
       <button onclick="_QT.fetchedAt['${parkKey}']=0;qtFetch('${parkKey}')" style="background:none;border:1px solid #e4e4f0;border-radius:7px;padding:3px 9px;font-size:10.5px;color:#888;cursor:pointer;font-family:inherit;">↻ ${age<1?'now':age+'m ago'}</button>
     </div>
     <div style="margin-top:6px;">${rows}</div>
@@ -2115,7 +2150,13 @@ function buildTodayLive(t,tm,dates,today){
       </div>
     </div>
     ${llBanner}
-    ${isToday&&parkDay&&QT_PARK_IDS[parkDay.park]?qtSection(parkDay.park):''}
+    ${(()=>{
+      if(!isToday||!parkDay)return'';
+      // collect all parks being visited today: primary + any hops
+      const dayParks=[parkDay.park].concat(parkDay.parkHops||[]).filter(function(p){return p&&QT_PARK_IDS[p];});
+      const unique=dayParks.filter(function(p,i){return dayParks.indexOf(p)===i;});
+      return unique.map(function(p){return qtSection(p,parkName(p));}).join('');
+    })()}
     <div style="display:flex;flex-direction:column;gap:8px;">${rows||'<div class="card" style="text-align:center;color:#aaa;font-size:13px;">Nothing scheduled this day — add entries in Run of Show, or just enjoy it. 🏖️</div>'}</div>
     <div class="card" style="margin-top:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
@@ -2363,12 +2404,12 @@ function buildOverview(t) {
         ? `<div class="empty-rich">
             <div class="er-icon">🗺️</div>
             <div class="er-title">No park days assigned yet</div>
-            <div class="er-body">Head to the Itinerary tab to pick which park you'll visit each day — ${t.tripType==='dlp'?'Disneyland Park or Disney Adventure World':'Magic Kingdom, EPCOT, Hollywood Studios, or Animal Kingdom'}.</div>
+            <div class="er-body">Head to the Itinerary tab to pick which park you'll visit each day — ${t.tripType==='dlp'?'Disneyland Park or Disney Adventure World':t.tripType==='dlr'?'Disneyland Park or California Adventure':'Magic Kingdom, EPCOT, Hollywood Studios, or Animal Kingdom'}.</div>
             <button class="btn btn-primary" onclick="setTab('parks')">Go to Itinerary tab →</button>
            </div>`
         : `<div style="display:flex;flex-direction:column;gap:7px;">
             ${t.parks.filter(d=>d.park!=='rest').slice(0,8).map(d=>{
-              const hrs = SEPT_PARK_HOURS[d.park] || DLP_PARK_HOURS[d.park];
+              const hrs = SEPT_PARK_HOURS[d.park] || DLP_PARK_HOURS[d.park] || DLR_PARK_HOURS[d.park];
               const mealCost = calcDayFoodCost(d, t);
               const llCost = calcDayLLCost(d, t);
               const dayTotal = mealCost + llCost;
@@ -2411,7 +2452,7 @@ function buildSetupChecklist(t) {
     ...(t.tripType==='aulani' ? [
       { done: (t.activityDays||[]).some(d=>d.activity!=='arrival'&&d.activity!=='departure'), icon:'🌺', text:'Plan your daily activities', hint:'Go to Activities tab to assign beach, luau, snorkeling, etc. to each day', tab:'activities' },
     ] : [
-      { done: hasParks,     icon:'🗓️', text:'Assign parks to each day',         hint: t.tripType==='dlp' ? 'Pick Disneyland Park or Disney Adventure World for each day' : 'Pick Magic Kingdom, EPCOT, Hollywood Studios, or Animal Kingdom for each day', tab:'parks' },
+      { done: hasParks,     icon:'🗓️', text:'Assign parks to each day',         hint: t.tripType==='dlp' ? 'Pick Disneyland Park or Disney Adventure World for each day' : t.tripType==='dlr' ? 'Pick Disneyland Park or California Adventure for each day' : 'Pick Magic Kingdom, EPCOT, Hollywood Studios, or Animal Kingdom for each day', tab:'parks' },
       { done: hasDining,    icon:'🍽️', text:'Log your dining reservations',     hint:'Add your ADRs in the Itinerary tab under each day', tab:'parks' },
     ]),
   ];
@@ -4348,7 +4389,7 @@ function exportToCalendar() {
   (t.parks||[]).forEach(function(day) {
     if (!day.park || day.park==='unassigned') return;
     var label = parkNames[day.park] || day.park;
-    var ph = SEPT_PARK_HOURS[day.park];
+    var ph = SEPT_PARK_HOURS[day.park] || DLP_PARK_HOURS[day.park] || DLR_PARK_HOURS[day.park];
     var desc = [];
     if (ph) desc.push('Hours: '+ph.open+' - '+ph.close);
     if (day.notes) desc.push('Notes: '+day.notes);
@@ -4377,7 +4418,7 @@ function exportToCalendar() {
         endT = pad(eh)+':'+pad(em);
       }
     }
-    var loc = (day.park==='rest'||day.park==='travel'||day.park.startsWith('dcl-')) ? '' : label+', Walt Disney World, FL';
+    var loc = (day.park==='rest'||day.park==='travel'||day.park.startsWith('dcl-')) ? '' : label+(t.tripType==='dlr'?', Disneyland Resort, Anaheim CA':t.tripType==='dlp'?', Disneyland Paris':', Walt Disney World, FL');
     addEvent((day.park==='rest'?'😴 ':day.park==='travel'?'✈️ ':'🏰 ')+'Day '+day.dayNum+': '+label,
       day.date, startT, endT, desc.join(', '), loc);
 
@@ -4389,7 +4430,7 @@ function exportToCalendar() {
         addEvent(icons[mt]+' '+(mt.charAt(0).toUpperCase()+mt.slice(1))+': '+meal.place,
           day.date, meal.adrTime, null,
           meal.adrConfNum?'Conf# '+meal.adrConfNum:'',
-          meal.place+', Walt Disney World, FL');
+          meal.place+(t.tripType==='dlr'?', Disneyland Resort, Anaheim CA':t.tripType==='dlp'?', Disneyland Paris':', Walt Disney World, FL'));
       }
     });
   });
@@ -4597,7 +4638,14 @@ function buildPlannerView(t) {
 }
 
 function buildParks(t) {
-  const parkOpts = t.tripType === 'dlp' ? [
+  const parkOpts = t.tripType === 'dlr' ? [
+    {v:'unassigned',l:'— Unassigned —'},
+    {v:'dl',l:'🏰 Disneyland Park'},
+    {v:'dca',l:'🎡 Disney California Adventure'},
+    {v:'dtd',l:'🛍️ Downtown Disney'},
+    {v:'rest',l:'😴 Rest Day'},
+    {v:'travel',l:'✈️ Travel Day'},
+  ] : t.tripType === 'dlp' ? [
     {v:'unassigned',l:'— Unassigned —'},
     {v:'dp',l:'🏰 Disneyland Park'},
     {v:'daw',l:'🚀 Disney Adventure World'},
@@ -4751,7 +4799,7 @@ function buildParks(t) {
 
 // --- Per-Day Row Builder -----------------------------
 function calcEETime(park) {
-  const ph = SEPT_PARK_HOURS[park];
+  const ph = SEPT_PARK_HOURS[park] || DLP_PARK_HOURS[park] || DLR_PARK_HOURS[park];
   if (!ph) return '08:30';
   const m = ph.open.match(/(\d+):(\d+)\s*(AM|PM)/i);
   if (!m) return '08:30';
@@ -4767,7 +4815,7 @@ function isEEHDay(park, dateStr) {
   return new Date(dateStr+'T12:00:00').getDay() === eeh.dayOfWeek;
 }
 function buildEEChip(dayExtras, park, i) {
-  const ph = SEPT_PARK_HOURS[park];
+  const ph = SEPT_PARK_HOURS[park] || DLP_PARK_HOURS[park] || DLR_PARK_HOURS[park];
   const eeAuto = calcEETime(park);
   const eeTime = dayExtras.earlyEntryTime || eeAuto;
   const on = dayExtras.earlyEntry ? 'on' : '';
@@ -4825,7 +4873,7 @@ function buildDayRow(day, i, t, parkOpts) {
   if (locked) return buildLockedDayCard(day, i, t, parkOpts, llCost, mealCost, cruiseDay);
 
   // -- Park hours badge --
-  const ph = SEPT_PARK_HOURS[day.park] || DLP_PARK_HOURS[day.park];
+  const ph = SEPT_PARK_HOURS[day.park] || DLP_PARK_HOURS[day.park] || DLR_PARK_HOURS[day.park];
   const hoursHtml = ph ? `<div style="font-size:10px;font-weight:800;color:#555;padding:2px 8px;background:#f0f4ff;border-radius:5px;white-space:nowrap;">🕘 ${ph.open}–${ph.close}${ph.note?` <span style="color:#aaa;font-weight:600;">· ${ph.note}</span>`:''}</div>` : '';
 
   // -- Park hops selector (shown for all day types) --
@@ -5602,7 +5650,8 @@ function parkName(p) {
     ds:'Disney Springs',wp:'Water Park',rest:'😴 Rest Day',travel:'✈️ Travel Day',unassigned:'Unassigned',
     'dcl-embark':'Embarkation Day','dcl-sea':'Sea Day','dcl-port':'Port Day','dcl-disembark':'Disembarkation Day',
     'event-mnsshp':'🎃 MNSSHP','event-ep-ah':'🌙 EPCOT After Hours','event-hs-ah':'🌙 HS After Hours',
-    dp:'Disneyland Park',daw:'Disney Adventure World',dv:'Disney Village'
+    dp:'Disneyland Park',daw:'Disney Adventure World',dv:'Disney Village',
+    dl:'Disneyland Park',dca:'Disney California Adventure',dtd:'Downtown Disney'
   }[p]||p;
 }
 function parkClass(p) {
@@ -5610,7 +5659,8 @@ function parkClass(p) {
     mk:'p-mk',ep:'p-ep',hs:'p-hs',ak:'p-ak',ds:'p-ds',wp:'p-wp',rest:'p-rest',travel:'p-travel',unassigned:'p-unassigned',
     'dcl-embark':'p-dcl-embark','dcl-sea':'p-dcl-sea','dcl-port':'p-dcl-port','dcl-disembark':'p-dcl-disembark',
     'event-mnsshp':'p-mk','event-ep-ah':'p-ep','event-hs-ah':'p-hs',
-    dp:'p-dp',daw:'p-daw',dv:'p-ds'
+    dp:'p-dp',daw:'p-daw',dv:'p-ds',
+    dl:'p-mk',dca:'p-hs',dtd:'p-ds'
   }[p]||'p-rest';
 }
 function parkColor(p) {
@@ -6091,7 +6141,7 @@ function buildPhotoSpots(t) {
 
   // WDW / DLP — show parks the user is actually visiting
   const parksVisiting = [...new Set((t.parks||[]).map(d=>d.park).filter(p=>p&&p!=='rest'&&p!=='unassigned'))];
-  const parkOrder = t.tripType === 'dlp' ? ['dp','daw'] : ['mk','ep','hs','ak'];
+  const parkOrder = t.tripType === 'dlp' ? ['dp','daw'] : t.tripType === 'dlr' ? ['dl','dca'] : ['mk','ep','hs','ak'];
   const activeParkOrder = parkOrder.filter(p=>parksVisiting.includes(p));
   // If no parks assigned yet, show all
   const showParks = activeParkOrder.length ? activeParkOrder : parkOrder;
@@ -7239,7 +7289,7 @@ function rosEntriesForDate(t, date) {
     // Park day entries
     if (parkDay) {
       const park = parkDay.park;
-      const ph   = SEPT_PARK_HOURS[park];
+      const ph   = (SEPT_PARK_HOURS[park] || DLP_PARK_HOURS[park] || DLR_PARK_HOURS[park]);
 
       if (cruise) {
         const dclLabel = {
@@ -7281,7 +7331,7 @@ function rosEntriesForDate(t, date) {
         }
         // Park hops
         (parkDay.parkHops||[]).filter(Boolean).forEach(hp => {
-          const hph = SEPT_PARK_HOURS[hp];
+          const hph = (SEPT_PARK_HOURS[hp] || DLP_PARK_HOURS[hp] || DLR_PARK_HOURS[hp]);
           if (hp.startsWith('event-')) {
             if (hp==='event-mnsshp' && mnsshp) entries.push({time:'16:00', icon:'🎃', text:`MNSSHP Early Entry (4 PM)`, sub:`Party 7 PM–Midnight · $${mnsshp.price}/pp`, cls:'auto'});
             if (hp==='event-ep-ah') entries.push({time:'21:30', icon:'🌙', text:`EPCOT After Hours`, sub:`${AFTER_HOURS_EVENTS.ep.note}`, cls:'auto'});
@@ -8019,6 +8069,7 @@ function buildSettings(t) {
 function buildWizard() {
   const {step,data} = S.wizard;
   const labels = data.destination==='aulani' ? ['Name','Dates','Aulani','Party','Budget']
+               : data.destination==='dlr'    ? ['Name','Dates','Disneyland','Party','Budget']
                : data.destination==='dlp'    ? ['Name','Dates','Disneyland Paris','Party','Budget']
                : ['Name','Dates','Cruise','Party','Budget'];
   return `
@@ -8045,20 +8096,22 @@ function buildWizard() {
 function buildWiz1() {
   const dest = S.wizard.data.destination || 'wdw';
   const isWDW    = dest === 'wdw';
+  const isDLR = S.wizard.data.destination==='dlr';
   const isAulani = dest === 'aulani';
   const isDlp    = dest === 'dlp';
   const suggs = isAulani
     ? ['Aulani 2026','Hawaii Family Trip','Aulani Vacation','Our Aulani Adventure']
     : isDlp
     ? ['Disneyland Paris 2026','Paris Disney Trip','Our Paris Adventure','Family Trip to DLP']
+    : isDLR ? ['Disneyland 2026','Anaheim Weekend','Happiest Place Trip','DL Birthday Trip']
     : ['Disney 2026','Family Vacation 2026','Disney Anniversary Trip','Our Disney Adventure'];
   return `
     <div style="text-align:center;padding:8px 0 16px;">
-      <div style="font-size:52px;margin-bottom:10px;">${isAulani?'🌺':isDlp?'🇫🇷':'🏰'}</div>
+      <div style="font-size:52px;margin-bottom:10px;">${isAulani?'🌺':isDlp?'🇫🇷':isDLR?'🎡':'🏰'}</div>
       <div class="modal-h" style="font-size:22px;">Where are you headed?</div>
       <div class="modal-sub" style="font-size:14px;">Pick your destination — the planner will customize itself for your trip.</div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
       <button onclick="S.wizard.data.destination='wdw';S.wizard.data.name='';render()"
         style="padding:18px 8px;border-radius:14px;border:3px solid ${isWDW?'#FFD700':'#e4e4f0'};
                background:${isWDW?'#1a1a5e':'#f9f9ff'};color:${isWDW?'#FFD700':'#555'};
@@ -8066,6 +8119,14 @@ function buildWiz1() {
         <div style="font-size:32px;margin-bottom:7px;">🏰</div>
         Walt Disney World
         <div style="font-size:10px;font-weight:600;opacity:.7;margin-top:4px;">Orlando, Florida</div>
+      </button>
+      <button onclick="S.wizard.data.destination='dlr';S.wizard.data.name='';render()"
+        style="padding:18px 8px;border-radius:14px;border:3px solid ${isDLR?'#ef4444':'#e4e4f0'};
+               background:${isDLR?'#7f1d1d':'#f9f9ff'};color:${isDLR?'#fecaca':'#555'};
+               cursor:pointer;font-family:inherit;font-size:12px;font-weight:800;transition:all .15s;">
+        <div style="font-size:32px;margin-bottom:7px;">🎡</div>
+        Disneyland Resort
+        <div style="font-size:10px;font-weight:600;opacity:.7;margin-top:4px;">Anaheim, California</div>
       </button>
       <button onclick="S.wizard.data.destination='dlp';S.wizard.data.name='';render()"
         style="padding:18px 8px;border-radius:14px;border:3px solid ${isDlp?'#7c3aed':'#e4e4f0'};
@@ -8085,7 +8146,7 @@ function buildWiz1() {
       </button>
     </div>
     <div class="fg"><label class="lbl">Trip Name</label>
-      <input type="text" id="wiz-name" value="${esc(S.wizard.data.name||'')}" placeholder="${isAulani?'e.g. Aulani Family 2026':isDlp?'e.g. Disneyland Paris 2026':'e.g. Family Disney 2026'}"
+      <input type="text" id="wiz-name" value="${esc(S.wizard.data.name||'')}" placeholder="${isAulani?'e.g. Aulani Family 2026':isDlp?'e.g. Disneyland Paris 2026':isDLR?'e.g. Disneyland 2026':'e.g. Family Disney 2026'}"
              oninput="S.wizard.data.name=this.value"></div>
     <div>${suggs.map(s=>`<span class="chip${S.wizard.data.name===s?' sel':''}" onclick="setWizName('${s}')">${s}</span>`).join('')}</div>`;
 }
@@ -9290,7 +9351,7 @@ function createTrip() {
   const partySize=Math.max(1,partyMembers.length);
   const cats=(data.budgetItems||[]).filter(i=>i.checked).map(i=>
     ({id:uid(),emoji:i.emoji,name:i.name,budgeted:i.amount||0,spent:0,transactions:[],dueDate:'',accountedFor:false,...(i.liveSource?{liveSource:i.liveSource}:{})}));
-  const tripType = data.destination === 'aulani' ? 'aulani' : data.destination === 'dlp' ? 'dlp' : 'wdw';
+  const tripType = data.destination === 'aulani' ? 'aulani' : data.destination === 'dlp' ? 'dlp' : data.destination === 'dlr' ? 'dlr' : 'wdw';
   const newTrip={
     id:uid(), name:data.name.trim(), startDate:start, endDate:end, parkDays,
     tripType,
@@ -9506,7 +9567,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-03-G";
+var SKIPPER_BUILD="2026-07-03-J";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
