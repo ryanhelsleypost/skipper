@@ -1645,7 +1645,7 @@ function qtSection(parkKey){
   if(!QT_PARK_IDS[parkKey])return'';
   const data=_QT.cache[parkKey];
   if(!data){qtFetch(parkKey);return'<div class="card" style="text-align:center;color:#bbb;font-size:12px;">⏳ Loading live wait times…</div>';}
-  if(data==='err')return''; // fail silently — signal in parks is rough
+  if(data==='err')return `<div class="card" style="text-align:center;color:#bbb;font-size:11.5px;padding:10px;">⏱️ Live wait times unavailable right now <button onclick="_QT.cache['${parkKey}']=null;_QT.fetchedAt['${parkKey}']=0;qtFetch('${parkKey}')" style="background:none;border:1px solid #e4e4f0;border-radius:6px;padding:2px 8px;font-size:10.5px;color:#999;cursor:pointer;font-family:inherit;margin-left:6px;">↻ retry</button></div>`;
   const open=data.filter(function(r){return r.is_open;}).sort(function(a,b){return (b.wait_time||0)-(a.wait_time||0);});
   if(!open.length)return'';
   const rows=open.slice(0,10).map(function(r){
@@ -1824,7 +1824,12 @@ function onTripSpent(t,date){
 }
 function startTrip(){
   const t=trip();if(!t)return;
-  if(!confirm('Start trip mode? Budgets get snapshotted now — everything you log from here counts as on-trip spending, starting from $0.'))return;
+  if(S.ui.armStart!==true){ // press-again pattern: browser confirm() dialogs get suppressed by Chrome
+    S.ui.armStart=true;render();
+    setTimeout(function(){if(S.ui.armStart){S.ui.armStart=false;render();}},4000);
+    return;
+  }
+  S.ui.armStart=false;
   const tm=ensureTripMode(t);
   tm.active=true;tm.startedAt=new Date().toISOString();tm.endedAt=null;
   tm.baseline={};
@@ -1834,7 +1839,12 @@ function startTrip(){
 }
 function endTrip(){
   const t=trip();if(!t)return;
-  if(!confirm('End trip mode? Your journal and on-trip spending are kept — this just closes out the live day view.'))return;
+  if(S.ui.armEnd!==true){
+    S.ui.armEnd=true;render();
+    setTimeout(function(){if(S.ui.armEnd){S.ui.armEnd=false;render();}},4000);
+    return;
+  }
+  S.ui.armEnd=false;
   const tm=ensureTripMode(t);
   tm.active=false;tm.endedAt=new Date().toISOString();
   persist();render();
@@ -1964,9 +1974,9 @@ function buildTodayLauncher(t,tm,dates,today){
     <div class="card" style="text-align:center;">
       <button onclick="${wasEnded?'resumeTrip()':'startTrip()'}"
         style="background:#1a1a5e;color:#FFD700;border:none;border-radius:12px;padding:15px 34px;font-size:16px;font-weight:900;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(26,26,94,.25);">
-        ${wasEnded?'↺ Resume trip':'🚀 Start Trip'}
+        ${wasEnded?'↺ Resume trip':(S.ui.armStart?'⚠️ Tap again to start':'🚀 Start Trip')}
       </button>
-      <div style="font-size:11px;color:#aaa;margin-top:8px;">${wasEnded?'Re-opens the live day view — nothing is lost':'Snapshots budgets · unlocks the live day view'}</div>
+      <div style="font-size:11px;color:${S.ui.armStart?'#b45309':'#aaa'};margin-top:8px;">${wasEnded?'Re-opens the live day view — nothing is lost':S.ui.armStart?'Budgets snapshot now — on-trip spending counts from $0':'Snapshots budgets · unlocks the live day view'}</div>
     </div>`;
 }
 
@@ -2131,7 +2141,7 @@ function buildTodayLive(t,tm,dates,today){
         style="width:100%;padding:9px 11px;border:1.5px solid #e4e4f0;border-radius:9px;font-size:16px;font-family:inherit;resize:vertical;box-sizing:border-box;">${esc(dayNote)}</textarea>
     </div>
     <div style="text-align:center;margin:14px 0 4px;">
-      <button onclick="endTrip()" style="background:none;border:1.5px solid #e4e4f0;border-radius:9px;padding:8px 18px;font-size:12px;font-weight:700;color:#999;cursor:pointer;font-family:inherit;">🏁 End trip</button>
+      <button onclick="endTrip()" style="background:${S.ui.armEnd?'#fffbeb':'none'};border:1.5px solid ${S.ui.armEnd?'#f59e0b':'#e4e4f0'};border-radius:9px;padding:8px 18px;font-size:12px;font-weight:700;color:${S.ui.armEnd?'#b45309':'#999'};cursor:pointer;font-family:inherit;">${S.ui.armEnd?'⚠️ Tap again to end trip':'🏁 End trip'}</button>
     </div>`;
 }
 
@@ -9378,8 +9388,14 @@ function syncQueuePush(){
   if(!SYNC.ref||SYNC.applying)return;
   syncSetStatus('connecting');
   clearTimeout(SYNC.debounce);
-  SYNC.debounce=setTimeout(syncPushNow,700);
+  // If we just woke from background, wait briefly for the fresh cloud snapshot
+  // so a stale device can never overwrite changes made elsewhere while it slept.
+  var wait=(SYNC.resumeHold&&Date.now()-SYNC.resumeHold<4000)?(4000-(Date.now()-SYNC.resumeHold)+300):700;
+  SYNC.debounce=setTimeout(syncPushNow,wait);
 }
+document.addEventListener('visibilitychange',function(){
+  if(!document.hidden){SYNC.resumeHold=Date.now();}
+});
 function syncInit(){
   if(!SYNC.cfg||!SYNC.code){syncSetStatus('off');return;}
   if(typeof firebase==='undefined'){syncSetStatus('error','Firebase SDK didn\'t load (offline?)');return;}
@@ -9395,6 +9411,7 @@ function syncInit(){
         syncSetStatus('error','This sync code is already used by a different app — pick a different code for Skipper Tripper.');
         SYNC.ref.off();SYNC.ref=null;return;
       }
+      SYNC.resumeHold=null; // fresh snapshot received — safe to push again
       if(v.clientId===SYNC.clientId&&(v.updatedAt||0)<=SYNC.localStamp){syncSetStatus('synced');return;} // our own echo
       if((v.updatedAt||0)>SYNC.localStamp){syncApplyRemote(v);}
       else if((v.updatedAt||0)<SYNC.localStamp){syncPushNow();return;}
@@ -9489,7 +9506,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-03-F";
+var SKIPPER_BUILD="2026-07-03-G";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
