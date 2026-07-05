@@ -1977,6 +1977,23 @@ function tmSaveCash(date,eKey,entryText){
 }
 function tmQuickSpend(date){S.ui.todayCash=date+'||__quick__';S.ui.todayNote=null;render();
   setTimeout(function(){var el=document.getElementById('tm-cash-amt');if(el)el.focus();},60);}
+function tmSaveQuickB(date){
+  const t=trip();if(!t)return;
+  const amt=parseFloat(document.getElementById('tm-cash-amt-b')?.value);
+  const catId=document.getElementById('tm-cash-cat')?.value;
+  const label=(document.getElementById('tm-cash-label')?.value||'').trim()||'Quick spend';
+  if(!amt){return;}
+  const c=(((t.budget||{}).categories)||[]).find(function(cc){return cc.id===catId;})||(((t.budget||{}).categories)||[])[0];
+  if(c){
+    c.transactions=c.transactions||[];
+    c.transactions.push({id:uid(),amount:amt,note:'📍 '+label,date:date,createdAt:Date.now(),onTrip:true,tripDate:date});
+    c.spent=catSpent(c);
+  }
+  // Clear inputs
+  var l=document.getElementById('tm-cash-label');if(l)l.value='';
+  var a=document.getElementById('tm-cash-amt-b');if(a)a.value='';
+  persist();render();
+}
 function tmSaveQuick(date){
   const t=trip();if(!t)return;
   const amt=parseFloat(document.getElementById('tm-cash-amt')?.value);
@@ -2217,35 +2234,168 @@ function buildTodayLive(t,tm,dates,today){
       const unique=dayParks.filter(function(p,i){return dayParks.indexOf(p)===i;});
       return unique.map(function(p){return qtSection(p,parkName(p));}).join('');
     })()}
-    <div style="display:flex;flex-direction:column;gap:8px;">${rows||'<div class="card" style="text-align:center;color:#aaa;font-size:13px;">Nothing scheduled this day — add entries in Run of Show, or just enjoy it. 🏖️</div>'}</div>
+    ${(function(){
+      // ── UNIFIED TIMELINE: ROS entries + unplanned moments, sorted by time ──
+      // Build merged array
+      const upl=((t.tripMode||{}).unplanned||{})[sel]||[];
+      const uplEntries=upl.map(function(u){
+        const typeIcon={ride:'🎢',food:'🍔',photo:'📸',purchase:'🛍️',moment:'✨'}[u.type]||'📌';
+        return {id:'upl-'+u.id,text:u.text,icon:typeIcon,sub:u.note||'',time:u.time,cls:'unplanned',uplId:u.id,isUnplanned:true};
+      });
+      const merged=[].concat(entries).concat(uplEntries).sort(function(a,b){
+        const ta=timeToMins(a.time)||0,tb=timeToMins(b.time)||0;
+        if(ta!==tb)return ta-tb;
+        return a.isUnplanned?1:-1; // unplanned after scheduled at same time
+      });
+
+      if(!merged.length)return '<div class="card" style="text-align:center;color:#aaa;font-size:13px;">Nothing on the timeline yet — entries from Run of Show appear here, and you can log unplanned moments below.</div>';
+
+      return merged.map(function(e){
+        const k=e.id||(e.cls+'|'+e.text);
+        const j=journal[k]||{};
+        const kAttr=esc(k).replace(/'/g,"&#39;");
+        const isNow=isToday&&k===nowKey,isNext=isToday&&k===nextKey;
+        const dim=j.done||j.skipped;
+        const noteOpen=S.ui.todayNote===sel+'||'+k;
+        const cashOpen=S.ui.todayCash===sel+'||'+k;
+
+        if(e.isUnplanned){
+          // Unplanned entry — simpler card, editable
+          return '<div style="border:1.5px solid #e4e4f0;border-radius:11px;padding:10px 12px;background:#fafaf8;'+( dim?'opacity:.6;':'')+'">'+
+            '<div style="display:flex;align-items:flex-start;gap:10px;">'+
+              '<span style="font-size:20px;flex-shrink:0;">'+e.icon+'</span>'+
+              '<div style="flex:1;min-width:0;">'+
+                '<div style="font-size:11px;color:#bbb;font-weight:700;">'+fmt12(e.time)+'</div>'+
+                '<div style="font-size:14px;font-weight:700;color:#333;">'+esc(e.text)+'</div>'+
+                (e.sub?'<div style="font-size:11.5px;color:#888;">'+esc(e.sub)+'</div>':'')+
+              '</div>'+
+              '<button onclick="tmDeleteUnplanned(\'${sel}\',\''+e.uplId+'\')" style="background:none;border:none;color:#ddd;font-size:16px;cursor:pointer;padding:2px;flex-shrink:0;">✕</button>'+
+            '</div>'+
+          '</div>';
+        }
+
+        return '<div style="border:'+(isNow?'2.5px solid #6366f1':'1.5px solid #eee')+';border-radius:11px;padding:10px 12px;background:'+(dim?'#fafafa':'#fff')+';'+(dim?'opacity:.62;':'')+'">'+
+          '<div style="display:flex;align-items:flex-start;gap:10px;">'+
+            (e.cls==='auto'
+              ? '<div style="width:30px;height:30px;flex-shrink:0;border-radius:9px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:13px;">ℹ️</div>'
+              : '<button onclick="tmToggleDone(\'${sel}\',\''+kAttr+'\')" title="'+(j.done?'Undo':'Mark done')+'" style="width:30px;height:30px;flex-shrink:0;border-radius:9px;border:2px solid '+(j.done?'#16a34a':'#ddd')+';background:'+(j.done?'#16a34a':'#fff')+';color:#fff;font-size:15px;cursor:pointer;font-family:inherit;line-height:1;">'+(j.done?'✓':'')+'</button>'
+            )+
+            '<div style="flex:1;min-width:0;">'+
+              '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'+
+                (isNow?'<span style="background:#eef2ff;color:#4338ca;font-size:10px;font-weight:900;padding:2px 8px;border-radius:9px;">NOW</span>':'')+
+                (isNext?'<span style="background:#fffbeb;color:#b45309;font-size:10px;font-weight:900;padding:2px 8px;border-radius:9px;">NEXT</span>':'')+
+                '<span style="font-size:11px;color:#999;font-weight:700;">'+(e.time?fmt12(e.time):'—')+'</span>'+
+              '</div>'+
+              '<div style="font-size:14px;font-weight:700;color:'+(j.skipped?'#bbb':'#333')+';'+(dim?'text-decoration:line-through;':'')+'">'+e.icon+' '+esc(e.text)+'</div>'+
+              (e.sub&&!String(e.sub).startsWith('auto:dp-')?'<div style="font-size:11px;color:#999;">'+esc(String(e.sub))+'</div>':'')+
+              ((e.est||j.actual!=null)?'<div style="font-size:11px;margin-top:3px;">'+(e.est?'<span style="color:#888;">est $'+e.est+'</span>':'')+
+                (j.actual!=null?(e.est?'<span style="color:#888;"> → </span>':'')+
+                  '<span style="font-weight:800;color:'+(e.est&&j.actual>e.est?'#dc2626':'#16a34a')+';">actual $'+j.actual+(e.est?(j.actual>e.est?' 🔺+'+Math.round(j.actual-e.est):j.actual<e.est?' 🔻−'+Math.round(e.est-j.actual):''):'')+'</span>':'')+
+              '</div>':'')+
+              (j.note&&!noteOpen?'<div style="font-size:12px;color:#6366f1;margin-top:4px;">📝 '+esc(j.note)+'</div>':'')+
+              (j.skipped?'<div style="font-size:11px;color:#bbb;margin-top:2px;">skipped</div>':'')+
+            '</div>'+
+          '</div>'+
+          (noteOpen?'<div style="margin-top:8px;display:flex;gap:6px;"><input id="tm-note-input" value="'+esc(j.note||'')+'" placeholder="Ride broke down · food was meh · pure magic…" onkeydown="if(event.key===\'Enter\')tmSaveNote(\'${sel}\',\''+kAttr+'\')" style="flex:1;min-width:0;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><button onclick="tmSaveNote(\'${sel}\',\''+kAttr+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button></div>':'')+
+          (cashOpen?'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span style="font-size:12px;color:#888;">actual $</span><input id="tm-cash-amt" type="number" step="0.01" min="0" value="'+(j.actual!=null?j.actual:(e.est||''))+'" onkeydown="if(event.key===\'Enter\')tmSaveCash(\'${sel}\',\''+kAttr+'\',\''+esc(e.text).replace(/'/g,"&#39;")+'\')" style="width:90px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:150px;">'+catOpts((tmGuessCat(t,e)||{}).id)+'</select><button onclick="tmSaveCash(\'${sel}\',\''+kAttr+'\',\''+esc(e.text).replace(/'/g,"&#39;")+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Log it</button></div>':'')+
+          buildEntryActions(e,sel,kAttr,j,noteOpen,cashOpen,dim)+
+        '</div>';
+      }).join('');
+    })()}
+
     <div class="card" style="margin-top:10px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
         <div>
-          <div style="font-size:11px;color:#888;">Spent this day · on-trip total</div>
-          <div style="font-size:18px;font-weight:900;color:#1a1a5e;">$${Math.round(spentToday).toLocaleString()} <span style="font-size:12px;color:#888;font-weight:600;">· $${Math.round(spentTrip).toLocaleString()} trip</span></div>
+          <div style="font-size:11px;color:#888;">Spent today · trip total</div>
+          <div style="font-size:18px;font-weight:900;color:#1a1a5e;">$${Math.round(spentToday).toLocaleString()} <span style="font-size:12px;color:#888;font-weight:600;">· $${Math.round(spentTrip).toLocaleString()}</span></div>
         </div>
-        ${!quickOpen?`<button onclick="tmQuickSpend('${sel}')" style="background:#FFD700;color:#1a1a5e;border:none;border-radius:9px;padding:10px 16px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;">＋ Quick spend</button>`:''}
       </div>
-      ${quickOpen?`<div style="margin-top:10px;">
-        ${(function(){
+      
+      <div style="display:flex;border-radius:10px;overflow:hidden;border:1.5px solid #e4e4f0;margin-bottom:10px;">
+        ${['spend','log','wait'].map(function(tab){
+          const active=S.ui.todayBottomTab===tab||(tab==='spend'&&!S.ui.todayBottomTab);
+          return '<button onclick="S.ui.todayBottomTab=\''+tab+'\';render()" style="flex:1;padding:10px 4px;background:'+(active?'#1a1a5e':'#fff')+';color:'+(active?'#FFD700':'#888')+';border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">'+
+            (tab==='spend'?'💵 Spend':tab==='log'?'⚡ Log moment':'⏱️ Waits')+'</button>';
+        }).join('')}
+      </div>
+
+      ${(function(){
+        const tab=S.ui.todayBottomTab||'spend';
+
+        if(tab==='spend'){
           const foodId=(cats.find(function(c){return /food/i.test(c.name||'');})||{}).id||'';
           const merchId=(cats.find(function(c){return /merch/i.test(c.name||'');})||{}).id||'';
           const extrasId=(cats.find(function(c){return /extras/i.test(c.name||'');})||{}).id||'';
           return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'+
             [['🥐 Churro',foodId],['🍦 Ice Cream',foodId],['🥤 Drink',foodId],['☕ Coffee',foodId],['🍿 Snack',foodId],['🛍️ Merch',merchId],['🎫 Misc',extrasId]].map(function(p){
-              return '<button type="button" onclick="document.getElementById(\'tm-cash-label\').value=\''+p[0]+'\';document.getElementById(\'tm-cash-cat\').value=\''+p[1]+'\';var a=document.getElementById(\'tm-cash-amt\');if(a)a.focus();" style="padding:7px 12px;background:#f3f0ff;border:1.5px solid #c4b5fd;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:#5b21b6;">'+p[0]+'</button>';
-            }).join('')+'</div>';
-        })()}
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-          <input id="tm-cash-label" placeholder="or type your own…" style="flex:1;min-width:100px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">
-          <span style="font-size:12px;color:#888;">$</span>
-          <input id="tm-cash-amt" type="number" inputmode="decimal" step="0.01" min="0" onkeydown="if(event.key==='Enter')tmSaveQuick('${sel}')"
-            style="width:80px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">
-          <select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:140px;">${catOpts((cats.find(function(c){return /food/i.test(c.name||'');})||{}).id)}</select>
-          <button onclick="tmSaveQuick('${sel}')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Log it</button>
-        </div>
-      </div>`:''}
+              return '<button type="button" onclick="document.getElementById(\'tm-cash-label\').value=\''+p[0]+'\';document.getElementById(\'tm-cash-cat\').value=\''+p[1]+'\';var a=document.getElementById(\'tm-cash-amt-b\');if(a)a.focus();" style="padding:7px 12px;background:#f3f0ff;border:1.5px solid #c4b5fd;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:#5b21b6;">'+p[0]+'</button>';
+            }).join('')+'</div>'+
+            '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">'+
+              '<input id="tm-cash-label" placeholder="or type…" style="flex:1;min-width:80px;padding:10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">'+
+              '<span style="font-size:13px;color:#888;">$</span>'+
+              '<input id="tm-cash-amt-b" type="number" inputmode="decimal" step="0.01" min="0" onkeydown="if(event.key===\'Enter\')tmSaveQuickB(\'${sel}\')" style="width:80px;padding:10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">'+
+              '<select id="tm-cash-cat" style="padding:10px 6px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:130px;">'+(catOpts(foodId))+'</select>'+
+              '<button onclick="tmSaveQuickB(\'${sel}\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:10px 16px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">Log it</button>'+
+            '</div>';
+        }
+
+        if(tab==='log'){
+          return '<div style="display:flex;flex-direction:column;gap:8px;">'+
+            '<div style="display:flex;gap:6px;">'+
+              '<select id="upl-type" style="flex:1;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">'+
+                '<option value="ride">🎢 Ride</option>'+
+                '<option value="food">🍔 Food/Drink</option>'+
+                '<option value="photo">📸 Photo</option>'+
+                '<option value="purchase">🛍️ Purchase</option>'+
+                '<option value="moment">✨ Moment</option>'+
+              '</select>'+
+              '<input id="upl-time" type="time" value="${_nowHHMM()}" style="width:110px;padding:10px 8px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">'+
+            '</div>'+
+            '<input id="upl-text" placeholder="What happened? (e.g. Grabbed Pirates…)" onkeydown="if(event.key===\'Enter\')document.getElementById(\'upl-note\').focus()" style="width:100%;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;box-sizing:border-box;">'+
+            '<div style="display:flex;gap:6px;">'+
+              '<input id="upl-note" placeholder="Quick note (optional)" onkeydown="if(event.key===\'Enter\')tmSaveUnplanned(\'${sel}\')" style="flex:1;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;">'+
+              '<button onclick="tmSaveUnplanned(\'${sel}\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:10px 16px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">Save</button>'+
+            '</div>'+
+          '</div>';
+        }
+
+        if(tab==='wait'){
+          if(!parkDay||!QT_PARK_IDS[parkDay.park])return '<div style="text-align:center;color:#bbb;font-size:13px;padding:10px 0;">No wait time data for today\'s park.</div>';
+          const dayParks=[parkDay.park].concat(parkDay.parkHops||[]).filter(function(p){return p&&QT_PARK_IDS[p];});
+          const unique=dayParks.filter(function(p,i){return dayParks.indexOf(p)===i;});
+          return unique.map(function(pk){
+            const data=_QT.cache[pk];
+            if(!data){qtFetch(pk);return '<div style="text-align:center;color:#bbb;font-size:12px;padding:8px 0;">Loading '+parkName(pk)+'…</div>';}
+            if(data==='err')return '<div style="text-align:center;font-size:12px;color:#bbb;padding:8px 0;">'+parkName(pk)+' unavailable <button onclick="_QT.cache[\''+pk+'\']=null;qtFetch(\''+pk+'\')" style="background:none;border:none;color:#999;cursor:pointer;font-size:11px;">↻ retry</button></div>';
+            const open=data.filter(function(r){return r.is_open&&r.wait_time>0;});
+            if(!open.length)return '<div style="text-align:center;color:#bbb;font-size:12px;padding:8px 0;">'+parkName(pk)+' — no open rides</div>';
+            // Group by land
+            const byLand={};
+            open.forEach(function(r){const land=r.land||'Other';if(!byLand[land])byLand[land]=[];byLand[land].push(r);});
+            const age=Math.round((Date.now()-(_QT.fetchedAt[pk]||Date.now()))/60000);
+            return '<div style="margin-bottom:8px;">'+
+              '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'+
+                '<div style="font-size:12px;font-weight:800;color:#1a1a5e;">'+parkName(pk)+'</div>'+
+                '<button onclick="_QT.fetchedAt[\''+pk+'\']=0;qtFetch(\''+pk+'\')" style="background:none;border:1px solid #e4e4f0;border-radius:6px;padding:2px 8px;font-size:10.5px;color:#888;cursor:pointer;font-family:inherit;">↻ '+(age<1?'now':age+'m ago')+'</button>'+
+              '</div>'+
+              Object.keys(byLand).sort().map(function(land){
+                const rides=byLand[land].sort(function(a,b){return (b.wait_time||0)-(a.wait_time||0);});
+                return '<div style="margin-bottom:8px;">'+
+                  '<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:.5px;padding:3px 0 2px;">'+esc(land)+'</div>'+
+                  rides.map(function(r){
+                    const w=r.wait_time||0;const col=w>=60?'#dc2626':w>=30?'#d97706':'#16a34a';
+                    return '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;border-bottom:1px dashed #f5f5f5;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.name)+'</span><b style="color:'+col+';flex-shrink:0;margin-left:8px;">'+w+' min</b></div>';
+                  }).join('')+
+                '</div>';
+              }).join('')+
+              '<div style="font-size:9.5px;color:#ccc;text-align:right;">Queue-Times.com</div>'+
+            '</div>';
+          }).join('');
+        }
+        return '';
+      })()}
     </div>
+
     <div class="card">
       <div style="font-size:12px;font-weight:800;color:#1a1a5e;margin-bottom:6px;">📓 Day note <span id="tm-daynote-saved" style="opacity:0;transition:opacity .3s;color:#16a34a;font-weight:700;font-size:11px;">saved ✓</span></div>
       <textarea id="tm-daynote" rows="3" placeholder="Anything about the day — meltdowns, magic, weather, lessons for next time…"
@@ -2253,52 +2403,10 @@ function buildTodayLive(t,tm,dates,today){
         style="width:100%;padding:9px 11px;border:1.5px solid #e4e4f0;border-radius:9px;font-size:16px;font-family:inherit;resize:vertical;box-sizing:border-box;">${esc(dayNote)}</textarea>
       <button onclick="tmSaveDayNote('${sel}')" style="margin-top:6px;background:#1a1a5e;color:#FFD700;border:none;border-radius:9px;padding:9px 20px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;width:100%;">💾 Save day note</button>
     </div>
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <div style="font-size:12px;font-weight:800;color:#1a1a5e;">⚡ Unplanned moments</div>
-        <button onclick="tmAddUnplanned('${sel}')" style="background:#f3f0ff;border:1.5px solid #c4b5fd;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:800;color:#5b21b6;cursor:pointer;font-family:inherit;">＋ Log it</button>
-      </div>
-      ${(()=>{
-        const upl=((t.tripMode||{}).unplanned||{})[sel]||[];
-        const rows=upl.map(function(u){
-          const typeIcon={ride:'🎢',food:'🍔',photo:'📸',purchase:'🛍️',moment:'✨'}[u.type]||'📌';
-          return '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px dashed #f0f0f0;">'+
-            '<span style="font-size:16px;flex-shrink:0;">'+typeIcon+'</span>'+
-            '<div style="flex:1;min-width:0;">'+
-              '<div style="font-size:13px;font-weight:700;">'+esc(u.text)+'</div>'+
-              (u.note?'<div style="font-size:11.5px;color:#888;">'+esc(u.note)+'</div>':'')+
-              '<div style="font-size:11px;color:#bbb;">'+fmt12(u.time)+'</div>'+
-            '</div>'+
-            '<button onclick="tmDeleteUnplanned(\'${sel}\',\''+u.id+'\')" style="background:none;border:none;color:#ddd;font-size:14px;cursor:pointer;padding:0;flex-shrink:0;">✕</button>'+
-          '</div>';
-        }).join('');
-        return rows||(S.ui.unplannedOpen!=='${sel}'?'<div style="font-size:12px;color:#ccc;text-align:center;padding:8px 0;">Nothing yet — tap ＋ to log a spontaneous ride, snack, or moment</div>':'');
-      })()}
-      ${S.ui.unplannedOpen===sel?`<div style="margin-top:10px;border-top:1.5px solid #f0f0f0;padding-top:10px;display:flex;flex-direction:column;gap:8px;">
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-          <select id="upl-type" style="padding:9px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">
-            <option value="ride">🎢 Ride</option>
-            <option value="food">🍔 Food/Drink</option>
-            <option value="photo">📸 Photo</option>
-            <option value="purchase">🛍️ Purchase</option>
-            <option value="moment">✨ Moment</option>
-          </select>
-          <input id="upl-text" placeholder="e.g. Grabbed Pirates on the way by…" onkeydown="if(event.key==='Enter')document.getElementById('upl-note').focus()"
-            style="flex:1;min-width:140px;padding:9px 10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;">
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-          <input id="upl-note" placeholder="Quick note (optional)" onkeydown="if(event.key==='Enter')tmSaveUnplanned('${sel}')"
-            style="flex:1;min-width:100px;padding:9px 10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;">
-          <input id="upl-time" type="time" value="${_nowHHMM()}" style="width:110px;padding:9px 8px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">
-          <button onclick="tmSaveUnplanned('${sel}')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:9px 16px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button>
-          <button onclick="S.ui.unplannedOpen=null;render()" style="background:none;border:none;color:#bbb;font-size:12px;cursor:pointer;font-family:inherit;">✕</button>
-        </div>
-      </div>`:''}
-    </div>
+
     <div style="text-align:center;margin:14px 0 4px;">
       <button onclick="endTrip()" style="background:${S.ui.armEnd?'#fffbeb':'none'};border:1.5px solid ${S.ui.armEnd?'#f59e0b':'#e4e4f0'};border-radius:9px;padding:8px 18px;font-size:12px;font-weight:700;color:${S.ui.armEnd?'#b45309':'#999'};cursor:pointer;font-family:inherit;">${S.ui.armEnd?'⚠️ Tap again to end trip':'🏁 End trip'}</button>
     </div>`;
-}
 
 function buildTabContent(t) {
   switch(S.tab) {
@@ -2452,7 +2560,7 @@ function buildOverview(t) {
   return `
     ${buildKeyDates(t)}
 
-    <!-- -- Live Countdown -- -->
+    
     <div class="countdown-card">
       <div class="countdown-title">✨ Until the magic begins</div>
       <div class="countdown-grid">
@@ -2481,7 +2589,7 @@ function buildOverview(t) {
       </div>
     </div>
 
-    <!-- -- Remaining to be paid -- -->
+    
     ${remaining > 0 ? `
     <div class="remaining-pay-card">
       <div style="font-size:36px;">💳</div>
@@ -2496,7 +2604,7 @@ function buildOverview(t) {
     </div>` : `
     `}
 
-    <!-- -- Trip Details -- -->
+    
     <div class="card">
       <div class="card-header">📅 Trip Details</div>
       <div class="info-grid">
@@ -2507,7 +2615,7 @@ function buildOverview(t) {
       </div>
     </div>
 
-    <!-- -- Park/Activity Day Preview -- -->
+    
     ${t.tripType==='aulani' ? buildAulaniOverviewCard(t) : `
     <div class="card">
       <div class="card-header" style="justify-content:space-between;flex-wrap:wrap;gap:6px;">
@@ -2830,7 +2938,7 @@ function buildBudget(t) {
         <div class="bpill ${rem>=0?'bpill-green':'bpill-red'}">${rem>=0?'✅':'🚨'} Still Owed: ${fmtDual(Math.abs(rem),t)}${rem<0?' OVER':''}</div>
       </div>
 
-      <!-- Disney Gift Card 5% savings — always visible when any row is marked -->
+      
       ${(()=>{
         const disneyTotal = resolved.reduce((s,{cat,info}) => {
           if (!cat.isDisney) return s;
@@ -2905,7 +3013,7 @@ function buildCatRow(c, info, t) {
       ondragstart="budgetDragStart(event,'${c.id}')"
       ondragend="budgetDragEnd(event)">
       <td>
-        <!-- Row: drag handle + name + badges -->
+        
         <div style="display:flex;align-items:center;gap:8px;">
           <span style="cursor:grab;color:#ccc;font-size:14px;line-height:1;flex-shrink:0;user-select:none;" title="Drag to reorder">⠿</span>
           <div>
@@ -2915,7 +3023,7 @@ function buildCatRow(c, info, t) {
               ${isLive?`<span style="font-size:10px;font-weight:800;background:#dcfce7;color:#15803d;padding:1px 7px;border-radius:8px;">🔗 Live</span>`:''}
               ${isHinted&&!isLive?`<span style="font-size:10px;font-weight:700;background:#eff6ff;color:#3b82f6;padding:1px 7px;border-radius:8px;" title="${esc(info.label)}">📋 ${esc(info.label.length>22?info.label.slice(0,20)+'…':info.label)}</span>`:''}
             </div>
-            <!-- Checkbox toggles on their own line, clearly labeled -->
+            
             <div style="display:flex;align-items:center;gap:12px;margin-top:5px;flex-wrap:wrap;">
               <label onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;color:${accounted?'#16a34a':'#9ca3af'};font-weight:600;white-space:nowrap;">
                 <input type="checkbox" ${accounted?'checked':''}
@@ -3491,7 +3599,7 @@ function buildDpModal() {
           </button>
           <button class="btn btn-ghost" style="width:100%;margin-top:8px;" onclick="closeDpModal()">Close</button>
         </div>
-        <!-- Drop zone at bottom of day for dragging to last position -->
+        
         <div style="min-height:20px;padding:4px 0;"
           ondragover="rosDragOver(event)"
           ondragleave="rosDragLeave(event)"
@@ -3518,7 +3626,7 @@ function buildDpModal() {
           <button class="dp-close" onclick="closeDpModal()">✕</button>
         </div>
 
-        <!-- Plan label -->
+        
         <div class="dp-row">
           <label class="dp-label">Plan Name / Label</label>
           <input class="dp-input" type="text" value="${esc(dp.planLabel||'')}"
@@ -3526,7 +3634,7 @@ function buildDpModal() {
             oninput="S.dpModal.planLabel=this.value">
         </div>
 
-        <!-- Traveler assignment -->
+        
         ${members.length ? `
         <div class="dp-row" style="position:relative;">
           <label class="dp-label">👥 Who is this plan for?</label>
@@ -3560,7 +3668,7 @@ function buildDpModal() {
           </div>` : ''}
         </div>` : ''}
 
-        <!-- Flight time + airport -->
+        
         <div class="dp-row">
           <label class="dp-label">✈️ Flight Departure Time</label>
           <input class="dp-input" type="time" value="${esc(dp.flightTime)}"
@@ -3571,7 +3679,7 @@ function buildDpModal() {
           ${buildAirportSelect(dp.airport, "updDpModal('airport',this.value)", 'Select airport…')}
         </div>
 
-        <!-- Timing inputs -->
+        
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
           <div class="dp-row" style="margin:0;">
             <label class="dp-label">Lead time at airport (hrs)</label>
@@ -3589,7 +3697,7 @@ function buildDpModal() {
             <input class="dp-input" type="number" value="${dp.bufferMinutes??15}" min="0" max="60"
               onchange="updDpModal('bufferMinutes',parseInt(this.value)||0)">
           </div>
-          <!-- Departure type toggle -->
+          
           <div class="dp-row" style="margin:0;grid-column:1/-1;">
             <label class="dp-label">Departure type</label>
             <div style="display:flex;gap:6px;">
@@ -3617,7 +3725,7 @@ function buildDpModal() {
           </div>` : ''}
         </div>
 
-        <!-- Results -->
+        
         ${result ? `
         <div style="background:linear-gradient(135deg,#1a1a5e,#2d2d8f);border-radius:12px;padding:16px;margin-bottom:16px;">
           <div style="font-size:10px;color:rgba(255,255,255,.4);font-weight:800;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;">
@@ -4855,7 +4963,7 @@ function buildParks(t) {
         </div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;">
-        <!-- Per-park pills: merge full days + hop days into one total -->
+        
         ${(()=>{
           // Get all parks that appear in either counts or hopParks
           const allParks = new Set([...Object.keys(counts), ...Object.keys(hopParks)]);
@@ -4873,12 +4981,12 @@ function buildParks(t) {
               + '</div>';
           }).join('');
         })()}
-        <!-- Cruise days -->
+        
         ${cruiseDays ? `
           <div style="background:#dbeafe;border-radius:9px;padding:5px 13px;font-size:12px;font-weight:800;color:#1e40af;">
             🚢 Cruise ×${cruiseDays}
           </div>` : ''}
-        <!-- Summary total -->
+        
         <div style="background:#f0fdf4;border-radius:9px;padding:5px 13px;font-size:12px;font-weight:800;color:#16a34a;">
           🎢 ${grandTotal % 1 === 0 ? grandTotal : grandTotal.toFixed(1)} park day${grandTotal!==1?'s':''}${hasHalfDays?' <span style="font-size:10px;font-weight:600;color:#6b7280;">(*hops & events = ½ day)</span>':''}
         </div>
@@ -5646,7 +5754,7 @@ function buildMealsSection(day, i, t) {
     const hasADR     = adrTime || adrConfNum;
 
     html += `<div style="border-bottom:1px solid #dcfce7;padding-bottom:10px;margin-bottom:8px;">
-      <!-- Row 1: icon, label, ADR checkbox, cost -->
+      
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <span style="font-size:16px;flex-shrink:0;">${mt.icon}</span>
         <span style="font-size:13px;font-weight:800;color:#15803d;min-width:60px;">${mt.label}</span>
@@ -5664,7 +5772,7 @@ function buildMealsSection(day, i, t) {
             style="background:none;border:none;color:#bbb;cursor:pointer;font-size:15px;padding:0 1px;line-height:1;">×</button>`:''}
         </div>
       </div>
-      <!-- Row 2: full-width restaurant input -->
+      
       <div style="width:100%;">
         <input type="text" list="${listId}" value="${esc(meal.place)}"
           placeholder="${parkSugs.length ? '🍽️ Tap for suggestions, or type custom…' : 'Restaurant name…'}"
@@ -5672,7 +5780,7 @@ function buildMealsSection(day, i, t) {
           style="width:100%;padding:8px 12px;border:1px solid #bbf7d0;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;">
         ${parkSugs.length?`<datalist id="${listId}">${parkSugs.map(s=>`<option value="${esc(s)}">`).join('')}</datalist>`:''}
       </div>
-      <!-- ADR Row -->
+      
       <div class="adr-row" style="padding-left:22px;">
         <input type="checkbox" ${adrBooked?'checked':''} title="ADR Booked"
           onchange="updMeal(${i},'${mt.key}','adrBooked',this.checked)"
@@ -5900,13 +6008,13 @@ function buildActivityDayRow(day, i, t) {
 
   return `
     <div style="border:2px solid ${day.locked?'#22c55e':'#e8e8f2'};border-radius:12px;overflow:hidden;margin-bottom:4px;">
-      <!-- Day header row -->
+      
       <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:${day.locked?'#f0fdf4':'#f8f8ff'};cursor:pointer;flex-wrap:wrap;"
            onclick="toggleActivityDay(${i})">
         <span style="font-size:11px;color:#999;min-width:50px;font-weight:700;">Day ${day.dayNum}</span>
         <span style="font-size:11px;color:#aaa;min-width:68px;">${fmtDateShort(day.date)}</span>
 
-        <!-- Activity chips -->
+        
         <div style="display:flex;gap:5px;flex-wrap:wrap;flex:1;" onclick="event.stopPropagation()">
           ${acts.map((actId,ai) => {
             const a = aulaniActivityLabel(actId);
@@ -5918,7 +6026,7 @@ function buildActivityDayRow(day, i, t) {
                 style="background:none;border:none;cursor:pointer;color:${aulaniActivityColor(actId)};font-size:13px;line-height:1;padding:0 1px;margin-left:1px;">×</button>`:''}
             </div>`;
           }).join('')}
-          <!-- Add activity button -->
+          
           <div style="position:relative;">
             <button onclick="toggleAddActivity(${i})"
               style="background:#f0f0ff;border:1.5px dashed #9090cc;border-radius:8px;padding:3px 9px;
@@ -5938,12 +6046,12 @@ function buildActivityDayRow(day, i, t) {
           </div>
         </div>
 
-        <!-- Cost + food summary -->
+        
         ${day.cost!==null&&day.cost!==undefined?`<span style="font-size:12px;font-weight:800;color:#1a1a5e;">$${parseFloat(day.cost).toLocaleString()}</span>`:''}
         <span style="font-size:11px;color:#aaa;">🍽 ~$${foodEst}</span>
         ${isOffsite&&departTime?`<span style="font-size:11px;font-weight:800;color:#0ea5e9;">🚗 Leave ${departTime}</span>`:''}
 
-        <!-- Lock + expand -->
+        
         <button onclick="event.stopPropagation();updActivityDay(${i},'locked',!${day.locked})"
           style="background:none;border:none;cursor:pointer;font-size:16px;" title="${day.locked?'Unlock':'Lock day'}">
           ${day.locked?'🔒':'🔓'}
@@ -5954,7 +6062,7 @@ function buildActivityDayRow(day, i, t) {
       ${isOpen ? `
       <div style="padding:14px 16px;background:#fff;border-top:2px solid #f0f0f8;">
 
-        <!-- Off-site detail panel -->
+        
         ${isOffsite?`
         <div style="background:#f0f9ff;border:2px solid #bae6fd;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
           <div style="font-size:12px;font-weight:800;color:#0369a1;margin-bottom:8px;">🚌 Off-site Excursion Details</div>
@@ -5975,7 +6083,7 @@ function buildActivityDayRow(day, i, t) {
             ${(OFFSITE_SUGGESTIONS.find(s=>s.label===day.offsiteDetail)||{note:''}).note}
           </div>`:''}
 
-          <!-- When do I leave panel -->
+          
           <div style="border-top:1px solid #bae6fd;padding-top:10px;margin-top:4px;">
             <div style="font-size:12px;font-weight:800;color:#0369a1;margin-bottom:8px;">🕐 When Do I Leave?</div>
             <div class="form-row" style="margin-bottom:8px;">
@@ -6024,7 +6132,7 @@ function buildActivityDayRow(day, i, t) {
           </div>
         </div>`:''}
 
-        <!-- General notes + cost -->
+        
         <div class="form-row">
           <div class="fg"><label class="lbl">Day Notes</label>
             <input type="text" value="${esc(day.notes||'')}" placeholder="e.g. 10am snorkel, 7pm luau reservation"
@@ -6034,7 +6142,7 @@ function buildActivityDayRow(day, i, t) {
               onchange="updActivityDay(${i},'cost',this.value===''?null:parseFloat(this.value))"></div>
         </div>
 
-        <!-- Meals panel -->
+        
         <div style="margin-top:10px;">
           <div style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Meals</div>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;">
@@ -6149,12 +6257,12 @@ function buildAulaniMap(t) {
       <div class="card-header">🗺️ Ko Olina & Oahu — Activity Map</div>
       <p style="font-size:13px;color:#777;margin-bottom:16px;">Key spots from Aulani. Drive times are approximate from Ko Olina. Tap any marker on the map for details.</p>
 
-      <!-- Leaflet map — initialized by initAulaniMap() called after render -->
+      
       <div id="aulani-map" style="border-radius:12px;overflow:hidden;border:2px solid #e4e4f0;margin-bottom:18px;height:420px;background:#e0f2fe;display:flex;align-items:center;justify-content:center;">
         <div style="text-align:center;color:#0369a1;font-size:13px;font-weight:700;">🗺️ Loading map…</div>
       </div>
 
-      <!-- Activity cards with drive times -->
+      
       <div style="font-size:12px;font-weight:700;color:#1a1a5e;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">📍 Places & Drive Times from Aulani</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:18px;">
         ${AULANI_MAP_PLACES.map(p => {
@@ -6173,7 +6281,7 @@ function buildAulaniMap(t) {
         }).join('')}
       </div>
 
-      <!-- Off-site suggestions quick reference -->
+      
       <div style="font-size:12px;font-weight:700;color:#1a1a5e;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">🚌 Common Excursions</div>
       <div style="display:flex;flex-direction:column;gap:6px;">
         ${OFFSITE_SUGGESTIONS.filter(s=>s.drive).map(s=>`
@@ -6201,12 +6309,12 @@ function buildDlpMap(t) {
       <div class="card-header">🗺️ Disneyland Paris — Resort Map</div>
       <p style="font-size:13px;color:#777;margin-bottom:16px;">Both parks, the Disney Hotels, Disney Village, Marne-la-Vallée station, and both Paris airports. Tap any marker for details.</p>
 
-      <!-- Leaflet map — initialized by initDlpMap() called after render -->
+      
       <div id="dlp-map" style="border-radius:12px;overflow:hidden;border:2px solid #e4e4f0;margin-bottom:18px;height:420px;background:#ede9fe;display:flex;align-items:center;justify-content:center;">
         <div style="text-align:center;color:#6b21a8;font-size:13px;font-weight:700;">🗺️ Loading map…</div>
       </div>
 
-      <!-- Place cards -->
+      
       <div style="font-size:12px;font-weight:700;color:#1a1a5e;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">📍 Parks, Hotels & Transit</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:8px;">
         ${DLP_MAP_PLACES.map(p => {
@@ -6492,7 +6600,7 @@ function buildCountdownChecklist(t) {
             <div style="font-size:16px;font-weight:900;color:${sc.color};">${m.daysAway===0?'TODAY':m.daysAway===1?'TMW':m.daysAway+' days'}</div>
             <div style="font-size:10px;color:#aaa;">${m.date.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
             <div style="background:#e8e8f2;border-radius:4px;padding:1px 6px;font-size:10px;color:#5050a0;font-weight:700;">${m.category}</div>
-            <!-- Status buttons -->
+            
             <div style="display:flex;gap:4px;margin-top:4px;">
               ${[['done','✅','Mark done'],['skip','⏭️','Skip'],['issue','⚠️','Flag']].map(([st,icon,tip])=>{
                 const active = status===st;
@@ -6564,7 +6672,7 @@ function buildUpcomingReminder(t) {
           <div style="font-size:11px;font-weight:900;color:${urgColor};white-space:nowrap;flex-shrink:0;letter-spacing:.02em;">
             ${m.daysAway===0?'TODAY':m.daysAway===1?'TMW':m.daysAway+'d'}
           </div>
-          <!-- Status buttons matching checklist style -->
+          
           <div style="display:flex;gap:3px;flex-shrink:0;">
             ${[['done','✅','Mark done'],['skip','⏭️','Skip'],['issue','⚠️','Flag']].map(([st,icon,tip])=>`
               <button onclick="setChecklistStatus('${mid}','${st}');render()"
@@ -6739,7 +6847,7 @@ function buildPackingList(t) {
   const issues  = suitcases.reduce((s,sc)=>s+(sc.items||[]).filter(i=>i.status==='issue').length,0);
 
   return `
-    <!-- Summary bar -->
+    
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px;">
       <div class="card" style="padding:14px;text-align:center;margin:0;">
         <div style="font-size:28px;font-weight:900;color:#1a1a5e;">${packedItems}/${totalItems}</div>
@@ -6758,16 +6866,16 @@ function buildPackingList(t) {
       </div>`:''}
     </div>
 
-    <!-- Action buttons -->
+    
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
       <button class="btn btn-primary" onclick="addSuitcase('${t.id}')">🧳 New Suitcase / Bag</button>
       <button class="btn btn-ghost btn-sm" onclick="resetPackingList('${t.id}')">↺ Reset to Defaults</button>
     </div>
 
-    <!-- Suitcases -->
+    
     ${suitcases.map((sc,si) => buildSuitcaseCard(sc, si, t, members)).join('')}
 
-    <!-- Store / Grocery List -->
+    
     ${buildStoreList(t)}
   `;
 }
@@ -6852,7 +6960,7 @@ function buildSuitcaseCard(sc, si, t, members) {
 
   return `
     <div class="card" style="margin-bottom:14px;padding:0;overflow:hidden;">
-      <!-- Suitcase header -->
+      
       <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:#1a1a5e;cursor:pointer;"
            onclick="S.ui.openSuitcase=S.ui.openSuitcase||{};S.ui.openSuitcase['${sc.id}']=!(S.ui.openSuitcase['${sc.id}']!==false);render()">
         <span style="font-size:20px;">${sc.icon||'🧳'}</span>
@@ -6870,7 +6978,7 @@ function buildSuitcaseCard(sc, si, t, members) {
 
       ${isOpen?`
       <div style="padding:14px 16px;">
-        <!-- Items -->
+        
         ${items.map((item,ii) => {
           const st = PACK_STATUSES[item.status||'pending'];
           const assignees = (item.assignedTo||[]).map(id=>{
@@ -6879,15 +6987,15 @@ function buildSuitcaseCard(sc, si, t, members) {
           }).filter(Boolean);
           return `
           <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:${st.bg};border-radius:9px;margin-bottom:5px;border:1.5px solid ${st.color}22;">
-            <!-- Status cycle button -->
+            
             <button onclick="cyclePackStatus('${sc.id}',${ii})"
               style="font-size:18px;background:none;border:none;cursor:pointer;flex-shrink:0;line-height:1;padding:0;"
               title="Click to cycle status: ${Object.values(PACK_STATUSES).map(s=>s.label).join(' → ')}">${st.icon}</button>
-            <!-- Name -->
+            
             <input type="text" value="${esc(item.name)}"
               onchange="updPackItem('${sc.id}',${ii},'name',this.value)"
               style="flex:1;background:transparent;border:none;border-bottom:1px dashed ${st.color}44;font-size:13px;font-weight:700;font-family:inherit;outline:none;color:#1a1a2e;min-width:80px;">
-            <!-- Assignees -->
+            
             <div style="display:flex;gap:2px;align-items:center;">
               ${assignees.map(e=>`<span style="font-size:15px;">${e}</span>`).join('')}
               <button onclick="toggleAssignPicker('${sc.id}',${ii})"
@@ -6914,14 +7022,14 @@ function buildSuitcaseCard(sc, si, t, members) {
                 </button>
               </div>`:``}
             </div>
-            <!-- Note -->
+            
             ${item.note?`<span style="font-size:10px;color:#aaa;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(item.note)}">${esc(item.note)}</span>`:''}
             <button onclick="deletePackItem('${sc.id}',${ii})"
               style="background:none;border:none;color:#ddd;cursor:pointer;font-size:15px;flex-shrink:0;padding:0 2px;">🗑</button>
           </div>`;
         }).join('')}
 
-        <!-- Add item row -->
+        
         <div style="display:flex;gap:6px;margin-top:8px;">
           <input type="text" id="newitem-${sc.id}" placeholder="Add item…"
             onkeydown="if(event.key==='Enter')addPackItem('${sc.id}')"
@@ -7046,7 +7154,7 @@ function buildFeedbackModal() {
             style="background:none;border:none;font-size:22px;cursor:pointer;color:#aaa;line-height:1;padding:0 4px;">×</button>
         </div>
 
-        <!-- Name — NO render() on input, just update the object -->
+        
         <div class="fg">
           <label class="lbl">Your Name</label>
           <input id="fb-name" type="text" value="${esc(fb.name||'')}" placeholder="e.g. Cap'n Jack"
@@ -7054,7 +7162,7 @@ function buildFeedbackModal() {
             style="padding:9px 12px;border:2px solid #e4e4f0;border-radius:9px;font-size:14px;font-family:inherit;width:100%;outline:none;">
         </div>
 
-        <!-- Category — clicking a button IS ok to re-render -->
+        
         <div class="fg" style="margin-top:12px;">
           <label class="lbl">Category</label>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
@@ -7073,7 +7181,7 @@ function buildFeedbackModal() {
           </div>
         </div>
 
-        <!-- Message — NO render() on input -->
+        
         <div class="fg" style="margin-top:12px;">
           <label class="lbl">What's on your mind?</label>
           <textarea id="fb-message" rows="5"
@@ -7258,27 +7366,27 @@ function buildTourOverlay() {
   return `
     <div style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:20px;">
       <div style="background:#fff;border-radius:18px;max-width:460px;width:100%;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.4);position:relative;">
-        <!-- Progress dots -->
+        
         <div style="display:flex;gap:5px;justify-content:center;margin-bottom:20px;">
           ${TOUR_STEPS.map((_,i)=>`<div style="width:${i===S.ui.tourStep?'20px':'7px'};height:7px;border-radius:99px;background:${i===S.ui.tourStep?'#1a1a5e':i<S.ui.tourStep?'#8888aa':'#e4e4f0'};transition:all .3s;"></div>`).join('')}
         </div>
 
-        <!-- Close -->
+        
         <button onclick="endTour()"
           style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;color:#bbb;cursor:pointer;line-height:1;">×</button>
 
-        <!-- Content -->
+        
         <div style="text-align:center;">
           <div style="font-family:'system-ui';font-size:26px;font-weight:900;color:#1a1a5e;margin-bottom:10px;">${step.title}</div>
           <div style="font-size:14px;color:#555;line-height:1.65;margin-bottom:24px;">${step.body}</div>
         </div>
 
-        <!-- Step counter -->
+        
         <div style="text-align:center;font-size:11px;color:#aaa;font-weight:700;margin-bottom:16px;">
           Step ${current} of ${total}
         </div>
 
-        <!-- Navigation -->
+        
         <div style="display:flex;gap:10px;">
           ${S.ui.tourStep > 0 ? `
           <button onclick="prevTourStep()"
@@ -7774,9 +7882,9 @@ function buildRunOfShow(t) {
             data-date="${date}"
             ondragstart="rosDragStart(event)"
             ondragend="rosDragEnd(event)">
-            <!-- Drag handle -->
+            
             <div class="ros-drag-handle" title="Drag to reorder">⠿</div>
-            <!-- Time — click to edit -->
+            
             <div class="ros-time" style="flex-shrink:0;">
               ${isEditingTime
                 ? `<input class="ros-time-input" type="time" value="${e.time||''}"
@@ -8056,7 +8164,7 @@ function buildSettings(t) {
           const chosen = m.emoji||'🧑';
           const EMOJIS = ['👑','🧑','👩','👨','👧','👦','🧒','👶','👴','👵','🐭','🏰','⭐','🎠','🦁','🐶','🎉','🌟','🦄','🍦','🎢','🏄','🎸','🧁'];
           return `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;">
-            <!-- Emoji picker -->
+            
             <div style="position:relative;">
               <button onclick="toggleEmojiPicker(${i})"
                 style="font-size:22px;width:38px;height:38px;border-radius:50%;border:2px solid ${i===0?'#FFD700':'#e4e4f0'};background:#f9f9ff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color .15s;"
@@ -9681,7 +9789,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-04-A";
+var SKIPPER_BUILD="2026-07-04-B";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
