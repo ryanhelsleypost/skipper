@@ -2043,6 +2043,7 @@ function tmSaveDayNote(date){
 }
 function tmSetDate(d){S.ui.todayDate=d;S.ui.todayNote=null;S.ui.todayCash=null;render();}
 
+function attrSafe(s){return esc(s||'').replace(/'/g,'&#39;');}
 function buildToday(t){
   const tm=ensureTripMode(t);
   const dates=tripDates(t);
@@ -2253,7 +2254,7 @@ function buildTodayLive(t,tm,dates,today){
       return merged.map(function(e){
         const k=e.id||(e.cls+'|'+e.text);
         const j=journal[k]||{};
-        const kAttr=esc(k).replace(/'/g,"&#39;");
+        const kAttr=esc(k);
         const isNow=isToday&&k===nowKey,isNext=isToday&&k===nextKey;
         const dim=j.done||j.skipped;
         const noteOpen=S.ui.todayNote===sel+'||'+k;
@@ -2297,7 +2298,7 @@ function buildTodayLive(t,tm,dates,today){
             '</div>'+
           '</div>'+
           (noteOpen?'<div style="margin-top:8px;display:flex;gap:6px;"><input id="tm-note-input" value="'+esc(j.note||'')+'" placeholder="Ride broke down · food was meh · pure magic…" onkeydown="if(event.key===\'Enter\')tmSaveNote(\'${sel}\',\''+kAttr+'\')" style="flex:1;min-width:0;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><button onclick="tmSaveNote(\'${sel}\',\''+kAttr+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button></div>':'')+
-          (cashOpen?'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span style="font-size:12px;color:#888;">actual $</span><input id="tm-cash-amt" type="number" step="0.01" min="0" value="'+(j.actual!=null?j.actual:(e.est||''))+'" onkeydown="if(event.key===\'Enter\')tmSaveCash(\'${sel}\',\''+kAttr+'\',\''+esc(e.text).replace(/'/g,"&#39;")+'\')" style="width:90px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:150px;">'+catOpts((tmGuessCat(t,e)||{}).id)+'</select><button onclick="tmSaveCash(\'${sel}\',\''+kAttr+'\',\''+esc(e.text).replace(/'/g,"&#39;")+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Log it</button></div>':'')+
+          (cashOpen?'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span style="font-size:12px;color:#888;">actual $</span><input id="tm-cash-amt" type="number" step="0.01" min="0" value="'+(j.actual!=null?j.actual:(e.est||''))+'" onkeydown="if(event.key===\'Enter\')tmSaveCash(\'${sel}\',\''+kAttr+'\',\''+attrSafe(e.text)+'\')" style="width:90px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:150px;">'+catOpts((tmGuessCat(t,e)||{}).id)+'</select><button onclick="tmSaveCash(\'${sel}\',\''+kAttr+'\',\''+attrSafe(e.text)+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Log it</button></div>':'')+
           buildEntryActions(e,sel,kAttr,j,noteOpen,cashOpen,dim)+
         '</div>';
       }).join('');
@@ -2407,6 +2408,7 @@ function buildTodayLive(t,tm,dates,today){
     <div style="text-align:center;margin:14px 0 4px;">
       <button onclick="endTrip()" style="background:${S.ui.armEnd?'#fffbeb':'none'};border:1.5px solid ${S.ui.armEnd?'#f59e0b':'#e4e4f0'};border-radius:9px;padding:8px 18px;font-size:12px;font-weight:700;color:${S.ui.armEnd?'#b45309':'#999'};cursor:pointer;font-family:inherit;">${S.ui.armEnd?'⚠️ Tap again to end trip':'🏁 End trip'}</button>
     </div>`;
+}
 
 function buildTabContent(t) {
   switch(S.tab) {
@@ -9789,7 +9791,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-04-B";
+var SKIPPER_BUILD="2026-07-04-C";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
