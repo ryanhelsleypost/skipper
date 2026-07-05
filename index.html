@@ -1813,8 +1813,7 @@ function buildLLConfirm(t,date){
         <span style="font-size:12px;color:#555;">🕐 ${fmt12(b.start)}${b.end?' – '+fmt12(b.end):''}</span>
         <button onclick="llOpenEdit('${date}','${nameAttr}')" style="background:#fff;border:1.5px solid #e4e4f0;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">✎ Time</button>
         <button onclick="llClearBooking('${date}','${nameAttr}')" style="background:#fff;border:1.5px solid #e4e4f0;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;color:#999;cursor:pointer;font-family:inherit;">✕ Unbook</button>
-      </div>`:''}
-      ${(!booked&&!editing)?`<div style="display:flex;gap:6px;margin-top:7px;">
+            </div>`:''} ${(!booked&&!editing)?`<div style="display:flex;gap:6px;margin-top:7px;">
         <button onclick="llOpenEdit('${date}','${nameAttr}')" style="flex:1;background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:7px 0;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">⚡ Got it — set time</button>
       </div>`:''}
       ${editing?`<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;align-items:center;">
@@ -1923,6 +1922,16 @@ function tmEntry(t,date,eKey){
   if(!tm.journal[date][eKey])tm.journal[date][eKey]={done:false,skipped:false,note:'',actual:null};
   return tm.journal[date][eKey];
 }
+function buildEntryActions(e,sel,kAttr,j,noteOpen,cashOpen,dim){
+  if(e.cls==='auto')return''; // park open/close etc — info only
+  if(!(!dim||j.done))return'';
+  var btns='<div style="display:flex;gap:6px;margin-top:8px;">';
+  if(!noteOpen)btns+='<button onclick="tmOpenNote(\''+sel+'\',\''+kAttr+'\')" style="flex:1;background:#fff;border:1.5px solid #e4e4f0;border-radius:8px;padding:7px 0;font-size:11.5px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">📝 '+(j.note?'Edit note':'Note')+'</button>';
+  if(!cashOpen)btns+='<button onclick="tmOpenCash(\''+sel+'\',\''+kAttr+'\')" style="flex:1;background:#fff;border:1.5px solid #e4e4f0;border-radius:8px;padding:7px 0;font-size:11.5px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">💵 '+(j.actual!=null?'$'+j.actual:'Actualize')+'</button>';
+  if(!j.done)btns+='<button onclick="tmToggleSkip(\''+sel+'\',\''+kAttr+'\')" style="flex:1;background:#fff;border:1.5px solid #e4e4f0;border-radius:8px;padding:7px 0;font-size:11.5px;font-weight:700;color:#999;cursor:pointer;font-family:inherit;">'+(j.skipped?'↺ Unskip':'⏭ Skip')+'</button>';
+  btns+='</div>';
+  return btns;
+}
 function tmToggleDone(date,eKey){
   const t=trip();if(!t)return;
   const j=tmEntry(t,date,eKey);j.done=!j.done;if(j.done)j.skipped=false;
@@ -1987,13 +1996,15 @@ function tmAddUnplanned(date){
   S.ui.unplannedOpen=S.ui.unplannedOpen===date?null:date;render();
   setTimeout(function(){var el=document.getElementById('upl-text');if(el)el.focus();},60);
 }
+function _nowHHMM(){var n=new Date();return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
 function tmSaveUnplanned(date){
   const t=trip();if(!t)return;
   const txt=(document.getElementById('upl-text')?.value||'').trim();if(!txt)return;
   const note=(document.getElementById('upl-note')?.value||'').trim();
   const type=document.getElementById('upl-type')?.value||'ride';
   const now=new Date();
-  const timeVal=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  const pickedTime=document.getElementById('upl-time')?.value;
+  const timeVal=pickedTime||String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
   ensureTripMode(t);
   if(!t.tripMode.unplanned)t.tripMode.unplanned={};
   if(!t.tripMode.unplanned[date])t.tripMode.unplanned[date]=[];
@@ -2133,8 +2144,10 @@ function buildTodayLive(t,tm,dates,today){
     const dim=j.done||j.skipped;
     return `<div style="border:${isNow?'2.5px solid #6366f1':'1.5px solid #eee'};border-radius:11px;padding:10px 12px;background:${dim?'#fafafa':'#fff'};${dim?'opacity:.62;':''}">
       <div style="display:flex;align-items:flex-start;gap:10px;">
-        <button onclick="tmToggleDone('${sel}','${kAttr}')" title="${j.done?'Undo':'Mark done'}"
-          style="width:30px;height:30px;flex-shrink:0;border-radius:9px;border:2px solid ${j.done?'#16a34a':'#ddd'};background:${j.done?'#16a34a':'#fff'};color:#fff;font-size:15px;cursor:pointer;font-family:inherit;line-height:1;">${j.done?'✓':''}</button>
+        ${e.cls==='auto'?
+          '<div style="width:30px;height:30px;flex-shrink:0;border-radius:9px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:13px;">ℹ️</div>'
+          :`<button onclick="tmToggleDone('${sel}','${kAttr}')" title="${j.done?'Undo':'Mark done'}"
+          style="width:30px;height:30px;flex-shrink:0;border-radius:9px;border:2px solid ${j.done?'#16a34a':'#ddd'};background:${j.done?'#16a34a':'#fff'};color:#fff;font-size:15px;cursor:pointer;font-family:inherit;line-height:1;">${j.done?'✓':''}</button>`}
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             ${isNow?'<span style="background:#eef2ff;color:#4338ca;font-size:10px;font-weight:900;padding:2px 8px;border-radius:9px;">NOW</span>':''}
@@ -2165,11 +2178,7 @@ function buildTodayLive(t,tm,dates,today){
         <select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:150px;">${catOpts((tmGuessCat(t,e)||{}).id)}</select>
         <button onclick="tmSaveCash('${sel}','${kAttr}','${txtAttr}')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Log it</button>
       </div>`:''}
-      ${(!dim||j.done)?`<div style="display:flex;gap:6px;margin-top:8px;">
-        ${!noteOpen?`<button onclick="tmOpenNote('${sel}','${kAttr}')" style="flex:1;background:#fff;border:1.5px solid #e4e4f0;border-radius:8px;padding:7px 0;font-size:11.5px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">📝 ${j.note?'Edit note':'Note'}</button>`:''}
-        ${!cashOpen?`<button onclick="tmOpenCash('${sel}','${kAttr}')" style="flex:1;background:#fff;border:1.5px solid #e4e4f0;border-radius:8px;padding:7px 0;font-size:11.5px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">💵 ${j.actual!=null?'$'+j.actual:'Actualize'}</button>`:''}
-        ${!j.done?`<button onclick="tmToggleSkip('${sel}','${kAttr}')" style="flex:1;background:#fff;border:1.5px solid #e4e4f0;border-radius:8px;padding:7px 0;font-size:11.5px;font-weight:700;color:#999;cursor:pointer;font-family:inherit;">${j.skipped?'↺ Unskip':'⏭ Skip'}</button>`:''}
-      </div>`:''}
+      ${buildEntryActions(e,sel,kAttr,j,noteOpen,cashOpen,dim)}
     </div>`;
   }).join('');
 
@@ -2218,15 +2227,15 @@ function buildTodayLive(t,tm,dates,today){
         ${!quickOpen?`<button onclick="tmQuickSpend('${sel}')" style="background:#FFD700;color:#1a1a5e;border:none;border-radius:9px;padding:10px 16px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;">＋ Quick spend</button>`:''}
       </div>
       ${quickOpen?`<div style="margin-top:10px;">
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
-          ${[['🥐 Churro','food'],['🍦 Ice Cream','food'],['🥤 Drink','food'],['☕ Coffee','food'],['🍿 Snack','food'],['🛍️ Merch','merch'],['🎫 Misc','extras']].map(function(p){
-            const foodCat=cats.find(function(c){return /food/i.test(c.name||'');});
-            const merchCat=cats.find(function(c){return /merch/i.test(c.name||'');});
-            const extrasCat=cats.find(function(c){return /extras/i.test(c.name||'');});
-            const catId=(p[1]==='food'?foodCat:p[1]==='merch'?merchCat:extrasCat||cats[0]||{}).id||'';
-            return '<button type="button" onclick="document.getElementById(\'tm-cash-label\').value=\''+p[0]+'\';document.getElementById(\'tm-cash-cat\').value=\''+catId+'\';var a=document.getElementById(\'tm-cash-amt\');if(a)a.focus();" style="padding:7px 12px;background:#f3f0ff;border:1.5px solid #c4b5fd;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:#5b21b6;">'+p[0]+'</button>';
-          }).join('')}
-        </div>
+        ${(function(){
+          const foodId=(cats.find(function(c){return /food/i.test(c.name||'');})||{}).id||'';
+          const merchId=(cats.find(function(c){return /merch/i.test(c.name||'');})||{}).id||'';
+          const extrasId=(cats.find(function(c){return /extras/i.test(c.name||'');})||{}).id||'';
+          return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'+
+            [['🥐 Churro',foodId],['🍦 Ice Cream',foodId],['🥤 Drink',foodId],['☕ Coffee',foodId],['🍿 Snack',foodId],['🛍️ Merch',merchId],['🎫 Misc',extrasId]].map(function(p){
+              return '<button type="button" onclick="document.getElementById(\'tm-cash-label\').value=\''+p[0]+'\';document.getElementById(\'tm-cash-cat\').value=\''+p[1]+'\';var a=document.getElementById(\'tm-cash-amt\');if(a)a.focus();" style="padding:7px 12px;background:#f3f0ff;border:1.5px solid #c4b5fd;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:#5b21b6;">'+p[0]+'</button>';
+            }).join('')+'</div>';
+        })()}
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
           <input id="tm-cash-label" placeholder="or type your own…" style="flex:1;min-width:100px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">
           <span style="font-size:12px;color:#888;">$</span>
@@ -2239,9 +2248,10 @@ function buildTodayLive(t,tm,dates,today){
     </div>
     <div class="card">
       <div style="font-size:12px;font-weight:800;color:#1a1a5e;margin-bottom:6px;">📓 Day note <span id="tm-daynote-saved" style="opacity:0;transition:opacity .3s;color:#16a34a;font-weight:700;font-size:11px;">saved ✓</span></div>
-      <textarea id="tm-daynote" rows="2" placeholder="Anything about the day — meltdowns, magic, weather, lessons for next time…"
-        onchange="tmSaveDayNote('${sel}')"
+      <textarea id="tm-daynote" rows="3" placeholder="Anything about the day — meltdowns, magic, weather, lessons for next time…"
+        onblur="tmSaveDayNote('${sel}')"
         style="width:100%;padding:9px 11px;border:1.5px solid #e4e4f0;border-radius:9px;font-size:16px;font-family:inherit;resize:vertical;box-sizing:border-box;">${esc(dayNote)}</textarea>
+      <button onclick="tmSaveDayNote('${sel}')" style="margin-top:6px;background:#1a1a5e;color:#FFD700;border:none;border-radius:9px;padding:9px 20px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;width:100%;">💾 Save day note</button>
     </div>
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
@@ -2264,7 +2274,7 @@ function buildTodayLive(t,tm,dates,today){
         }).join('');
         return rows||(S.ui.unplannedOpen!=='${sel}'?'<div style="font-size:12px;color:#ccc;text-align:center;padding:8px 0;">Nothing yet — tap ＋ to log a spontaneous ride, snack, or moment</div>':'');
       })()}
-      \${S.ui.unplannedOpen===sel?\`<div style="margin-top:10px;border-top:1.5px solid #f0f0f0;padding-top:10px;display:flex;flex-direction:column;gap:8px;">
+      ${S.ui.unplannedOpen===sel?`<div style="margin-top:10px;border-top:1.5px solid #f0f0f0;padding-top:10px;display:flex;flex-direction:column;gap:8px;">
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
           <select id="upl-type" style="padding:9px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">
             <option value="ride">🎢 Ride</option>
@@ -2273,16 +2283,17 @@ function buildTodayLive(t,tm,dates,today){
             <option value="purchase">🛍️ Purchase</option>
             <option value="moment">✨ Moment</option>
           </select>
-          <input id="upl-text" placeholder="e.g. Grabbed Pirates on the way by…" onkeydown="if(event.key===\'Enter\')document.getElementById(\'upl-note\').focus()"
+          <input id="upl-text" placeholder="e.g. Grabbed Pirates on the way by…" onkeydown="if(event.key==='Enter')document.getElementById('upl-note').focus()"
             style="flex:1;min-width:140px;padding:9px 10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;">
         </div>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <input id="upl-note" placeholder="Quick note (optional)" onkeydown="if(event.key===\'Enter\')tmSaveUnplanned(\'${sel}\')"
-            style="flex:1;padding:9px 10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <input id="upl-note" placeholder="Quick note (optional)" onkeydown="if(event.key==='Enter')tmSaveUnplanned('${sel}')"
+            style="flex:1;min-width:100px;padding:9px 10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;">
+          <input id="upl-time" type="time" value="${_nowHHMM()}" style="width:110px;padding:9px 8px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">
           <button onclick="tmSaveUnplanned('${sel}')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:9px 16px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button>
           <button onclick="S.ui.unplannedOpen=null;render()" style="background:none;border:none;color:#bbb;font-size:12px;cursor:pointer;font-family:inherit;">✕</button>
         </div>
-      </div>\`:\'\'}
+      </div>`:''}
     </div>
     <div style="text-align:center;margin:14px 0 4px;">
       <button onclick="endTrip()" style="background:${S.ui.armEnd?'#fffbeb':'none'};border:1.5px solid ${S.ui.armEnd?'#f59e0b':'#e4e4f0'};border-radius:9px;padding:8px 18px;font-size:12px;font-weight:700;color:${S.ui.armEnd?'#b45309':'#999'};cursor:pointer;font-family:inherit;">${S.ui.armEnd?'⚠️ Tap again to end trip':'🏁 End trip'}</button>
@@ -9670,7 +9681,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-03-M";
+var SKIPPER_BUILD="2026-07-04-A";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
