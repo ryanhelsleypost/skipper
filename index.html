@@ -2137,6 +2137,47 @@ function buildTripRecap(t,tm){
   </div>`;
 }
 
+function buildUnplannedCard(e,sel,editKey){
+  const editOpen=editKey===sel+'||'+e.uplId;
+  const typeIcon={ride:'🎢',food:'🍔',photo:'📸',purchase:'🛍️',moment:'✨'}[e.uplType]||'📌';
+  // Encode sel and uplId safely for use in onclick attrs
+  const s=sel.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  const u=e.uplId.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  let html='<div style="border:1.5px solid '+(editOpen?'#c4b5fd':'#e4e4f0')+';border-radius:11px;padding:10px 12px;background:'+(editOpen?'#faf5ff':'#fafaf8')+';">'+
+    '<div style="display:flex;align-items:flex-start;gap:10px;">'+
+      '<span style="font-size:20px;flex-shrink:0;">'+typeIcon+'</span>'+
+      '<div style="flex:1;min-width:0;">'+
+        '<div style="font-size:11px;color:#bbb;font-weight:700;">'+fmt12(e.time)+'</div>'+
+        '<div style="font-size:14px;font-weight:700;color:'+(editOpen?'#bbb':'#333')+';'+(editOpen?'text-decoration:line-through;':'')+'">'+esc(e.text)+'</div>'+
+        (e.sub&&!editOpen?'<div style="font-size:11.5px;color:#888;">'+esc(e.sub)+'</div>':'')+
+      '</div>'+
+      '<div style="display:flex;gap:4px;flex-shrink:0;">'+
+        '<button onclick="tmEditUnplanned(\''+s+'\',\''+u+'\')" style="background:'+(editOpen?'#7c3aed':'#f3f0ff')+';color:'+(editOpen?'#fff':'#7c3aed')+';border:1.5px solid #c4b5fd;border-radius:8px;padding:3px 9px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">'+(editOpen?'✕':'✎')+'</button>'+
+        '<button onclick="tmDeleteUnplanned(\''+s+'\',\''+u+'\')" style="background:none;border:1px solid #fee;color:#fca5a5;border-radius:8px;padding:3px 7px;font-size:11px;cursor:pointer;font-family:inherit;">del</button>'+
+      '</div>'+
+    '</div>';
+  if(editOpen){
+    html+='<div style="margin-top:10px;display:flex;flex-direction:column;gap:7px;">'+
+      '<div style="display:flex;gap:6px;">'+
+        '<select id="upl-edit-type" style="flex:1;padding:9px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">'+
+          '<option value="ride"'+(e.uplType==='ride'||!e.uplType?' selected':'')+'>🎢 Ride</option>'+
+          '<option value="food"'+(e.uplType==='food'?' selected':'')+'>🍔 Food/Drink</option>'+
+          '<option value="photo"'+(e.uplType==='photo'?' selected':'')+'>📸 Photo</option>'+
+          '<option value="purchase"'+(e.uplType==='purchase'?' selected':'')+'>🛍️ Purchase</option>'+
+          '<option value="moment"'+(e.uplType==='moment'?' selected':'')+'>✨ Moment</option>'+
+        '</select>'+
+        '<input id="upl-edit-time" type="time" value="'+e.time+'" style="width:110px;padding:9px 8px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">'+
+      '</div>'+
+      '<input id="upl-edit-text" value="'+esc(e.text)+'" placeholder="What happened?" style="width:100%;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;box-sizing:border-box;">'+
+      '<div style="display:flex;gap:6px;">'+
+        '<input id="upl-edit-note" value="'+esc(e.sub||'')+'" placeholder="Note (optional)" style="flex:1;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;">'+
+        '<button onclick="tmSaveEditUnplanned(\''+s+'\',\''+u+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:10px 16px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">Save</button>'+
+      '</div>'+
+    '</div>';
+  }
+  html+='</div>';
+  return html;
+}
 function buildTodayLive(t,tm,dates,today){
   let sel=S.ui.todayDate;
   if(!sel||dates.indexOf(sel)===-1){
@@ -2254,13 +2295,32 @@ function buildTodayLive(t,tm,dates,today){
       const unique=dayParks.filter(function(p,i){return dayParks.indexOf(p)===i;});
       return unique.map(function(p){return qtSection(p,parkName(p));}).join('');
     })()}
+    <div style="background:#faf5ff;border:1.5px solid #e9d5ff;border-radius:12px;padding:10px 12px;margin-bottom:10px;">
+      <div style="font-size:11.5px;font-weight:800;color:#7c3aed;margin-bottom:7px;">⚡ LOG A MOMENT</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px;">
+        ${[['🎢 Ride','ride'],['🍔 Food','food'],['📸 Photo','photo'],['🛍️ Buy','purchase'],['✨ Moment','moment']].map(function(p){
+          const active=S.ui.unplannedQuickType===p[1]&&S.ui.todayBottomTab==='log';
+          return '<button type="button" onclick="S.ui.unplannedQuickType=\''+p[1]+'\';S.ui.todayBottomTab=\'log\';S.ui.unplannedOpen=\'${sel}\';render();setTimeout(function(){var el=document.getElementById(\'upl-text\');if(el)el.focus();},80);" style="padding:6px 10px;background:'+(active?'#7c3aed':'#fff')+';color:'+(active?'#fff':'#7c3aed')+';border:1.5px solid #c4b5fd;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'+p[0]+'</button>';
+        }).join('')}
+      </div>
+      ${S.ui.todayBottomTab==='log'&&S.ui.unplannedOpen===sel?`<div style="display:flex;flex-direction:column;gap:7px;">
+        <input id="upl-text" placeholder="What happened?" onkeydown="if(event.key==='Enter')document.getElementById('upl-note').focus()"
+          style="width:100%;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;box-sizing:border-box;">
+        <div style="display:flex;gap:6px;">
+          <input id="upl-note" placeholder="Quick note (optional)" onkeydown="if(event.key==='Enter')tmSaveUnplanned('${sel}')"
+            style="flex:1;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;">
+          <input id="upl-time" type="time" value="${_nowHHMM()}" style="width:110px;padding:10px 8px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">
+          <button onclick="tmSaveUnplanned('${sel}')" style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">Save</button>
+        </div>
+      </div>`:'<div style="font-size:12px;color:#c4b5fd;text-align:center;padding:4px 0;">Tap a type above to log</div>'}
+    </div>
     ${(function(){
       // ── UNIFIED TIMELINE: ROS entries + unplanned moments, sorted by time ──
       // Build merged array
       const upl=((t.tripMode||{}).unplanned||{})[sel]||[];
       const uplEntries=upl.map(function(u){
         const typeIcon={ride:'🎢',food:'🍔',photo:'📸',purchase:'🛍️',moment:'✨'}[u.type]||'📌';
-        return {id:'upl-'+u.id,text:u.text,icon:typeIcon,sub:u.note||'',time:u.time,cls:'unplanned',uplId:u.id,isUnplanned:true};
+        return {id:'upl-'+u.id,text:u.text,icon:typeIcon,sub:u.note||'',time:u.time,cls:'unplanned',uplId:u.id,uplType:u.type,isUnplanned:true};
       });
       const merged=[].concat(entries).concat(uplEntries).sort(function(a,b){
         const ta=timeToMins(a.time)||0,tb=timeToMins(b.time)||0;
@@ -2283,18 +2343,7 @@ function buildTodayLive(t,tm,dates,today){
         const cashOpen=S.ui.todayCash===sel+'||'+k;
 
         if(e.isUnplanned){
-          // Unplanned entry — simpler card, editable
-          return '<div style="border:1.5px solid #e4e4f0;border-radius:11px;padding:10px 12px;background:#fafaf8;'+( dim?'opacity:.6;':'')+'">'+
-            '<div style="display:flex;align-items:flex-start;gap:10px;">'+
-              '<span style="font-size:20px;flex-shrink:0;">'+e.icon+'</span>'+
-              '<div style="flex:1;min-width:0;">'+
-                '<div style="font-size:11px;color:#bbb;font-weight:700;">'+fmt12(e.time)+'</div>'+
-                '<div style="font-size:14px;font-weight:700;color:#333;">'+esc(e.text)+'</div>'+
-                (e.sub?'<div style="font-size:11.5px;color:#888;">'+esc(e.sub)+'</div>':'')+
-              '</div>'+
-              '<button onclick="tmDeleteUnplanned(\'${sel}\',\''+e.uplId+'\')" style="background:none;border:none;color:#ddd;font-size:16px;cursor:pointer;padding:2px;flex-shrink:0;">✕</button>'+
-            '</div>'+
-          '</div>';
+          return buildUnplannedCard(e,sel,S.ui.unplannedEdit);
         }
 
         return '<div style="border:'+(isNow?'2.5px solid #6366f1':'1.5px solid #eee')+';border-radius:11px;padding:10px 12px;background:'+(dim?'#fafafa':'#fff')+';'+(dim?'opacity:.62;':'')+'">'+
@@ -2335,10 +2384,10 @@ function buildTodayLive(t,tm,dates,today){
       </div>
       
       <div style="display:flex;border-radius:10px;overflow:hidden;border:1.5px solid #e4e4f0;margin-bottom:10px;">
-        ${['spend','log','wait'].map(function(tab){
-          const active=S.ui.todayBottomTab===tab||(tab==='spend'&&!S.ui.todayBottomTab);
+        ${['spend','wait'].map(function(tab){
+          const active=(S.ui.todayBottomTab===tab)||(tab==='spend'&&(!S.ui.todayBottomTab||S.ui.todayBottomTab==='log'));
           return '<button onclick="S.ui.todayBottomTab=\''+tab+'\';render()" style="flex:1;padding:10px 4px;background:'+(active?'#1a1a5e':'#fff')+';color:'+(active?'#FFD700':'#888')+';border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">'+
-            (tab==='spend'?'💵 Spend':tab==='log'?'⚡ Log moment':'⏱️ Waits')+'</button>';
+            (tab==='spend'?'💵 Spend':'⏱️ Waits')+'</button>';
         }).join('')}
       </div>
 
@@ -2362,25 +2411,7 @@ function buildTodayLive(t,tm,dates,today){
             '</div>';
         }
 
-        if(tab==='log'){
-          return '<div style="display:flex;flex-direction:column;gap:8px;">'+
-            '<div style="display:flex;gap:6px;">'+
-              '<select id="upl-type" style="flex:1;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">'+
-                '<option value="ride">🎢 Ride</option>'+
-                '<option value="food">🍔 Food/Drink</option>'+
-                '<option value="photo">📸 Photo</option>'+
-                '<option value="purchase">🛍️ Purchase</option>'+
-                '<option value="moment">✨ Moment</option>'+
-              '</select>'+
-              '<input id="upl-time" type="time" value="${_nowHHMM()}" style="width:110px;padding:10px 8px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">'+
-            '</div>'+
-            '<input id="upl-text" placeholder="What happened? (e.g. Grabbed Pirates…)" onkeydown="if(event.key===\'Enter\')document.getElementById(\'upl-note\').focus()" style="width:100%;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;box-sizing:border-box;">'+
-            '<div style="display:flex;gap:6px;">'+
-              '<input id="upl-note" placeholder="Quick note (optional)" onkeydown="if(event.key===\'Enter\')tmSaveUnplanned(\'${sel}\')" style="flex:1;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;">'+
-              '<button onclick="tmSaveUnplanned(\'${sel}\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:10px 16px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">Save</button>'+
-            '</div>'+
-          '</div>';
-        }
+        
 
         if(tab==='wait'){
           if(!parkDay||!QT_PARK_IDS[parkDay.park])return '<div style="text-align:center;color:#bbb;font-size:13px;padding:10px 0;">No wait time data for today\'s park.</div>';
@@ -9813,7 +9844,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-04-D";
+var SKIPPER_BUILD="2026-07-04-E";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
