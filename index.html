@@ -1456,13 +1456,9 @@ function buildHeader(t) {
 
   let countdownHtml = '';
   if (days !== null) {
-    if (days > 1)
-      countdownHtml = '<div style="font-size:11px;color:rgba(255,255,255,.65);text-align:right;">&#9992;&#65039; '+days+' days away</div>';
-    else if (days === 1)
-      countdownHtml = '<div style="font-size:11px;color:#FFD700;font-weight:800;text-align:right;">&#9992;&#65039; Tomorrow!</div>';
-    else if (days === 0)
+    if (days === 0)
       countdownHtml = '<div style="font-size:11px;background:#16a34a;color:#fff;font-weight:900;padding:2px 8px;border-radius:10px;white-space:nowrap;">&#127881; TODAY!</div>';
-    else {
+    else if (days < 0) {
       const tripDay = Math.abs(days) + 1;
       const totalDays = (start && end) ? Math.ceil((end - start) / 86400000) + 1 : null;
       countdownHtml = '<div style="font-size:11px;background:#7c3aed;color:#fff;font-weight:900;padding:2px 8px;border-radius:10px;white-space:nowrap;">Day '+tripDay+(totalDays?' of '+totalDays:'')+'</div>';
@@ -1490,6 +1486,19 @@ function buildHeader(t) {
     + '</div>'
     // Date row
     + (dateStr ? '<div style="padding:0 20px 8px;font-size:11.5px;color:rgba(255,255,255,.55);font-weight:600;">'+dateStr+'</div>' : '')
+    // Live countdown strip — only shown for future trips
+    + ((days !== null && days >= 0)
+      ? '<div style="padding:0 20px 10px;display:flex;align-items:baseline;gap:2px;">'
+        + '<span id="cd-days" style="font-size:22px;font-weight:900;color:#FFD700;min-width:24px;text-align:right;">'+days+'</span>'
+        + '<span style="font-size:11px;color:rgba(255,255,255,.5);margin:0 6px 0 2px;">d</span>'
+        + '<span id="cd-hrs"  style="font-size:22px;font-weight:900;color:#FFD700;min-width:24px;text-align:right;">00</span>'
+        + '<span style="font-size:11px;color:rgba(255,255,255,.5);margin:0 6px 0 2px;">h</span>'
+        + '<span id="cd-mins" style="font-size:22px;font-weight:900;color:#FFD700;min-width:24px;text-align:right;">00</span>'
+        + '<span style="font-size:11px;color:rgba(255,255,255,.5);margin:0 6px 0 2px;">m</span>'
+        + '<span id="cd-secs" style="font-size:22px;font-weight:900;color:#FFD700;min-width:24px;text-align:right;">00</span>'
+        + '<span style="font-size:11px;color:rgba(255,255,255,.5);margin:0 0 0 2px;">s</span>'
+        + '</div>'
+      : '')
     + '</div>';
 }
 function buildLogistics(t) {
@@ -2898,6 +2907,7 @@ function initDlpMap() {
 }
 
 function bindAfterRender() {
+  startCountdown();
   if (S.tab === 'map_modal' || S.tab === 'map') {
     const tt = trip();
     setTimeout(tt && tt.tripType==='dlp' ? initDlpMap : initAulaniMap, 100);
@@ -10243,7 +10253,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-05-D";
+var SKIPPER_BUILD="2026-07-05-E";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
