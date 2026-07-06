@@ -2296,23 +2296,79 @@ function buildTodayLive(t,tm,dates,today){
       return unique.map(function(p){return qtSection(p,parkName(p));}).join('');
     })()}
     <div style="background:#faf5ff;border:1.5px solid #e9d5ff;border-radius:12px;padding:10px 12px;margin-bottom:10px;">
-      <div style="font-size:11.5px;font-weight:800;color:#7c3aed;margin-bottom:7px;">⚡ LOG A MOMENT</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px;">
-        ${[['🎢 Ride','ride'],['🍔 Food','food'],['📸 Photo','photo'],['🛍️ Buy','purchase'],['✨ Moment','moment']].map(function(p){
-          const active=S.ui.unplannedQuickType===p[1]&&S.ui.todayBottomTab==='log';
-          return '<button type="button" onclick="S.ui.unplannedQuickType=\''+p[1]+'\';S.ui.todayBottomTab=\'log\';S.ui.unplannedOpen=\'${sel}\';render();setTimeout(function(){var el=document.getElementById(\'upl-text\');if(el)el.focus();},80);" style="padding:6px 10px;background:'+(active?'#7c3aed':'#fff')+';color:'+(active?'#fff':'#7c3aed')+';border:1.5px solid #c4b5fd;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'+p[0]+'</button>';
+      <div style="display:flex;gap:0;border-radius:8px;overflow:hidden;border:1.5px solid #e9d5ff;margin-bottom:10px;">
+        ${[['log','⚡ Log'],['spend','💵 Spend'],['wait','⏱️ Waits']].map(function(tb){
+          const a=(!S.ui.todayBottomTab&&tb[0]==='log')||(S.ui.todayBottomTab===tb[0]);
+          return '<button onclick="S.ui.todayBottomTab=\''+tb[0]+'\';render()" style="flex:1;padding:9px 4px;background:'+(a?'#7c3aed':'transparent')+';color:'+(a?'#fff':'#7c3aed')+';border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">'+tb[1]+'</button>';
         }).join('')}
       </div>
-      ${S.ui.todayBottomTab==='log'&&S.ui.unplannedOpen===sel?`<div style="display:flex;flex-direction:column;gap:7px;">
-        <input id="upl-text" placeholder="What happened?" onkeydown="if(event.key==='Enter')document.getElementById('upl-note').focus()"
-          style="width:100%;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;box-sizing:border-box;">
-        <div style="display:flex;gap:6px;">
-          <input id="upl-note" placeholder="Quick note (optional)" onkeydown="if(event.key==='Enter')tmSaveUnplanned('${sel}')"
-            style="flex:1;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;">
-          <input id="upl-time" type="time" value="${_nowHHMM()}" style="width:110px;padding:10px 8px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">
-          <button onclick="tmSaveUnplanned('${sel}')" style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">Save</button>
+      ${(!S.ui.todayBottomTab||S.ui.todayBottomTab==='log')?`<div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px;">
+          ${[['🎢 Ride','ride'],['🍔 Food','food'],['📸 Photo','photo'],['🛍️ Buy','purchase'],['✨ Moment','moment']].map(function(p){
+            const active=S.ui.unplannedQuickType===p[1];
+            return '<button type="button" onclick="S.ui.unplannedQuickType=\''+p[1]+'\';S.ui.todayBottomTab=\'log\';S.ui.unplannedOpen=\''+sel+'\';render();setTimeout(function(){var el=document.getElementById(\'upl-text\');if(el)el.focus();},80);" style="padding:6px 10px;background:'+(active?'#7c3aed':'#fff')+';color:'+(active?'#fff':'#7c3aed')+';border:1.5px solid #c4b5fd;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'+p[0]+'</button>';
+          }).join('')}
         </div>
-      </div>`:'<div style="font-size:12px;color:#c4b5fd;text-align:center;padding:4px 0;">Tap a type above to log</div>'}
+        ${S.ui.unplannedOpen===sel?`<div style="display:flex;flex-direction:column;gap:7px;">
+          <input type="hidden" id="upl-type" value="${S.ui.unplannedQuickType||'ride'}">
+          <input id="upl-text" placeholder="What happened?" onkeydown="if(event.key==='Enter')document.getElementById('upl-note').focus()"
+            style="width:100%;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;box-sizing:border-box;">
+          <div style="display:flex;gap:6px;">
+            <input id="upl-note" placeholder="Quick note (optional)" onkeydown="if(event.key==='Enter')tmSaveUnplanned('${sel}')"
+              style="flex:1;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;">
+            <input id="upl-time" type="time" value="${_nowHHMM()}" style="width:110px;padding:10px 8px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">
+            <button onclick="tmSaveUnplanned('${sel}')" style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">Save</button>
+          </div>
+        </div>`:'<div style="font-size:12px;color:#c4b5fd;text-align:center;padding:4px 0;">Tap a type above to log</div>'}
+      </div>`:''}
+      ${S.ui.todayBottomTab==='spend'?(function(){
+        const foodId=(cats.find(function(c){return /food/i.test(c.name||'');})||{}).id||'';
+        const merchId=(cats.find(function(c){return /merch/i.test(c.name||'');})||{}).id||'';
+        const extrasId=(cats.find(function(c){return /extras/i.test(c.name||'');})||{}).id||'';
+        return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'+
+          [['🥐 Churro',foodId],['🍦 Ice Cream',foodId],['🥤 Drink',foodId],['☕ Coffee',foodId],['🍿 Snack',foodId],['🛍️ Merch',merchId],['🎫 Misc',extrasId]].map(function(p){
+            return '<button type="button" onclick="document.getElementById(\'tm-cash-label\').value=\''+p[0]+'\';document.getElementById(\'tm-cash-cat\').value=\''+p[1]+'\';var a=document.getElementById(\'tm-cash-amt-b\');if(a)a.focus();" style="padding:7px 12px;background:#f3f0ff;border:1.5px solid #c4b5fd;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:#5b21b6;">'+p[0]+'</button>';
+          }).join('')+'</div>'+
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">'+
+            '<input id="tm-cash-label" placeholder="or type…" style="flex:1;min-width:80px;padding:10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">'+
+            '<span style="font-size:13px;color:#888;">$</span>'+
+            '<input id="tm-cash-amt-b" type="number" inputmode="decimal" step="0.01" min="0" onkeydown="if(event.key===\'Enter\')tmSaveQuickB(\''+sel+'\')" style="width:80px;padding:10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">'+
+            '<select id="tm-cash-cat" style="padding:10px 6px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:130px;">'+(catOpts(foodId))+'</select>'+
+            '<button onclick="tmSaveQuickB(\''+sel+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:10px 16px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">Log it</button>'+
+          '</div>';
+      })():''}
+      ${S.ui.todayBottomTab==='wait'?(function(){
+        if(!parkDay||!QT_PARK_IDS[parkDay.park])return '<div style="text-align:center;color:#bbb;font-size:13px;padding:10px 0;">No wait time data for today\'s park.</div>';
+        const dayParks=[parkDay.park].concat(parkDay.parkHops||[]).filter(function(p){return p&&QT_PARK_IDS[p];});
+        const unique=dayParks.filter(function(p,i){return dayParks.indexOf(p)===i;});
+        return unique.map(function(pk){
+          const data=_QT.cache[pk];
+          if(!data){qtFetch(pk);return '<div style="text-align:center;color:#bbb;font-size:12px;padding:8px 0;">Loading '+parkName(pk)+'…</div>';}
+          if(data==='err')return '<div style="text-align:center;font-size:12px;color:#bbb;padding:8px 0;">'+parkName(pk)+' unavailable <button onclick="_QT.cache[\''+pk+'\']=null;qtFetch(\''+pk+'\')" style="background:none;border:none;color:#999;cursor:pointer;font-size:11px;">↻ retry</button></div>';
+          const open=data.filter(function(r){return r.is_open&&r.wait_time>0;});
+          if(!open.length)return '<div style="text-align:center;color:#bbb;font-size:12px;padding:8px 0;">'+parkName(pk)+' — no open rides</div>';
+          const byLand={};
+          open.forEach(function(r){const land=r.land||'Other';if(!byLand[land])byLand[land]=[];byLand[land].push(r);});
+          const age=Math.round((Date.now()-(_QT.fetchedAt[pk]||Date.now()))/60000);
+          return '<div style="margin-bottom:8px;">'+
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'+
+              '<div style="font-size:12px;font-weight:800;color:#1a1a5e;">'+parkName(pk)+'</div>'+
+              '<button onclick="_QT.fetchedAt[\''+pk+'\']=0;qtFetch(\''+pk+'\')" style="background:none;border:1px solid #e4e4f0;border-radius:6px;padding:2px 8px;font-size:10.5px;color:#888;cursor:pointer;font-family:inherit;">↻ '+(age<1?'now':age+'m ago')+'</button>'+
+            '</div>'+
+            Object.keys(byLand).sort().map(function(land){
+              const rides=byLand[land].sort(function(a,b){return (b.wait_time||0)-(a.wait_time||0);});
+              return '<div style="margin-bottom:8px;">'+
+                '<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:.5px;padding:3px 0 2px;">'+esc(land)+'</div>'+
+                rides.map(function(r){
+                  const w=r.wait_time||0;const col=w>=60?'#dc2626':w>=30?'#d97706':'#16a34a';
+                  return '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;border-bottom:1px dashed #f5f5f5;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.name)+'</span><b style="color:'+col+';flex-shrink:0;margin-left:8px;">'+w+' min</b></div>';
+                }).join('')+
+              '</div>';
+            }).join('')+
+            '<div style="font-size:9.5px;color:#ccc;text-align:right;">Queue-Times.com</div>'+
+          '</div>';
+        }).join('');
+      })():''}
     </div>
     ${(function(){
       // ── UNIFIED TIMELINE: ROS entries + unplanned moments, sorted by time ──
@@ -2350,7 +2406,7 @@ function buildTodayLive(t,tm,dates,today){
           '<div style="display:flex;align-items:flex-start;gap:10px;">'+
             (e.cls==='auto'
               ? '<div style="width:30px;height:30px;flex-shrink:0;border-radius:9px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:13px;">ℹ️</div>'
-              : '<button onclick="tmToggleDone(\'${sel}\',\''+kAttr+'\')" title="'+(j.done?'Undo':'Mark done')+'" style="width:30px;height:30px;flex-shrink:0;border-radius:9px;border:2px solid '+(j.done?'#16a34a':'#ddd')+';background:'+(j.done?'#16a34a':'#fff')+';color:#fff;font-size:15px;cursor:pointer;font-family:inherit;line-height:1;">'+(j.done?'✓':'')+'</button>'
+              : '<button onclick="tmToggleDone(\''+sel+'\',\''+kAttr+'\')" title="'+(j.done?'Undo':'Mark done')+'" style="width:30px;height:30px;flex-shrink:0;border-radius:9px;border:2px solid '+(j.done?'#16a34a':'#ddd')+';background:'+(j.done?'#16a34a':'#fff')+';color:#fff;font-size:15px;cursor:pointer;font-family:inherit;line-height:1;">'+(j.done?'✓':'')+'</button>'
             )+
             '<div style="flex:1;min-width:0;">'+
               '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'+
@@ -2368,86 +2424,16 @@ function buildTodayLive(t,tm,dates,today){
               (j.skipped?'<div style="font-size:11px;color:#bbb;margin-top:2px;">skipped</div>':'')+
             '</div>'+
           '</div>'+
-          (noteOpen?'<div style="margin-top:8px;display:flex;gap:6px;"><input id="tm-note-input" value="'+esc(j.note||'')+'" placeholder="Ride broke down · food was meh · pure magic…" onkeydown="if(event.key===\'Enter\')tmSaveNote(\'${sel}\',\''+kAttr+'\')" style="flex:1;min-width:0;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><button onclick="tmSaveNote(\'${sel}\',\''+kAttr+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button></div>':'')+
-          (cashOpen?'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span style="font-size:12px;color:#888;">actual $</span><input id="tm-cash-amt" type="number" step="0.01" min="0" value="'+(j.actual!=null?j.actual:(e.est||''))+'" onkeydown="if(event.key===\'Enter\')tmSaveCash(\'${sel}\',\''+kAttr+'\',\''+attrSafe(e.text)+'\')" style="width:90px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:150px;">'+catOpts((tmGuessCat(t,e)||{}).id)+'</select><button onclick="tmSaveCash(\'${sel}\',\''+kAttr+'\',\''+attrSafe(e.text)+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Log it</button></div>':'')+
+          (noteOpen?'<div style="margin-top:8px;display:flex;gap:6px;"><input id="tm-note-input" value="'+esc(j.note||'')+'" placeholder="Ride broke down · food was meh · pure magic…" onkeydown="if(event.key===\'Enter\')tmSaveNote(\''+sel+'\',\''+kAttr+'\')" style="flex:1;min-width:0;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><button onclick="tmSaveNote(\''+sel+'\',\''+kAttr+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button></div>':'')+
+          (cashOpen?'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span style="font-size:12px;color:#888;">actual $</span><input id="tm-cash-amt" type="number" step="0.01" min="0" value="'+(j.actual!=null?j.actual:(e.est||''))+'" onkeydown="if(event.key===\'Enter\')tmSaveCash(\''+sel+'\',\''+kAttr+'\',\''+attrSafe(e.text)+'\')" style="width:90px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:150px;">'+catOpts((tmGuessCat(t,e)||{}).id)+'</select><button onclick="tmSaveCash(\''+sel+'\',\''+kAttr+'\',\''+attrSafe(e.text)+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Log it</button></div>':'')+
           buildEntryActions(e,sel,kAttr,j,noteOpen,cashOpen,dim)+
         '</div>';
       }).join('');
     })()}
 
-    <div class="card" style="margin-top:10px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-        <div>
-          <div style="font-size:11px;color:#888;">Spent today · trip total</div>
-          <div style="font-size:18px;font-weight:900;color:#1a1a5e;">$${Math.round(spentToday).toLocaleString()} <span style="font-size:12px;color:#888;font-weight:600;">· $${Math.round(spentTrip).toLocaleString()}</span></div>
-        </div>
-      </div>
-      
-      <div style="display:flex;border-radius:10px;overflow:hidden;border:1.5px solid #e4e4f0;margin-bottom:10px;">
-        ${['spend','wait'].map(function(tab){
-          const active=(S.ui.todayBottomTab===tab)||(tab==='spend'&&(!S.ui.todayBottomTab||S.ui.todayBottomTab==='log'));
-          return '<button onclick="S.ui.todayBottomTab=\''+tab+'\';render()" style="flex:1;padding:10px 4px;background:'+(active?'#1a1a5e':'#fff')+';color:'+(active?'#FFD700':'#888')+';border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">'+
-            (tab==='spend'?'💵 Spend':'⏱️ Waits')+'</button>';
-        }).join('')}
-      </div>
-
-      ${(function(){
-        const tab=S.ui.todayBottomTab||'spend';
-
-        if(tab==='spend'){
-          const foodId=(cats.find(function(c){return /food/i.test(c.name||'');})||{}).id||'';
-          const merchId=(cats.find(function(c){return /merch/i.test(c.name||'');})||{}).id||'';
-          const extrasId=(cats.find(function(c){return /extras/i.test(c.name||'');})||{}).id||'';
-          return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'+
-            [['🥐 Churro',foodId],['🍦 Ice Cream',foodId],['🥤 Drink',foodId],['☕ Coffee',foodId],['🍿 Snack',foodId],['🛍️ Merch',merchId],['🎫 Misc',extrasId]].map(function(p){
-              return '<button type="button" onclick="document.getElementById(\'tm-cash-label\').value=\''+p[0]+'\';document.getElementById(\'tm-cash-cat\').value=\''+p[1]+'\';var a=document.getElementById(\'tm-cash-amt-b\');if(a)a.focus();" style="padding:7px 12px;background:#f3f0ff;border:1.5px solid #c4b5fd;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:#5b21b6;">'+p[0]+'</button>';
-            }).join('')+'</div>'+
-            '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">'+
-              '<input id="tm-cash-label" placeholder="or type…" style="flex:1;min-width:80px;padding:10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">'+
-              '<span style="font-size:13px;color:#888;">$</span>'+
-              '<input id="tm-cash-amt-b" type="number" inputmode="decimal" step="0.01" min="0" onkeydown="if(event.key===\'Enter\')tmSaveQuickB(\'${sel}\')" style="width:80px;padding:10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">'+
-              '<select id="tm-cash-cat" style="padding:10px 6px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:130px;">'+(catOpts(foodId))+'</select>'+
-              '<button onclick="tmSaveQuickB(\'${sel}\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:10px 16px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">Log it</button>'+
-            '</div>';
-        }
-
-        
-
-        if(tab==='wait'){
-          if(!parkDay||!QT_PARK_IDS[parkDay.park])return '<div style="text-align:center;color:#bbb;font-size:13px;padding:10px 0;">No wait time data for today\'s park.</div>';
-          const dayParks=[parkDay.park].concat(parkDay.parkHops||[]).filter(function(p){return p&&QT_PARK_IDS[p];});
-          const unique=dayParks.filter(function(p,i){return dayParks.indexOf(p)===i;});
-          return unique.map(function(pk){
-            const data=_QT.cache[pk];
-            if(!data){qtFetch(pk);return '<div style="text-align:center;color:#bbb;font-size:12px;padding:8px 0;">Loading '+parkName(pk)+'…</div>';}
-            if(data==='err')return '<div style="text-align:center;font-size:12px;color:#bbb;padding:8px 0;">'+parkName(pk)+' unavailable <button onclick="_QT.cache[\''+pk+'\']=null;qtFetch(\''+pk+'\')" style="background:none;border:none;color:#999;cursor:pointer;font-size:11px;">↻ retry</button></div>';
-            const open=data.filter(function(r){return r.is_open&&r.wait_time>0;});
-            if(!open.length)return '<div style="text-align:center;color:#bbb;font-size:12px;padding:8px 0;">'+parkName(pk)+' — no open rides</div>';
-            // Group by land
-            const byLand={};
-            open.forEach(function(r){const land=r.land||'Other';if(!byLand[land])byLand[land]=[];byLand[land].push(r);});
-            const age=Math.round((Date.now()-(_QT.fetchedAt[pk]||Date.now()))/60000);
-            return '<div style="margin-bottom:8px;">'+
-              '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'+
-                '<div style="font-size:12px;font-weight:800;color:#1a1a5e;">'+parkName(pk)+'</div>'+
-                '<button onclick="_QT.fetchedAt[\''+pk+'\']=0;qtFetch(\''+pk+'\')" style="background:none;border:1px solid #e4e4f0;border-radius:6px;padding:2px 8px;font-size:10.5px;color:#888;cursor:pointer;font-family:inherit;">↻ '+(age<1?'now':age+'m ago')+'</button>'+
-              '</div>'+
-              Object.keys(byLand).sort().map(function(land){
-                const rides=byLand[land].sort(function(a,b){return (b.wait_time||0)-(a.wait_time||0);});
-                return '<div style="margin-bottom:8px;">'+
-                  '<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:.5px;padding:3px 0 2px;">'+esc(land)+'</div>'+
-                  rides.map(function(r){
-                    const w=r.wait_time||0;const col=w>=60?'#dc2626':w>=30?'#d97706':'#16a34a';
-                    return '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;border-bottom:1px dashed #f5f5f5;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.name)+'</span><b style="color:'+col+';flex-shrink:0;margin-left:8px;">'+w+' min</b></div>';
-                  }).join('')+
-                '</div>';
-              }).join('')+
-              '<div style="font-size:9.5px;color:#ccc;text-align:right;">Queue-Times.com</div>'+
-            '</div>';
-          }).join('');
-        }
-        return '';
-      })()}
+    <div class="card" style="margin-top:10px;padding:12px 14px;">
+      <div style="font-size:11px;color:#888;">Spent today · trip total</div>
+      <div style="font-size:18px;font-weight:900;color:#1a1a5e;">$${Math.round(spentToday).toLocaleString()} <span style="font-size:12px;color:#888;font-weight:600;">· $${Math.round(spentTrip).toLocaleString()}</span></div>
     </div>
 
     <div class="card">
