@@ -1454,15 +1454,18 @@ function buildHeader(t) {
   const now   = new Date();
   const days  = start ? Math.ceil((start - now) / 86400000) : null;
 
-  let countdownLine = '';
+  let countdownHtml = '';
   if (days !== null) {
-    if (days > 1)        countdownLine = '<span style="color:#FFD700;font-size:12px;font-weight:800;">&#9992;&#65039; '+days+' days to go</span>';
-    else if (days === 1) countdownLine = '<span style="color:#FFD700;font-size:12px;font-weight:800;">&#9992;&#65039; Tomorrow!</span>';
-    else if (days === 0) countdownLine = '<span style="background:#16a34a;color:#fff;font-size:11px;font-weight:900;padding:2px 8px;border-radius:10px;">&#127881; TODAY!</span>';
+    if (days > 1)
+      countdownHtml = '<div style="font-size:11px;color:rgba(255,255,255,.65);text-align:right;">&#9992;&#65039; '+days+' days away</div>';
+    else if (days === 1)
+      countdownHtml = '<div style="font-size:11px;color:#FFD700;font-weight:800;text-align:right;">&#9992;&#65039; Tomorrow!</div>';
+    else if (days === 0)
+      countdownHtml = '<div style="font-size:11px;background:#16a34a;color:#fff;font-weight:900;padding:2px 8px;border-radius:10px;white-space:nowrap;">&#127881; TODAY!</div>';
     else {
       const tripDay = Math.abs(days) + 1;
       const totalDays = (start && end) ? Math.ceil((end - start) / 86400000) + 1 : null;
-      countdownLine = '<span style="background:#7c3aed;color:#fff;font-size:11px;font-weight:900;padding:2px 8px;border-radius:10px;">Day '+tripDay+(totalDays?' of '+totalDays:'')+'</span>';
+      countdownHtml = '<div style="font-size:11px;background:#7c3aed;color:#fff;font-weight:900;padding:2px 8px;border-radius:10px;white-space:nowrap;">Day '+tripDay+(totalDays?' of '+totalDays:'')+'</div>';
     }
   }
 
@@ -1471,26 +1474,24 @@ function buildHeader(t) {
       + (end ? ' &#8211; '+end.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '')
     : '';
 
-  return '<div style="background:#1a1a5e;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2);">'
-    + '<div style="padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">'
-    + '<button onclick="S.ui.showTripSelect=true;render()" style="background:none;border:none;color:#fff;font-size:15px;font-weight:900;cursor:pointer;font-family:inherit;padding:0;text-align:left;flex:1;min-width:0;display:flex;align-items:center;gap:5px;">'
-    + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(t.name||'Trip')+'</span>'
-    + '<span style="color:rgba(255,255,255,.45);font-size:12px;flex-shrink:0;">&#9660;</span>'
+  return '<div class="app-header">'
+    + '<div class="header-top">'
+    // Trip name (tappable)
+    + '<button onclick="S.ui.showTripSelect=true;render()" style="background:none;border:none;flex:1;min-width:0;padding:0;cursor:pointer;text-align:left;display:flex;align-items:baseline;gap:5px;">'
+    + '<span class="header-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;">'+esc(t.name||'Trip')+'</span>'
+    + '<span style="color:rgba(255,255,255,.4);font-size:11px;">&#9660;</span>'
     + '</button>'
+    // Right: countdown + buttons
     + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
+    + countdownHtml
     + '<button onclick="openSyncModal()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#FFD700;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">&#9729; Sync</button>'
-    + '<button onclick="S.ui.settingsOpen=!S.ui.settingsOpen;render()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fff;font-size:15px;cursor:pointer;">&#9881;&#65039;</button>'
+    + '<button onclick="S.ui.settingsOpen=!S.ui.settingsOpen;render()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fff;font-size:15px;cursor:pointer;font-family:inherit;">&#9881;&#65039;</button>'
     + '</div>'
     + '</div>'
-    + ((dateStr || countdownLine)
-      ? '<div style="padding:0 14px 8px;display:flex;align-items:center;justify-content:space-between;gap:8px;">'
-        + '<div style="font-size:11.5px;color:rgba(255,255,255,.6);font-weight:600;">'+dateStr+'</div>'
-        + '<div>'+countdownLine+'</div>'
-        + '</div>'
-      : '')
+    // Date row
+    + (dateStr ? '<div style="padding:0 20px 8px;font-size:11.5px;color:rgba(255,255,255,.55);font-weight:600;">'+dateStr+'</div>' : '')
     + '</div>';
 }
-
 function buildLogistics(t) {
   if (!S.ui.logOpen) S.ui.logOpen = {transport:true, hotel:true};
 
@@ -10242,7 +10243,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-05-C";
+var SKIPPER_BUILD="2026-07-05-D";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
