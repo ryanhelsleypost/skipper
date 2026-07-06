@@ -1004,6 +1004,11 @@ function loadStorage() {
   } else if (!S.currentTripId || !S.trips.find(t => t.id === S.currentTripId)) {
     S.currentTripId = S.trips[0].id;
   }
+  // Always open the pinned trip on fresh load (unless already navigated away)
+  const _pinned = localStorage.getItem('skipper_pinned_trip');
+  if (_pinned && S.trips.find(t => t.id === _pinned)) {
+    S.currentTripId = _pinned;
+  }
 }
 
 // Migrate old trip data to new schema
@@ -1392,14 +1397,22 @@ function buildTripSelectOverlay() {
       : '<span style="font-size:11px;color:#aaa;">ended</span>';
     const dateStr = start ? start.toLocaleDateString('en-US',{month:'short',day:'numeric'})+(end?' – '+end.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'') : 'Dates not set';
     const active  = t.id === S.currentTripId;
-    return '<div onclick="S.currentTripId=\''+t.id+'\';S.ui.showTripSelect=false;S.tab=\'today\';render()" '
-      +'style="background:'+(active?'#f5f3ff':'#fff')+';border:1.5px solid '+(active?'#c4b5fd':'#e4e4f0')+';border-radius:12px;padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;">'
-      +'<div style="flex:1;min-width:0;">'
+    const pinned  = localStorage.getItem('skipper_pinned_trip') === t.id;
+    return '<div style="background:'+(active?'#f5f3ff':'#fff')+';border:1.5px solid '+(active?'#c4b5fd':'#e4e4f0')+';border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;">'
+      +'<div onclick="S.currentTripId=\''+t.id+'\';S.ui.showTripSelect=false;S.tab=\'today\';render()" style="flex:1;min-width:0;cursor:pointer;">'
+      +'<div style="display:flex;align-items:center;gap:6px;">'
+      +(pinned?'<span title="Pinned — opens by default" style="font-size:13px;">📌</span>':'')
       +'<div style="font-size:15px;font-weight:900;color:#1a1a5e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(t.name||'Unnamed Trip')+'</div>'
+      +'</div>'
       +'<div style="font-size:12px;color:#666;margin-top:1px;">'+(t.destination?esc(t.destination)+' · ':'')+dateStr+'</div>'
       +'</div>'
       +countdown
-      +(active?'<span style="color:#7c3aed;font-size:16px;">✓</span>':'')
+      +(active?'<span style="color:#7c3aed;font-size:16px;flex-shrink:0;">✓</span>':'')
+      +'<button onclick="event.stopPropagation();var p=localStorage.getItem(\'skipper_pinned_trip\');if(p===\''+t.id+'\'){localStorage.removeItem(\'skipper_pinned_trip\');}else{localStorage.setItem(\'skipper_pinned_trip\',\''+t.id+'\')}; render()" '
+      +'title="'+(pinned?'Unpin':'Pin as default')+'" '
+      +'style="background:'+(pinned?'#fef9c3':'#f9f9f9')+';border:1px solid '+(pinned?'#fde047':'#e4e4f0')+';border-radius:8px;padding:4px 8px;font-size:13px;cursor:pointer;flex-shrink:0;">'
+      +(pinned?'📌':'📍')
+      +'</button>'
       +'</div>';
   }).join('');
   return '<div onclick="if(event.target===this){S.ui.showTripSelect=false;render()}" '
@@ -10253,7 +10266,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-05-E";
+var SKIPPER_BUILD="2026-07-05-F";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
