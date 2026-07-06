@@ -423,6 +423,23 @@ input[type=checkbox]{width:auto;accent-color:#1a1a5e;width:16px;height:16px;curs
   .park-day-row{grid-template-columns:48px 1fr;grid-template-rows:auto auto}
   .info-grid{grid-template-columns:1fr}
 }
+.tp-wrap{display:inline-flex;align-items:center;gap:3px;background:#fff;border:1.5px solid #e4e4f0;border-radius:9px;padding:6px 10px;}
+.tp-wrap select.tp-sel{border:none;outline:none;font-family:inherit;font-size:14px;color:#333;background:transparent;cursor:pointer;padding:0 2px;}
+.tp-wrap .tp-sep{font-size:14px;color:#888;font-weight:700;}
+.tp-wrap select.tp-ap{font-weight:800;color:#1a1a5e;}
+.dp-btn{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1.5px solid #e4e4f0;border-radius:9px;padding:9px 12px;font-size:14px;font-family:inherit;color:#333;cursor:pointer;width:100%;text-align:left;box-sizing:border-box;}
+.dp-btn:hover{border-color:#c4b5fd;}
+#cal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center;}
+.cal-pop{background:#fff;border-radius:14px;padding:18px;min-width:280px;box-shadow:0 8px 32px rgba(0,0,0,.18);}
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.cal-nav button{background:none;border:1.5px solid #e4e4f0;border-radius:8px;width:32px;height:32px;font-size:16px;cursor:pointer;font-family:inherit;}
+.cal-nav span{font-size:15px;font-weight:800;color:#1a1a5e;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
+.cal-dow{text-align:center;font-size:10px;font-weight:800;color:#999;padding:4px 0;}
+.cal-day{text-align:center;padding:7px 4px;border-radius:7px;font-size:13px;cursor:pointer;font-weight:600;color:#333;}
+.cal-day:hover{background:#f3f0ff;color:#7c3aed;}
+.cal-sel{background:#1a1a5e!important;color:#FFD700!important;}
+.cal-clear{margin-top:10px;width:100%;background:none;border:1.5px solid #e4e4f0;border-radius:8px;padding:7px;font-size:12px;color:#888;cursor:pointer;font-family:inherit;}
 </style>
 </head>
 <body>
@@ -2032,6 +2049,77 @@ function tmAddUnplanned(date){
   setTimeout(function(){var el=document.getElementById('upl-text');if(el)el.focus();},60);
 }
 function _nowHHMM(){var n=new Date();return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
+function buildTP(id,val,cb){
+  var h=0,m=0,ap='AM';
+  if(val&&/^\d{2}:\d{2}$/.test(val)){var p=val.split(':');h=parseInt(p[0]);m=parseInt(p[1]);ap=h>=12?'PM':'AM';h=h%12||12;}
+  var hrs=Array.from({length:12},function(_,i){return '<option value="'+(i+1)+'"'+(h===i+1?' selected':'')+'>'+(i+1)+'</option>';}).join('');
+  var mins=Array.from({length:60},function(_,i){return '<option value="'+String(i).padStart(2,'0')+'"'+(m===i?' selected':'')+'>'+String(i).padStart(2,'0')+'</option>';}).join('');
+  var safeCb=cb?(';'+cb.replace(/this\.value/g,"document.getElementById('"+id+"').value")):'';
+  var oc="_syncTP('"+id+"')"+safeCb;
+  var ocAttr=oc.replace(/"/g,'&quot;');
+  return '<div class="tp-wrap" data-tp="'+id+'"><select class="tp-sel tp-h" onchange="'+ocAttr+'">'+hrs+'</select><span class="tp-sep">:</span><select class="tp-sel tp-m" onchange="'+ocAttr+'">'+mins+'</select><select class="tp-sel tp-ap" onchange="'+ocAttr+'"><option'+(ap==='AM'?' selected':'')+'>AM</option><option'+(ap==='PM'?' selected':'')+'>PM</option></select><input type="hidden" id="'+id+'" value="'+(val||'')+'"></div>';
+}
+function _syncTP(id){
+  var w=document.querySelector('[data-tp="'+id+'"]');if(!w)return'';
+  var h=parseInt(w.querySelector('.tp-h').value),m=w.querySelector('.tp-m').value,ap=w.querySelector('.tp-ap').value;
+  var h24=ap==='PM'?(h===12?12:h+12):(h===12?0:h);
+  var v=String(h24).padStart(2,'0')+':'+m;
+  var hi=document.getElementById(id);if(hi)hi.value=v;
+  return v;
+}
+var _calState={id:null,year:0,month:0,cb:''};
+function buildDP(id,val,cb){
+  var disp='Select date';
+  if(val&&/^\d{4}-\d{2}-\d{2}$/.test(val)){var d=new Date(val+'T00:00:00');disp=d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+  var safeCb=(cb||'').replace(/"/g,'&quot;');
+  return '<div class="dp-wrap"><button type="button" class="dp-btn" onclick="showCal(\''+id+'\')">📅 '+disp+'</button><input type="hidden" id="'+id+'" value="'+(val||'')+'" data-dp-cb="'+safeCb+'"></div>';
+}
+function showCal(id){
+  var hi=document.getElementById(id);var val=hi?hi.value:'';
+  var now=new Date();var y=now.getFullYear(),m=now.getMonth();
+  if(val&&/^\d{4}-\d{2}-\d{2}$/.test(val)){var d=new Date(val+'T00:00:00');y=d.getFullYear();m=d.getMonth();}
+  _calState={id:id,year:y,month:m,cb:(hi?hi.getAttribute('data-dp-cb'):'')||''};
+  _renderCal();
+}
+function _renderCal(){
+  var months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var y=_calState.year,m=_calState.month;
+  var hi=document.getElementById(_calState.id);var sel=hi?hi.value:'';
+  var first=new Date(y,m,1).getDay(),days=new Date(y,m+1,0).getDate();
+  var cells='';
+  for(var i=0;i<first;i++)cells+='<div></div>';
+  for(var d=1;d<=days;d++){
+    var ds=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    cells+='<div class="cal-day'+(ds===sel?' cal-sel':'')+'" onclick="pickDate(\''+ds+'\')">'+d+'</div>';
+  }
+  var html='<div id="cal-overlay" onclick="if(event.target.id===\'cal-overlay\')hideCal()"><div class="cal-pop"><div class="cal-nav"><button onclick="prevMo()">&#8249;</button><span>'+months[m]+' '+y+'</span><button onclick="nextMo()">&#8250;</button></div><div class="cal-grid"><div class="cal-dow">Su</div><div class="cal-dow">Mo</div><div class="cal-dow">Tu</div><div class="cal-dow">We</div><div class="cal-dow">Th</div><div class="cal-dow">Fr</div><div class="cal-dow">Sa</div>'+cells+'</div><button class="cal-clear" onclick="pickDate(\'\')">&#10005; Clear</button></div></div>';
+  var ex=document.getElementById('cal-overlay');if(ex)ex.remove();
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+function prevMo(){_calState.month--;if(_calState.month<0){_calState.month=11;_calState.year--;}_renderCal();}
+function nextMo(){_calState.month++;if(_calState.month>11){_calState.month=0;_calState.year++;}_renderCal();}
+function hideCal(){var el=document.getElementById('cal-overlay');if(el)el.remove();}
+function pickDate(val){
+  var id=_calState.id;
+  var hi=document.getElementById(id);
+  if(hi){
+    hi.value=val;
+    var wrap=hi.closest('.dp-wrap');
+    if(wrap){
+      var btn=wrap.querySelector('.dp-btn');
+      if(btn){
+        var disp='Select date';
+        if(val&&/^\d{4}-\d{2}-\d{2}$/.test(val)){var d=new Date(val+'T00:00:00');disp=d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+        btn.innerHTML='📅 '+disp;
+      }
+    }
+    var cb=_calState.cb;
+    if(cb){
+      try{eval(cb.replace(/this\.value/g,"'"+val.replace(/'/g,"\\'")+"'"));}catch(e){console.warn('dp cb:',e);}
+    }
+  }
+  hideCal();
+}
 function tmSaveUnplanned(date){
   const t=trip();if(!t)return;
   const txt=(document.getElementById('upl-text')?.value||'').trim();if(!txt)return;
@@ -2185,7 +2273,7 @@ function buildUnplannedCard(e,sel,editKey){
           '<option value="purchase"'+(e.uplType==='purchase'?' selected':'')+'>🛍️ Purchase</option>'+
           '<option value="moment"'+(e.uplType==='moment'?' selected':'')+'>✨ Moment</option>'+
         '</select>'+
-        '<input id="upl-edit-time" type="time" value="'+e.time+'" style="width:110px;padding:9px 8px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">'+
+        buildTP('upl-edit-time',e.time,'')+
       '</div>'+
       '<input id="upl-edit-text" value="'+esc(e.text)+'" placeholder="What happened?" style="width:100%;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;box-sizing:border-box;">'+
       '<div style="display:flex;gap:6px;">'+
@@ -2340,7 +2428,7 @@ function buildTodayLive(t,tm,dates,today){
           <div style="display:flex;gap:6px;">
             <input id="upl-note" placeholder="Quick note (optional)" onkeydown="if(event.key==='Enter')tmSaveUnplanned('${sel}')"
               style="flex:1;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;">
-            <input id="upl-time" type="time" value="${_nowHHMM()}" style="width:110px;padding:10px 8px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">
+            ${buildTP('upl-time',_nowHHMM(),'')}
             <button onclick="tmSaveUnplanned('${sel}')" style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">Save</button>
           </div>
         </div>`:'<div style="font-size:12px;color:#c4b5fd;text-align:center;padding:4px 0;">Tap a type above to log</div>'}
@@ -3176,7 +3264,7 @@ function buildSpendPanel(t) {
         <div style="flex:1;min-width:100px;"><label class="lbl">Note (optional)</label>
           <input type="text" id="spend-note" placeholder="e.g. Dinner at Be Our Guest"></div>
         <div style="flex:0 0 120px;"><label class="lbl">Date</label>
-          <input type="date" id="spend-date" value="${new Date().toISOString().split('T')[0]}"></div>
+          ${buildDP('spend-date',new Date().toISOString().split('T')[0],'')}</div>
         <button class="btn btn-gold btn-sm" style="margin-bottom:2px;" onclick="logSpend('${cat.id}')">Add</button>
         <button class="btn btn-ghost btn-sm" style="margin-bottom:2px;" onclick="S.ui.spendCatId=null;render()">✕</button>
       </div>
@@ -3216,7 +3304,7 @@ function buildCatEditPanel(t) {
         <div class="fg"><label class="lbl">Budgeted Amount</label><input type="number" id="edit-cat-budget" value="${cat.budgeted||0}" min="0"></div>
       </div>
       <div class="form-row">
-        <div class="fg"><label class="lbl">Due Date</label><input type="date" id="edit-cat-due" value="${esc(cat.dueDate||'')}"></div>
+        <div class="fg"><label class="lbl">Due Date</label>${buildDP('edit-cat-due',esc(cat.dueDate||''),'')}</div>
         <div class="fg" style="display:flex;align-items:center;gap:10px;padding-top:20px;">
           <input type="checkbox" id="edit-cat-accounted" ${cat.accountedFor?'checked':''} style="width:16px;height:16px;accent-color:#16a34a;">
           <label for="edit-cat-accounted" class="lbl" style="margin:0;cursor:pointer;">Accounted for in billing tracker</label>
@@ -3246,7 +3334,7 @@ function buildAddCatForm() {
         <div class="fg"><label class="lbl">Budget Amount</label><input type="number" id="cat-budget" placeholder="0" min="0"></div>
       </div>
       <div class="form-row">
-        <div class="fg"><label class="lbl">Due Date</label><input type="date" id="cat-due"></div>
+        <div class="fg"><label class="lbl">Due Date</label>${buildDP('cat-due','','')}</div>
         <div class="fg" style="display:flex;align-items:center;gap:10px;padding-top:20px;">
           <input type="checkbox" id="cat-accounted" style="width:16px;height:16px;accent-color:#16a34a;">
           <label for="cat-accounted" class="lbl" style="margin:0;cursor:pointer;">Accounted for in billing tracker</label>
@@ -3270,8 +3358,7 @@ function buildEETracker(t) {
         <tbody>
           ${entries.map((e,i)=>`
             <tr>
-              <td><input type="date" value="${esc(e.date||'')}" onchange="updateEE(${i},'date',this.value)"
-                style="width:auto;padding:4px 7px;font-size:12px;border:1px solid #e4e4f0;border-radius:6px;font-family:inherit;"></td>
+              <td>${buildDP(`dp-ee-${i}`,esc(e.date||''),`updateEE(${i},'date',this.value)`)}</td>
               <td><select onchange="updateEE(${i},'park',this.value)"
                 style="padding:4px 7px;font-size:12px;border:1px solid #e4e4f0;border-radius:6px;font-family:inherit;width:auto;">
                   <option value="">— Park —</option>
@@ -3760,8 +3847,7 @@ function buildDpModal() {
         
         <div class="dp-row">
           <label class="dp-label">✈️ Flight Departure Time</label>
-          <input class="dp-input" type="time" value="${esc(dp.flightTime)}"
-            onchange="updDpModal('flightTime',this.value)">
+          ${buildTP('tp-dp-flighttime',esc(dp.flightTime),"updDpModal('flightTime',this.value)")}
         </div>
         <div class="dp-row">
           <label class="dp-label">🏛️ Airport</label>
@@ -3928,15 +4014,15 @@ function buildExtraAirLegs(t, dir, idx, sec, members) {
         </div>
         <div class="form-row">
           <div class="fg"><label class="lbl">Depart Date</label>
-            <input type="date" value="${esc(leg.departDate)}" onchange="updExtraLeg('${dir}',${idx},${i},'departDate',this.value)"></div>
+            ${buildDP(`dp-extra-${dir}-${idx}-${i}-dep`,esc(leg.departDate),`updExtraLeg('${dir}',${idx},${i},'departDate',this.value)`)}</div>
           <div class="fg"><label class="lbl">Depart Time</label>
-            <input type="time" value="${esc(leg.departTime)}" onchange="updExtraLeg('${dir}',${idx},${i},'departTime',this.value)"></div>
+            ${buildTP(`tp-extra-${dir}-${idx}-${i}-depart`,esc(leg.departTime),`updExtraLeg('${dir}',${idx},${i},'departTime',this.value)`)}</div>
         </div>
         <div class="form-row">
           <div class="fg"><label class="lbl">Arrive Date</label>
-            <input type="date" value="${esc(leg.arriveDate)}" onchange="updExtraLeg('${dir}',${idx},${i},'arriveDate',this.value)"></div>
+            ${buildDP(`dp-extra-${dir}-${idx}-${i}-arr`,esc(leg.arriveDate),`updExtraLeg('${dir}',${idx},${i},'arriveDate',this.value)`)}</div>
           <div class="fg"><label class="lbl">Arrive Time</label>
-            <input type="time" value="${esc(leg.arriveTime)}" onchange="updExtraLeg('${dir}',${idx},${i},'arriveTime',this.value)"></div>
+            ${buildTP(`tp-extra-${dir}-${idx}-${i}-arrive`,esc(leg.arriveTime),`updExtraLeg('${dir}',${idx},${i},'arriveTime',this.value)`)}</div>
         </div>
         <div class="form-row">
           <div class="fg"><label class="lbl">Seat</label>
@@ -4142,17 +4228,15 @@ function buildAirLegs(t, dir, sec) {
         </div>
         <div class="form-row">
           <div class="fg"><label class="lbl">Depart Date</label>
-            <input type="date" value="${esc(leg.departDate)}"
-              onchange="updLeg('${dir}',${i},'departDate',this.value)"></div>
+            ${buildDP(`dp-leg-${dir}-${i}-dep`,esc(leg.departDate),`updLeg('${dir}',${i},'departDate',this.value)`)}</div>
           <div class="fg"><label class="lbl">Depart Time</label>
-            <input type="time" value="${esc(leg.departTime)}" onchange="updLeg('${dir}',${i},'departTime',this.value)"></div>
+            ${buildTP(`tp-leg-${dir}-${i}-depart`,esc(leg.departTime),`updLeg('${dir}',${i},'departTime',this.value)`)}</div>
         </div>
         <div class="form-row">
           <div class="fg"><label class="lbl">Arrive Date</label>
-            <input type="date" value="${esc(leg.arriveDate)}"
-              onchange="updLeg('${dir}',${i},'arriveDate',this.value)"></div>
+            ${buildDP(`dp-leg-${dir}-${i}-arr`,esc(leg.arriveDate),`updLeg('${dir}',${i},'arriveDate',this.value)`)}</div>
           <div class="fg"><label class="lbl">Arrive Time</label>
-            <input type="time" value="${esc(leg.arriveTime)}" onchange="updLeg('${dir}',${i},'arriveTime',this.value)"></div>
+            ${buildTP(`tp-leg-${dir}-${i}-arrive`,esc(leg.arriveTime),`updLeg('${dir}',${i},'arriveTime',this.value)`)}</div>
         </div>
         <div class="form-row">
           <div class="fg"><label class="lbl">Seat Info (optional)</label>
@@ -4179,10 +4263,9 @@ function buildDriveForm(t, dir, sec) {
       <input type="text" value="${esc(sec.destAddress)}" placeholder="e.g. Walt Disney World, Orlando FL" onchange="updTransField('${dir}','destAddress',this.value)"></div>
     <div class="form-row">
       <div class="fg"><label class="lbl">Departure Date</label>
-        <input type="date" value="${esc(sec.departDate)}" min="${dr.min}" max="${dr.max}"
-          onchange="updTransField('${dir}','departDate',this.value)"></div>
+        ${buildDP(`dp-drive-${dir}-dep`,esc(sec.departDate),`updTransField('${dir}','departDate',this.value)`)}</div>
       <div class="fg"><label class="lbl">Departure Time</label>
-        <input type="time" value="${esc(sec.departTime)}" onchange="updTransField('${dir}','departTime',this.value)"></div>
+        ${buildTP(`tp-drive-${dir}-depart`,esc(sec.departTime),`updTransField('${dir}','departTime',this.value)`)}</div>
     </div>
     <div class="fg"><label class="lbl">Estimated Drive Time</label>
       ${buildDurationSelect(sec.driveTime, 24, `updTransField('${dir}','driveTime',this.value)`)}
@@ -4211,17 +4294,15 @@ function buildTrainLegs(t, dir, sec) {
         </div>
         <div class="form-row">
           <div class="fg"><label class="lbl">Depart Date</label>
-            <input type="date" value="${esc(leg.departDate)}" min="${dr.min}" max="${dr.max}"
-              onchange="updLeg('${dir}',${i},'departDate',this.value)"></div>
+            ${buildDP(`dp-train-${dir}-${i}-dep`,esc(leg.departDate),`updLeg('${dir}',${i},'departDate',this.value)`)}</div>
           <div class="fg"><label class="lbl">Depart Time</label>
-            <input type="time" value="${esc(leg.departTime)}" onchange="updLeg('${dir}',${i},'departTime',this.value)"></div>
+            ${buildTP(`tp-train-${dir}-${i}-depart`,esc(leg.departTime),`updLeg('${dir}',${i},'departTime',this.value)`)}</div>
         </div>
         <div class="form-row">
           <div class="fg"><label class="lbl">Arrive Date</label>
-            <input type="date" value="${esc(leg.arriveDate)}" min="${dr.min}"
-              onchange="updLeg('${dir}',${i},'arriveDate',this.value)"></div>
+            ${buildDP(`dp-train-${dir}-${i}-arr`,esc(leg.arriveDate),`updLeg('${dir}',${i},'arriveDate',this.value)`)}</div>
           <div class="fg"><label class="lbl">Arrive Time</label>
-            <input type="time" value="${esc(leg.arriveTime)}" onchange="updLeg('${dir}',${i},'arriveTime',this.value)"></div>
+            ${buildTP(`tp-train-${dir}-${i}-arrive`,esc(leg.arriveTime),`updLeg('${dir}',${i},'arriveTime',this.value)`)}</div>
         </div>
       </div>`).join('')}
     <button class="btn-dashed" style="margin-top:10px;" onclick="addLeg('${dir}')">＋ Add Connection / Transfer</button>`;
@@ -4235,9 +4316,15 @@ function buildGroundSection(t, key, title) {
   const isRental = g.option === 'Rental Car';
   const estMins = parseInt(g.estTime) || 0;
   const sym = curSym(t);
+  const displayTitle = (t.transportation[key+'Title']) || title;
+  const editKey = 'groundTitle_'+key;
+  const isEditing = S.ui.editingKey === editKey;
+  const titleHtml = isEditing
+    ? `<input id="gt-title-${key}" value="${esc(displayTitle)}" style="font-size:15px;font-weight:900;color:#1a1a5e;border:none;border-bottom:2px solid #7c3aed;outline:none;background:transparent;font-family:inherit;width:200px;" onkeydown="if(event.key==='Enter')saveGroundTitle('${key}')"> <button onclick="saveGroundTitle('${key}')" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit;">✓</button>`
+    : `<span>${esc(displayTitle)}</span> <button onclick="S.ui.editingKey='${editKey}';render()" style="background:none;border:none;font-size:12px;color:#999;cursor:pointer;">✎</button>`;
   return `
     <div class="card">
-      <div class="card-header">${title}</div>
+      <div class="card-header">${titleHtml}</div>
       <div class="fg">
         <label class="lbl">Transport Option</label>
         <div class="toggle-group">
@@ -4269,6 +4356,13 @@ function buildGroundSection(t, key, title) {
         </div>
       </div>
     </div>`;
+}
+function saveGroundTitle(dir){
+  var t=trip();if(!t)return;
+  t.transportation=t.transportation||{};
+  t.transportation[dir+'Title']=(document.getElementById('gt-title-'+dir)?document.getElementById('gt-title-'+dir).value:'').trim()||null;
+  S.ui.editingKey=null;
+  persist();render();
 }
 
 function fmtTime(totalMins) {
@@ -5135,10 +5229,7 @@ function buildEEChip(dayExtras, park, i) {
     + 'title="🌅 Magic Morning — 30 min before park open · Disney Resort guests">'
     + '🌅 Magic Morning'+(dayExtras.earlyEntry?' · '+fmt12(eeTime):'')+'</span>';
   if (dayExtras.earlyEntry) {
-    html += '<input type="time" value="'+eeTime+'" '
-      + 'onchange="updDayExtra('+i+',\'earlyEntryTime\',this.value)" '
-      + 'title="Override Magic Morning time" '
-      + 'style="padding:3px 7px;border:1px solid #fde68a;border-radius:6px;font-family:inherit;font-size:11px;font-weight:700;color:#92400e;background:#fffbeb;width:90px;">';
+    html += buildTP('tp-dayextra-'+i+'-early',eeTime,'updDayExtra('+i+',\'earlyEntryTime\',this.value)');
   }
   return html;
 }
@@ -5156,9 +5247,7 @@ function buildEEHChip(dayExtras, park, dateStr, i) {
     + 'style="background:'+(on?'#0c4a6e':'#f0f9ff')+';color:'+(on?'#7dd3fc':'#0369a1')+';border-color:'+(on?'#0369a1':'#bae6fd')+';">'
     + '✨ '+label+(on?' · '+fmt12(start):'')+'</span>';
   if (on) {
-    html += '<input type="time" value="'+start+'" '
-      + 'onchange="updDayExtra('+i+',\'bonusHoursStart\',this.value)" '
-      + 'style="padding:3px 7px;border:1px solid #bae6fd;border-radius:6px;font-family:inherit;font-size:11px;font-weight:700;color:#0369a1;background:#f0f9ff;width:90px;">';
+    html += buildTP('tp-dayextra-'+i+'-bonus',start,'updDayExtra('+i+',\'bonusHoursStart\',this.value)');
     if (eeh && eeh.end) {
       html += '<span style="font-size:10px;color:#0369a1;font-weight:700;">→ '+fmt12(eeh.end)+'</span>';
     }
@@ -5430,10 +5519,8 @@ function buildDiningSection(t) {
             <tr>
               <td><input type="text" value="${esc(r.restaurant)}" placeholder="Restaurant name" onchange="updDining(${i},'restaurant',this.value)"
                 style="width:100%;padding:4px 7px;font-size:12px;border:1px solid #e4e4f0;border-radius:6px;font-family:inherit;min-width:130px;"></td>
-              <td><input type="date" value="${esc(r.date)}" onchange="updDining(${i},'date',this.value)"
-                style="padding:4px 7px;font-size:12px;border:1px solid #e4e4f0;border-radius:6px;font-family:inherit;width:auto;"></td>
-              <td><input type="time" value="${esc(r.time)}" onchange="updDining(${i},'time',this.value)"
-                style="padding:4px 7px;font-size:12px;border:1px solid #e4e4f0;border-radius:6px;font-family:inherit;width:auto;"></td>
+              <td>${buildDP(`dp-dining-${i}`,esc(r.date),`updDining(${i},'date',this.value)`)}</td>
+              <td>${buildTP(`tp-dining-${i}`,esc(r.time),`updDining(${i},'time',this.value)`)}</td>
               <td><input type="number" value="${esc(r.partySize)}" placeholder="—" min="1" max="20" onchange="updDining(${i},'partySize',this.value)"
                 style="width:52px;padding:4px 7px;font-size:12px;border:1px solid #e4e4f0;border-radius:6px;font-family:inherit;text-align:center;"></td>
               <td><input type="text" value="${esc(r.confirmNum)}" placeholder="—" onchange="updDining(${i},'confirmNum',this.value)"
@@ -5875,10 +5962,7 @@ function buildMealsSection(day, i, t) {
           onchange="updMeal(${i},'${mt.key}','adrBooked',this.checked)"
           style="width:14px;height:14px;accent-color:#16a34a;cursor:pointer;">
         <span style="font-size:11px;font-weight:700;color:#${adrBooked?'15803d':'aaa'};">ADR</span>
-        <input type="time" value="${esc(adrTime)}"
-          onchange="updMeal(${i},'${mt.key}','adrTime',this.value)"
-          title="ADR reservation time"
-          style="padding:2px 6px;border:1px solid #e4e4f0;border-radius:5px;font-size:11px;font-family:inherit;color:#555;width:auto;">
+        ${buildTP(`tp-meal-${i}-${mt.key}`,esc(adrTime),`updMeal(${i},'${mt.key}','adrTime',this.value)`)}
         <input type="text" value="${esc(adrConfNum)}" placeholder="Conf # (optional)"
           onchange="updMeal(${i},'${mt.key}','adrConfNum',this.value)"
           style="flex:1;padding:2px 7px;border:1px solid #e4e4f0;border-radius:5px;font-size:11px;font-family:inherit;max-width:150px;">
@@ -6177,8 +6261,7 @@ function buildActivityDayRow(day, i, t) {
             <div style="font-size:12px;font-weight:800;color:#0369a1;margin-bottom:8px;">🕐 When Do I Leave?</div>
             <div class="form-row" style="margin-bottom:8px;">
               <div class="fg"><label class="lbl">What time does your excursion start?</label>
-                <input type="time" value="${esc(day.exStartTime||'')}"
-                  onchange="updActivityDay(${i},'exStartTime',this.value);calcOffsiteLeaveTime(${i})"></div>
+                ${buildTP(`tp-activity-${i}`,esc(day.exStartTime||''),`updActivityDay(${i},'exStartTime',this.value);calcOffsiteLeaveTime(${i})`)}</div>
               <div class="fg"><label class="lbl">Drive time from Aulani</label>
                 <select onchange="updActivityDay(${i},'exDriveMin',parseInt(this.value));calcOffsiteLeaveTime(${i})">
                   <option value="">— Select —</option>
@@ -7931,7 +8014,7 @@ function buildRunOfShow(t) {
         <div class="ros-manual-form">
           <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
             <div style="flex:0 0 90px;"><label class="lbl" style="font-size:10px;">Time</label>
-              <input type="time" id="ros-time-${date}" style="padding:5px 7px;border:1px solid #e4e4f0;border-radius:6px;font-size:12px;font-family:inherit;width:100%;"></div>
+              ${buildTP(`ros-time-${date}`,'','')}</div>
             <div style="flex:0 0 auto;position:relative;"><label class="lbl" style="font-size:10px;">Icon</label>
               <input type="hidden" id="ros-icon-${date}" value="📌">
               <button type="button" id="ros-icon-btn-${date}"
@@ -8061,6 +8144,58 @@ function buildLockBtn(locked, toggleFn, label) {
     + 'color:'+(locked?'#FFD700':'#999')+';font-weight:700;display:flex;align-items:center;gap:6px;transition:all .15s;">'
     + icon + ' ' + txt + ' ' + label + '</button>';
 }
+function buildTickets(t){
+  const tickets=(t.tickets||[]);
+  const rows=tickets.map(function(tk,i){
+    const isImg=tk.mime&&tk.mime.startsWith('image/');
+    const isPdf=tk.mime==='application/pdf';
+    return '<div style="border:1.5px solid #e4e4f0;border-radius:11px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:8px;">'
+      +'<div style="display:flex;align-items:center;gap:8px;">'
+      +'<span style="font-size:20px;">'+(isImg?'🖼️':isPdf?'📄':'📎')+'</span>'
+      +'<div style="flex:1;min-width:0;">'
+      +'<div style="font-size:14px;font-weight:700;color:#1a1a5e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(tk.name)+'</div>'
+      +'<div style="font-size:11px;color:#999;">'+(tk.category||'General')+'</div>'
+      +'</div>'
+      +'<button onclick="deleteTicket('+i+')" style="background:none;border:1px solid #fee;color:#fca5a5;border-radius:8px;padding:4px 9px;font-size:11px;cursor:pointer;font-family:inherit;">del</button>'
+      +'</div>'
+      +(isImg?'<img src="'+tk.data+'" style="width:100%;border-radius:9px;max-height:220px;object-fit:contain;background:#f9f9f9;" />':'')
+      +(isPdf?'<a href="'+tk.data+'" download="'+esc(tk.name)+'" style="display:inline-block;background:#f3f0ff;color:#7c3aed;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:700;text-decoration:none;">⬇ Download PDF</a>':'')
+      +'</div>';
+  }).join('');
+  const cats=['Park Tickets','Hotel','Boarding Pass','Train','Rental','Other'];
+  const catBtns=cats.map(function(c){
+    const a=S.ui.ticketCat===c;
+    return '<button onclick="S.ui.ticketCat=\''+c+'\';render()" style="padding:5px 10px;background:'+(a?'#7c3aed':'#fff')+';color:'+(a?'#fff':'#7c3aed')+';border:1.5px solid #c4b5fd;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">'+c+'</button>';
+  }).join('');
+  return '<div style="display:flex;flex-direction:column;gap:10px;">'
+    +(rows||'<div style="text-align:center;color:#bbb;padding:20px;font-size:13px;">No tickets uploaded yet — add your park tickets, hotel confirmations, boarding passes, etc.</div>')
+    +'<div class="card" style="border:2px dashed #c4b5fd;background:#faf5ff;padding:14px;">'
+    +'<div style="font-size:13px;font-weight:800;color:#7c3aed;margin-bottom:8px;">+ Add Ticket / Document</div>'
+    +'<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">'+catBtns+'</div>'
+    +'<label style="display:flex;align-items:center;gap:10px;padding:12px;border:1.5px dashed #c4b5fd;border-radius:9px;cursor:pointer;background:#fff;">'
+    +'<span style="font-size:22px;">📎</span>'
+    +'<span style="font-size:13px;color:#888;">Tap to select image or PDF</span>'
+    +'<input type="file" accept="image/*,.pdf" style="display:none;" onchange="uploadTicket(this,\''+(S.ui.ticketCat||'General')+'\')">'
+    +'</label>'
+    +'</div>'
+    +'</div>';
+}
+function uploadTicket(input,category){
+  var t=trip();if(!t||!input.files.length)return;
+  var file=input.files[0];
+  var reader=new FileReader();
+  reader.onload=function(e){
+    t.tickets=t.tickets||[];
+    t.tickets.push({id:uid(),name:file.name,mime:file.type,data:e.target.result,category:category,createdAt:Date.now()});
+    persist();render();
+  };
+  reader.readAsDataURL(file);
+}
+function deleteTicket(i){
+  var t=trip();if(!t||!t.tickets)return;
+  t.tickets.splice(i,1);
+  persist();render();
+}
 function buildHotel(t) {
   const legs = t.hotelLegs || [];
   const resortList = t.tripType === 'aulani' ? AULANI_RESORTS : t.tripType === 'dlp' ? DLP_RESORTS : DISNEY_RESORTS;
@@ -8119,16 +8254,13 @@ function buildHotel(t) {
           </div>
           <div class="form-row">
             <div class="fg"><label class="lbl">Check-In Date</label>
-              <input type="date" value="${esc(leg.checkInDate)}" max="${t.endDate||''}"
-                onchange="updHotelLeg(${li},'checkInDate',this.value)"></div>
+              ${buildDP(`dp-hotel-${li}-checkin`,esc(leg.checkInDate),`updHotelLeg(${li},'checkInDate',this.value)`)}</div>
             <div class="fg"><label class="lbl">Check-In Time</label>
-              <input type="time" value="${esc(leg.checkInTime||'14:00')}"
-                onchange="updHotelLeg(${li},'checkInTime',this.value)"></div>
+              ${buildTP(`tp-hotel-${li}-checkin`,esc(leg.checkInTime||'14:00'),`updHotelLeg(${li},'checkInTime',this.value)`)}</div>
           </div>
           <div class="form-row">
             <div class="fg"><label class="lbl">Check-Out Date</label>
-              <input type="date" value="${esc(leg.checkOutDate)}" max="${t.endDate||''}"
-                onchange="updHotelLeg(${li},'checkOutDate',this.value)"></div>
+              ${buildDP(`dp-hotel-${li}-checkout`,esc(leg.checkOutDate),`updHotelLeg(${li},'checkOutDate',this.value)`)}</div>
             <div class="fg"><label class="lbl">Confirmation #</label>
               <input type="text" value="${esc(leg.confirmationNum)}" placeholder="e.g. 8675309"
                 onchange="updHotelLeg(${li},'confirmationNum',this.value)"></div>
@@ -8181,6 +8313,11 @@ function buildHotel(t) {
           </div>`).join('')}
       </div>
     </div>` : ''}
+
+    <div class="card">
+      <div style="font-size:13px;font-weight:800;color:#1a1a5e;margin-bottom:10px;">🎫 Tickets &amp; Documents</div>
+      ${buildTickets(t)}
+    </div>
   `;
 }
 
@@ -8238,9 +8375,9 @@ function buildSettings(t) {
         <input type="text" value="${esc(t.name)}" onchange="patchTrip({name:this.value})"></div>
       <div class="form-row">
         <div class="fg"><label class="lbl">Start Date</label>
-          <input type="date" value="${t.startDate}" onchange="updateDates('startDate',this.value)"></div>
+          ${buildDP('dp-trip-start',t.startDate,"updateDates('startDate',this.value)")}</div>
         <div class="fg"><label class="lbl">End Date</label>
-          <input type="date" value="${t.endDate}" onchange="updateDates('endDate',this.value)"></div>
+          ${buildDP('dp-trip-end',t.endDate,"updateDates('endDate',this.value)")}</div>
       </div>
       <div class="fg"><label class="lbl">Park Days</label>
         <input type="number" value="${t.parkDays}" min="0" max="30" onchange="updateParkDaysCount(parseInt(this.value)||0)"></div>
@@ -8345,9 +8482,9 @@ function buildSettings(t) {
         </div>
         <div class="form-row">
           <div class="fg"><label class="lbl">⚓ Embarkation Date</label>
-            <input type="date" value="${t.cruiseStartDate||''}" max="${t.endDate||''}" onchange="patchTrip({cruiseStartDate:this.value})"></div>
+            ${buildDP('dp-cruise-start',t.cruiseStartDate||'',"patchTrip({cruiseStartDate:this.value})")}</div>
           <div class="fg"><label class="lbl">🏁 Disembarkation Date</label>
-            <input type="date" value="${t.cruiseEndDate||''}" max="${t.endDate||''}" onchange="patchTrip({cruiseEndDate:this.value})"></div>
+            ${buildDP('dp-cruise-end',t.cruiseEndDate||'',"patchTrip({cruiseEndDate:this.value})")}</div>
         </div>` : ''}
     </div>
 
