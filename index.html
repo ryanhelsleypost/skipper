@@ -1339,13 +1339,9 @@ function esc(s) {
 }
 
 function buildApp() {
-  // Trip selector screen — shown when no trip is selected or user chose to switch
-  if (S.ui.showTripSelect || !S.currentTripId) {
-    return buildTripSelect();
-  }
-
+  // No trip at all → must show selector (no overlay possible)
   const t = trip();
-  if (!t) {
+  if (!t || !S.currentTripId) {
     return buildTripSelect();
   }
 
@@ -1376,9 +1372,49 @@ function buildApp() {
     ${S.dpModal.open ? buildDpModal() : ''}
     ${buildUpcomingReminder(t)}
     ${S.ui.feedbackOpen ? buildFeedbackModal() : ''}
+    ${S.ui.showTripSelect ? buildTripSelectOverlay() : ''}
     ${S.ui.tourActive ? buildTourOverlay() : ''}
     ${settingsOverlay}
   `;
+}
+
+function buildTripSelectOverlay() {
+  const trips = S.trips || [];
+  const cards = trips.map(function(t) {
+    const start = t.startDate ? new Date(t.startDate+'T00:00:00') : null;
+    const end   = t.endDate   ? new Date(t.endDate+'T00:00:00')   : null;
+    const now   = new Date();
+    const days  = start ? Math.ceil((start - now) / 86400000) : null;
+    const countdown = days===null?'': days>0
+      ? '<span style="background:#fef9c3;color:#854d0e;font-size:11px;font-weight:800;padding:2px 8px;border-radius:10px;">'+days+'d away</span>'
+      : days===0
+      ? '<span style="background:#dcfce7;color:#166534;font-size:11px;font-weight:800;padding:2px 8px;border-radius:10px;">TODAY!</span>'
+      : '<span style="font-size:11px;color:#aaa;">ended</span>';
+    const dateStr = start ? start.toLocaleDateString('en-US',{month:'short',day:'numeric'})+(end?' – '+end.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'') : 'Dates not set';
+    const active  = t.id === S.currentTripId;
+    return '<div onclick="S.currentTripId=\''+t.id+'\';S.ui.showTripSelect=false;S.tab=\'today\';render()" '
+      +'style="background:'+(active?'#f5f3ff':'#fff')+';border:1.5px solid '+(active?'#c4b5fd':'#e4e4f0')+';border-radius:12px;padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;">'
+      +'<div style="flex:1;min-width:0;">'
+      +'<div style="font-size:15px;font-weight:900;color:#1a1a5e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(t.name||'Unnamed Trip')+'</div>'
+      +'<div style="font-size:12px;color:#666;margin-top:1px;">'+(t.destination?esc(t.destination)+' · ':'')+dateStr+'</div>'
+      +'</div>'
+      +countdown
+      +(active?'<span style="color:#7c3aed;font-size:16px;">✓</span>':'')
+      +'</div>';
+  }).join('');
+  return '<div onclick="if(event.target===this){S.ui.showTripSelect=false;render()}" '
+    +'style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-end;">'
+    +'<div style="width:100%;max-height:80vh;background:#fff;border-radius:20px 20px 0 0;overflow-y:auto;padding:20px;">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">'
+    +'<div style="font-size:17px;font-weight:900;color:#1a1a5e;">Switch Trip</div>'
+    +'<button onclick="S.ui.showTripSelect=false;render()" style="background:none;border:none;font-size:22px;color:#888;cursor:pointer;line-height:1;">×</button>'
+    +'</div>'
+    +'<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">'
+    +(cards||'<div style="text-align:center;color:#bbb;padding:20px;font-size:13px;">No trips yet</div>')
+    +'</div>'
+    +'<button onclick="openWizard()" style="width:100%;padding:14px;background:#1a1a5e;color:#FFD700;border:none;border-radius:12px;font-size:15px;font-weight:900;cursor:pointer;font-family:inherit;">＋ New Trip</button>'
+    +'</div>'
+    +'</div>';
 }
 
 function buildTripSelect() {
@@ -10189,7 +10225,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-05-A";
+var SKIPPER_BUILD="2026-07-05-B";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
