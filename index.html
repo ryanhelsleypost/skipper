@@ -1450,27 +1450,44 @@ function buildTripSelect() {
 
 function buildHeader(t) {
   const start = t.startDate ? new Date(t.startDate+'T00:00:00') : null;
-  const now = new Date();
-  const days = start ? Math.ceil((start - now) / 86400000) : null;
-  let badge = '';
+  const end   = t.endDate   ? new Date(t.endDate+'T00:00:00')   : null;
+  const now   = new Date();
+  const days  = start ? Math.ceil((start - now) / 86400000) : null;
+
+  let countdownLine = '';
   if (days !== null) {
-    if (days > 0) badge = '<span style="background:#FFD700;color:#1a1a5e;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:900;">'+days+'d away</span>';
-    else if (days === 0) badge = '<span style="background:#16a34a;color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:900;">TODAY!</span>';
+    if (days > 1)        countdownLine = '<span style="color:#FFD700;font-size:12px;font-weight:800;">&#9992;&#65039; '+days+' days to go</span>';
+    else if (days === 1) countdownLine = '<span style="color:#FFD700;font-size:12px;font-weight:800;">&#9992;&#65039; Tomorrow!</span>';
+    else if (days === 0) countdownLine = '<span style="background:#16a34a;color:#fff;font-size:11px;font-weight:900;padding:2px 8px;border-radius:10px;">&#127881; TODAY!</span>';
     else {
       const tripDay = Math.abs(days) + 1;
-      badge = '<span style="background:#7c3aed;color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:900;">Day '+tripDay+'</span>';
+      const totalDays = (start && end) ? Math.ceil((end - start) / 86400000) + 1 : null;
+      countdownLine = '<span style="background:#7c3aed;color:#fff;font-size:11px;font-weight:900;padding:2px 8px;border-radius:10px;">Day '+tripDay+(totalDays?' of '+totalDays:'')+'</span>';
     }
   }
-  return '<div style="background:#1a1a5e;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2);">'
-    + '<button onclick="S.ui.showTripSelect=true;render()" style="background:none;border:none;color:rgba(255,255,255,.8);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0;">'
-    + '&#8249; <span style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(t.name||'Trip')+'</span>'
+
+  const dateStr = start
+    ? start.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+      + (end ? ' &#8211; '+end.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '')
+    : '';
+
+  return '<div style="background:#1a1a5e;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2);">'
+    + '<div style="padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">'
+    + '<button onclick="S.ui.showTripSelect=true;render()" style="background:none;border:none;color:#fff;font-size:15px;font-weight:900;cursor:pointer;font-family:inherit;padding:0;text-align:left;flex:1;min-width:0;display:flex;align-items:center;gap:5px;">'
+    + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(t.name||'Trip')+'</span>'
+    + '<span style="color:rgba(255,255,255,.45);font-size:12px;flex-shrink:0;">&#9660;</span>'
     + '</button>'
-    + '<div style="display:flex;align-items:center;gap:8px;">'
-    + badge
+    + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
     + '<button onclick="openSyncModal()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#FFD700;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">&#9729; Sync</button>'
-    + '<button onclick="S.ui.feedbackOpen=true;render()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#FFD700;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">&#128172;</button>'
-    + '<button onclick="S.ui.settingsOpen=!S.ui.settingsOpen;render()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:6px 9px;color:#fff;font-size:15px;cursor:pointer;">&#9881;&#65039;</button>'
+    + '<button onclick="S.ui.settingsOpen=!S.ui.settingsOpen;render()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fff;font-size:15px;cursor:pointer;">&#9881;&#65039;</button>'
     + '</div>'
+    + '</div>'
+    + ((dateStr || countdownLine)
+      ? '<div style="padding:0 14px 8px;display:flex;align-items:center;justify-content:space-between;gap:8px;">'
+        + '<div style="font-size:11.5px;color:rgba(255,255,255,.6);font-weight:600;">'+dateStr+'</div>'
+        + '<div>'+countdownLine+'</div>'
+        + '</div>'
+      : '')
     + '</div>';
 }
 
@@ -10225,7 +10242,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-05-B";
+var SKIPPER_BUILD="2026-07-05-C";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
