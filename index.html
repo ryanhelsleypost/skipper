@@ -1849,8 +1849,8 @@ function qtFetch(parkKey){
   function handle(d){
     delete _QT.pending[parkKey];
     const rides=[];
-    (d.lands||[]).forEach(function(l){(l.rides||[]).forEach(function(r){rides.push(r);});});
-    (d.rides||[]).forEach(function(r){rides.push(r);});
+    (d.lands||[]).forEach(function(l){(l.rides||[]).forEach(function(r){rides.push(Object.assign({},r,{land:r.land||l.name||'Other'}));});});
+    (d.rides||[]).forEach(function(r){rides.push(Object.assign({},r,{land:r.land||'Other'}));});
     _QT.cache[parkKey]=rides;_QT.fetchedAt[parkKey]=Date.now();
     render();
   }
@@ -2742,7 +2742,7 @@ function buildTodayLive(t,tm,dates,today){
           '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">'+
             '<input id="tm-cash-label" placeholder="or type…" style="flex:1;min-width:80px;padding:10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">'+
             '<span style="font-size:13px;color:#888;">$</span>'+
-            '<input id="tm-cash-amt-b" type="number" inputmode="decimal" step="0.01" min="0" onkeydown="if(event.key===\'Enter\')tmSaveQuickB(\''+sel+'\')" style="width:80px;padding:10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">'+
+            '<input id="tm-cash-amt-b" type="number" inputmode="numeric" step="1" min="0" onkeydown="if(event.key===\'Enter\')tmSaveQuickB(\''+sel+'\')" style="width:80px;padding:10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">'+
             '<select id="tm-cash-cat" style="padding:10px 6px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:130px;">'+(catOpts(foodId))+'</select>'+
             '<button onclick="tmSaveQuickB(\''+sel+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:10px 16px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">Log it</button>'+
           '</div>';
@@ -10456,7 +10456,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-05-H";
+var SKIPPER_BUILD="2026-07-05-J";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
