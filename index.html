@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>✨ Skipper Tripper v1.0</title>
-<link rel="icon" href="data:,">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%231a1a5e'/><text y='78' x='50' text-anchor='middle' font-size='65'>⭐</text></svg>">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='40' fill='%231a1a5e'/><text y='138' x='90' text-anchor='middle' font-size='110'>⭐</text></svg>">
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2157,7 +2158,7 @@ function tmGuessCat(t,e){
 }
 function tmSaveCash(date,eKey,entryText){
   const t=trip();if(!t)return;
-  const amt=parseFloat(document.getElementById('tm-cash-amt')?.value);
+  const amt=Math.round(parseFloat(document.getElementById('tm-cash-amt')?.value)||0);
   const catId=document.getElementById('tm-cash-cat')?.value;
   if(isNaN(amt)){S.ui.todayCash=null;render();return;}
   const c=(((t.budget||{}).categories)||[]).find(cc=>cc.id===catId)||(((t.budget||{}).categories)||[])[0];
@@ -2171,9 +2172,32 @@ function tmSaveCash(date,eKey,entryText){
 }
 function tmQuickSpend(date){S.ui.todayCash=date+'||__quick__';S.ui.todayNote=null;render();
   setTimeout(function(){var el=document.getElementById('tm-cash-amt');if(el)el.focus();},60);}
+function geoDetect(){
+  S.ui.geoAsked=true;render();
+  if(!navigator.geolocation)return;
+  navigator.geolocation.getCurrentPosition(function(pos){
+    var lat=pos.coords.latitude,lng=pos.coords.longitude;
+    // Park coords: compare distance squared
+    var parks={
+      mk:[28.4177,-81.5812],ep:[28.3747,-81.5494],hs:[28.3575,-81.5583],ak:[28.3553,-81.5900],
+      dl:[33.8121,-117.9190],dca:[33.8093,-117.9190],
+      dp:[48.8677,2.7801],daw:[48.8685,2.7812]
+    };
+    var closest=null,minD=Infinity;
+    Object.keys(parks).forEach(function(k){
+      var p=parks[k];
+      var d=(lat-p[0])*(lat-p[0])+(lng-p[1])*(lng-p[1]);
+      if(d<minD){minD=d;closest=k;}
+    });
+    // Only use if actually close to a Disney park (within ~20km)
+    if(minD<0.05){S.ui.geopark=closest;}
+    else{S.ui.geopark=null;}
+    render();
+  },function(){S.ui.geopark=null;render();},{timeout:8000});
+}
 function tmSaveQuickB(date){
   const t=trip();if(!t)return;
-  const amt=parseFloat(document.getElementById('tm-cash-amt-b')?.value);
+  const amt=Math.round(parseFloat(document.getElementById('tm-cash-amt-b')?.value)||0);
   const catId=document.getElementById('tm-cash-cat')?.value;
   const label=(document.getElementById('tm-cash-label')?.value||'').trim()||'Quick spend';
   if(!amt){return;}
@@ -2569,7 +2593,11 @@ function buildTodayLive(t,tm,dates,today){
   }
   const doneCount=entries.filter(function(e){const k=e.id||(e.cls+'|'+e.text);return (journal[k]||{}).done;}).length;
   const parkDay=(t.parks||[]).find(function(d){return d.date===sel;});
-  const parkLbl=parkDay&&parkDay.park&&parkDay.park!=='rest'&&parkDay.park!=='unassigned'?parkName(parkDay.park):'';
+  // Show primary park even on travel days, plus hops
+  const _primaryPark=parkDay&&parkDay.park&&parkDay.park!=='rest'&&parkDay.park!=='unassigned'?parkDay.park:null;
+  const _hops=(parkDay&&parkDay.parkHops||[]).filter(function(p){return p&&p!=='rest'&&p!=='unassigned';});
+  const _allParks=[_primaryPark].concat(_hops).filter(Boolean);
+  const parkLbl=_allParks.length>0?_allParks.map(parkName).join(' + '):(parkDay&&parkDay.park==='travel'?'✈️ Travel Day':parkDay&&parkDay.park==='rest'?'😴 Rest Day':'');
   const dayNum=parkDay&&parkDay.dayNum?('Day '+parkDay.dayNum):('Day '+(di+1));
   const dateLbl=new Date(sel+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
   const spentToday=onTripSpent(t,sel);
@@ -2623,7 +2651,7 @@ function buildTodayLive(t,tm,dates,today){
       </div>`:''}
       ${cashOpen?`<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
         <span style="font-size:12px;color:#888;">actual $</span>
-        <input id="tm-cash-amt" type="number" step="0.01" min="0" value="${j.actual!=null?j.actual:(e.est||'')}"
+        <input id="tm-cash-amt" type="number" step="1" min="0" value="${j.actual!=null?j.actual:(e.est||'')}"
           onkeydown="if(event.key==='Enter')tmSaveCash('${sel}','${kAttr}','${txtAttr}')"
           style="width:90px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">
         <select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:150px;">${catOpts((tmGuessCat(t,e)||{}).id)}</select>
@@ -2708,7 +2736,7 @@ function buildTodayLive(t,tm,dates,today){
         const merchId=(cats.find(function(c){return /merch/i.test(c.name||'');})||{}).id||'';
         const extrasId=(cats.find(function(c){return /extras/i.test(c.name||'');})||{}).id||'';
         return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'+
-          [['🥐 Churro',foodId],['🍦 Ice Cream',foodId],['🥤 Drink',foodId],['☕ Coffee',foodId],['🍿 Snack',foodId],['🛍️ Merch',merchId],['🎫 Misc',extrasId]].map(function(p){
+          [['🥐 Churro',foodId],['🍦 Ice Cream',foodId],['🥤 Drink',foodId],['☕ Coffee',foodId],['🍿 Popcorn',foodId],['🥨 Pretzel',foodId],['🍬 Sweets',foodId],['🌮 Savory',foodId],['🛍️ Merch',merchId],['🎫 Misc',extrasId]].map(function(p){
             return '<button type="button" onclick="document.getElementById(\'tm-cash-label\').value=\''+p[0]+'\';document.getElementById(\'tm-cash-cat\').value=\''+p[1]+'\';var a=document.getElementById(\'tm-cash-amt-b\');if(a)a.focus();" style="padding:7px 12px;background:#f3f0ff;border:1.5px solid #c4b5fd;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:#5b21b6;">'+p[0]+'</button>';
           }).join('')+'</div>'+
           '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">'+
@@ -2739,13 +2767,16 @@ function buildTodayLive(t,tm,dates,today){
             '</div>'+
             Object.keys(byLand).sort().map(function(land){
               const rides=byLand[land].sort(function(a,b){return (b.wait_time||0)-(a.wait_time||0);});
-              return '<div style="margin-bottom:8px;">'+
-                '<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:.5px;padding:3px 0 2px;">'+esc(land)+'</div>'+
-                rides.map(function(r){
+              const landKey=pk+'_'+land;
+              const landOpen=!(S.ui.waitLand&&S.ui.waitLand[landKey]===false);
+              return '<div style="margin-bottom:6px;">'+
+                '<div onclick="S.ui.waitLand=S.ui.waitLand||{};S.ui.waitLand[this.dataset.lk]=!(S.ui.waitLand[this.dataset.lk]!==false);render()" data-lk="'+landKey+'" style="font-size:10px;font-weight:800;color:#555;text-transform:uppercase;letter-spacing:.5px;padding:5px 0 3px;cursor:pointer;display:flex;align-items:center;gap:4px;">'+
+                  '<span>'+(landOpen?'▾':'▸')+'</span>'+esc(land)+' <span style="opacity:.5;">('+rides.length+')</span>'+
+                '</div>'+
+                (landOpen?rides.map(function(r){
                   const w=r.wait_time||0;const col=w>=60?'#dc2626':w>=30?'#d97706':'#16a34a';
                   return '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;border-bottom:1px dashed #f5f5f5;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.name)+'</span><b style="color:'+col+';flex-shrink:0;margin-left:8px;">'+w+' min</b></div>';
-                }).join('')+
-              '</div>';
+                }).join(''):'')+'</div>';
             }).join('')+
             '<div style="font-size:9.5px;color:#ccc;text-align:right;">Queue-Times.com</div>'+
           '</div>';
@@ -2825,7 +2856,7 @@ function buildTodayLive(t,tm,dates,today){
             '</div>'+
           '</div>'+
           (noteOpen?'<div style="margin-top:8px;display:flex;gap:6px;"><input id="tm-note-input" value="'+esc(j.note||'')+'" placeholder="Ride broke down · food was meh · pure magic…" onkeydown="if(event.key===\'Enter\')tmSaveNote(\''+sel+'\',\''+kAttr+'\')" style="flex:1;min-width:0;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><button onclick="tmSaveNote(\''+sel+'\',\''+kAttr+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button></div>':'')+
-          (cashOpen?'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span style="font-size:12px;color:#888;">actual $</span><input id="tm-cash-amt" type="number" step="0.01" min="0" value="'+(j.actual!=null?j.actual:(e.est||''))+'" onkeydown="if(event.key===\'Enter\')tmSaveCash(\''+sel+'\',\''+kAttr+'\',\''+attrSafe(e.text)+'\')" style="width:90px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:150px;">'+catOpts((tmGuessCat(t,e)||{}).id)+'</select><button onclick="tmSaveCash(\''+sel+'\',\''+kAttr+'\',\''+attrSafe(e.text)+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Log it</button></div>':'')+
+          (cashOpen?'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span style="font-size:12px;color:#888;">actual $</span><input id="tm-cash-amt" type="number" step="1" min="0" value="'+(j.actual!=null?j.actual:(e.est||''))+'" onkeydown="if(event.key===\'Enter\')tmSaveCash(\''+sel+'\',\''+kAttr+'\',\''+attrSafe(e.text)+'\')" style="width:90px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:150px;">'+catOpts((tmGuessCat(t,e)||{}).id)+'</select><button onclick="tmSaveCash(\''+sel+'\',\''+kAttr+'\',\''+attrSafe(e.text)+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Log it</button></div>':'')+
           buildEntryActions(e,sel,kAttr,j,noteOpen,cashOpen,dim)+
         '</div>';
       }).join('');
@@ -4368,7 +4399,7 @@ function buildTransSection(t, dir, title) {
   return `
     <div class="card">
       <div class="card-header" style="justify-content:space-between;flex-wrap:wrap;gap:8px;">
-        <span>${title}</span>
+        ${buildTransTitle(t,dir,title)}
         ${buildDpClockBtn(t, dir, label)}
       </div>
       <div class="fg">
@@ -4637,6 +4668,27 @@ function buildGroundSection(t, key, title) {
         </div>
       </div>
     </div>`;
+}
+function buildTransTitle(t,dir,title){
+  var ek='transTitle_'+dir;
+  var isEd=S.ui.editingKey===ek;
+  var disp=(t.transportation&&t.transportation[dir+'Title'])||title;
+  if(isEd){
+    var inp='<input id="tt-'+dir+'" value="'+esc(disp)+'" style="font-size:15px;font-weight:900;color:#1a1a5e;border:none;border-bottom:2px solid #7c3aed;outline:none;background:transparent;font-family:inherit;width:200px;">';
+    var btn='<button onclick="saveTransTitle(\'' +dir+ '\')" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;margin-left:4px;">✓</button>';
+    return inp+btn;
+  }
+  var pencil='<button onclick="S.ui.editingKey=\'' +ek+ '\';render()" style="background:none;border:none;font-size:12px;color:#999;cursor:pointer;margin-left:4px;">✎</button>';
+  return '<span>'+esc(disp)+'</span>'+pencil;
+}
+function saveTransTitle(dir){
+  var t=trip();if(!t)return;
+  var el=document.getElementById('tt-'+dir);
+  if(!el)return;
+  var trans=t.transportation||{};
+  trans[dir+'Title']=el.value.trim()||('🛫 '+dir.charAt(0).toUpperCase()+dir.slice(1)+' Trip');
+  patchTrip({transportation:trans});
+  S.ui.editingKey=null;render();
 }
 function saveGroundTitle(dir){
   var t=trip();if(!t)return;
@@ -8164,7 +8216,7 @@ function rosEntriesForDate(t, date) {
                 time: meal.adrTime || defTime,
                 icon: mIcon,
                 text: cap(mt)+': '+(meal.place||'TBD'),
-                sub: fmtDual(cost,t)+(meal.adrBooked?' · ✓ ADR'+(meal.adrConfNum?' #'+esc(meal.adrConfNum):''):(meal.adrTime?' · ADR time set':'')),
+                sub: fmtDualPlain(cost,t)+(meal.adrBooked?' · ✓ ADR'+(meal.adrConfNum?' #'+esc(meal.adrConfNum):''):(meal.adrTime?' · ADR time set':'')),
                 cls:'meal',
                 est:(cost&&cost>0)?cost:null,
                 mealType:mt
@@ -8191,7 +8243,7 @@ function rosEntriesForDate(t, date) {
               time: meal.adrTime || defTime,
               icon: mIcon,
               text: `${cap(mt)}: ${meal.place||'TBD'}`,
-              sub: `${fmtDual(cost,t)}${meal.adrBooked?` · ✓ ADR${meal.adrConfNum?' #'+esc(meal.adrConfNum):''}`:meal.adrTime?' · ADR time set':''}`,
+              sub: `${fmtDualPlain(cost,t)}${meal.adrBooked?` · ✓ ADR${meal.adrConfNum?' #'+esc(meal.adrConfNum):''}`:meal.adrTime?' · ADR time set':''}`,
               cls: 'meal'
             });
           }
@@ -10404,7 +10456,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-05-G";
+var SKIPPER_BUILD="2026-07-05-H";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
