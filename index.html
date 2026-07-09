@@ -848,6 +848,29 @@ const DLP_PARK_RESTAURANTS = {
 };
 Object.assign(PARK_RESTAURANTS, DLP_PARK_RESTAURANTS);
 
+const DLR_PHOTO_SPOTS = {
+  dl: [
+    { spot:"Sleeping Beauty Castle — Hub view", tip:"Stand at the end of Main Street for the classic straight-on shot. Early morning for no crowds and warm light." },
+    { spot:"Main Street USA at rope drop", tip:"Cast members hose down the street — empty road, string lights, magic. Arrive 30 min early." },
+    { spot:"Haunted Mansion exterior (New Orleans Square)", tip:"Gothic beauty tucked in the trees. Best angle from the bridge near Pirates." },
+    { spot:"Pirates of the Caribbean entrance", tip:"The bayou atmosphere and glowing lanterns inside are incredibly atmospheric — bring a fast lens." },
+    { spot:"Indiana Jones queue entrance", tip:"Massive carved stone entrance is one of the most impressive queue facades in any Disney park." },
+    { spot:"Matterhorn Bobsleds", tip:"Best shot from Fantasyland looking across the water — reflection on a still morning." },
+    { spot:"Galaxy's Edge — Millennium Falcon", tip:"Stand near the landing gear for epic scale. Best light in the morning before midday glare." },
+    { spot:"Tomorrowland at dusk", tip:"Retro-futuristic neon and monorail track. Classic Disneyland shot as the sun goes down." },
+  ],
+  dca: [
+    { spot:"Paradise Pier at dusk", tip:"Lights on the Incredicoaster and Ferris wheel reflect in the bay. Best 30 min after sunset." },
+    { spot:"Guardians: MISSION BREAKOUT exterior", tip:"The towering building is dramatic against the sky — best from across the courtyard." },
+    { spot:"Cars Land at night", tip:"Neon-lit Radiator Springs main street at dusk is one of the most atmospheric scenes in any Disney park." },
+    { spot:"Carthay Circle Theatre", tip:"Classic Hollywood architecture — best shot from across the fountain." },
+    { spot:"Avengers Campus", tip:"The Quinjet on the building is a great detail shot. WEB SLINGERS facade is also highly photogenic." },
+    { spot:"Buena Vista Street at opening", tip:"Empty early morning with warm light captures the golden-age Hollywood mood perfectly." },
+    { spot:"Grizzly Peak at sunrise", tip:"The rocky mountain catches early orange light well. Reflection in the river below is a bonus." },
+  ],
+};
+Object.assign(PHOTO_SPOTS, DLR_PHOTO_SPOTS);
+
 // Photo spots — merged into PHOTO_SPOTS below
 const DLP_PHOTO_SPOTS = {
   dp: [
@@ -2839,13 +2862,17 @@ function buildTabContent(t) {
     case 'budget':      return buildBudget(t);
     case 'logistics':   return buildLogistics(t);
     case 'packing':     return buildPackingList(t);
-    case 'map_modal':   return buildModalTab('&#128506;&#65039; Map', t.tripType==='dlp' ? buildDlpMap(t) : buildAulaniMap(t));
+    case 'map_modal':   return buildModalTab('&#128506;&#65039; Map',
+        t.tripType==='dlp'    ? buildDlpMap(t)    :
+        t.tripType==='dlr'    ? buildDlrMap(t)    :
+        t.tripType==='aulani' ? buildAulaniMap(t) :
+                                buildWdwMap(t));
     case 'photos_modal':return buildModalTab('&#128247; Photo Spots', buildPhotoSpots(t));
     // Legacy redirects for any saved tab values
     case 'overview':       return buildToday(t);
     case 'transportation': return buildLogistics(t);
     case 'activities':     return t.tripType==='aulani' ? buildItinerary_aulani(t) : buildItinerary(t);
-    case 'map':            return buildModalTab('&#128506;&#65039; Map', t.tripType==='dlp' ? buildDlpMap(t) : buildAulaniMap(t));
+    case 'map':            return buildModalTab('&#128506;&#65039; Map', t.tripType==='dlp' ? buildDlpMap(t) : t.tripType==='dlr' ? buildDlrMap(t) : t.tripType==='aulani' ? buildAulaniMap(t) : buildWdwMap(t));
     case 'countdown':      return buildToday(t);
     case 'photos':         return buildModalTab('&#128247; Photo Spots', buildPhotoSpots(t));
     case 'hotel':          return buildLogistics(t);
@@ -2923,7 +2950,10 @@ function bindAfterRender() {
   startCountdown();
   if (S.tab === 'map_modal' || S.tab === 'map') {
     const tt = trip();
-    setTimeout(tt && tt.tripType==='dlp' ? initDlpMap : initAulaniMap, 100);
+    if (tt.tripType==='dlp')         setTimeout(initDlpMap, 100);
+    else if (tt.tripType==='dlr')    setTimeout(initDlrMap, 100);
+    else if (tt.tripType==='aulani') setTimeout(initAulaniMap, 100);
+    else                             setTimeout(initWdwMap, 100);
   }
   if (S.ui.editName) {
     const el = document.getElementById('tname-input');
@@ -6756,6 +6786,113 @@ function buildDlpMap(t) {
 }
 
 // ===================================================
+// WDW MAP
+// ===================================================
+const WDW_MAP_PLACES = [
+  {name:"Magic Kingdom",lat:28.4177,lng:-81.5812,type:"park",note:"The original Walt Disney World park. Take the ferry or monorail from the Transportation & Ticket Center."},
+  {name:"EPCOT",lat:28.3747,lng:-81.5494,type:"park",note:"Future World + World Showcase. International Gateway near France pavilion for Boardwalk resort guests."},
+  {name:"Hollywood Studios",lat:28.3575,lng:-81.5583,type:"park",note:"Galaxy's Edge, Tower of Terror, Fantasmic. Skyliner access from Caribbean Beach."},
+  {name:"Animal Kingdom",lat:28.3553,lng:-81.5900,type:"park",note:"Pandora, Kilimanjaro Safaris, Expedition Everest. Largest park by area — wear comfortable shoes."},
+  {name:"Disney Springs",lat:28.3714,lng:-81.5197,type:"shopping",note:"Shopping, dining, entertainment. Free parking, no park ticket required."},
+  {name:"Transportation & Ticket Center",lat:28.4083,lng:-81.5836,type:"transit",note:"Main hub for Magic Kingdom — ferries, monorail, buses all connect here."},
+  {name:"Disney's Grand Floridian Resort",lat:28.4103,lng:-81.5875,type:"resort",note:"Flagship deluxe resort on the monorail. Victoria & Albert's is here."},
+  {name:"Disney's Contemporary Resort",lat:28.4150,lng:-81.5745,type:"resort",note:"The monorail runs through the building. Walking distance to Magic Kingdom."},
+  {name:"Disney's Polynesian Village Resort",lat:28.4084,lng:-81.5831,type:"resort",note:"Monorail resort with tropical theming. Ohana restaurant, Tambu Lounge."},
+  {name:"Disney's BoardWalk Inn",lat:28.3681,lng:-81.5583,type:"resort",note:"Walking distance to EPCOT and Hollywood Studios. BoardWalk entertainment district."},
+  {name:"MCO — Orlando International Airport",lat:28.4312,lng:-81.3081,type:"airport",note:"Main airport serving Walt Disney World. ~25-30 min drive to the resort."},
+];
+function buildWdwMap(t) {
+  var typeColors = {park:"#7c3aed",resort:"#0ea5e9",shopping:"#a855f7",transit:"#16a34a",airport:"#f59e0b"};
+  var typeLabels = {park:"🏰 Park",resort:"🏨 Hotel",shopping:"🛍️ Dining & Shopping",transit:"🚌 Transit Hub",airport:"✈️ Airport"};
+  var cards = WDW_MAP_PLACES.map(function(p){
+    return '<div style="background:#f8f8ff;border-radius:10px;padding:12px 14px;border-left:3px solid '+(typeColors[p.type]||"#aaa")+'">'
+      +'<div style="font-size:12px;font-weight:800;color:#1a1a2e;margin-bottom:3px;">'+esc(p.name)+'</div>'
+      +'<div style="font-size:11px;color:'+(typeColors[p.type]||"#888")+';font-weight:700;margin-bottom:4px;">'+(typeLabels[p.type]||p.type)+'</div>'
+      +'<div style="font-size:11px;color:#777;">'+esc(p.note)+'</div>'
+      +'<a href="https://www.google.com/maps/dir/Walt+Disney+World/'+encodeURIComponent(p.name)+'" target="_blank"'
+      +' style="display:inline-block;margin-top:6px;font-size:11px;font-weight:700;color:#1a1a5e;text-decoration:none;background:#e8e8ff;padding:3px 8px;border-radius:5px;">🗺 Directions →</a>'
+      +'</div>';
+  }).join('');
+  return '<div class="card" style="margin-bottom:16px;">'
+    +'<div class="card-header">🗺️ Walt Disney World — Resort Map</div>'
+    +'<p style="font-size:13px;color:#777;margin-bottom:16px;">All four parks, Disney Springs, key resorts, and the airport. Tap any marker for details.</p>'
+    +'<div id="wdw-map" style="border-radius:12px;overflow:hidden;border:2px solid #e4e4f0;margin-bottom:18px;height:420px;background:#ede9fe;display:flex;align-items:center;justify-content:center;">'
+    +'<div style="text-align:center;color:#6b21a8;font-size:13px;font-weight:700;">🗺️ Loading map…</div></div>'
+    +'<div style="font-size:12px;font-weight:700;color:#1a1a5e;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">📍 Parks, Resorts & Transit</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:8px;">'+cards+'</div>'
+    +'</div>';
+}
+function initWdwMap() {
+  if (!document.getElementById('wdw-map')) return;
+  if (typeof L === 'undefined') { setTimeout(initWdwMap, 300); return; }
+  if (window._wdwMap) { window._wdwMap.remove(); window._wdwMap = null; }
+  var map = L.map('wdw-map',{zoomControl:true}).setView([28.385,-81.563],12);
+  window._wdwMap = map;
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',maxZoom:18
+  }).addTo(map);
+  var colors = {park:'#7c3aed',resort:'#0ea5e9',shopping:'#a855f7',transit:'#16a34a',airport:'#f59e0b'};
+  WDW_MAP_PLACES.forEach(function(p){
+    L.circleMarker([p.lat,p.lng],{color:colors[p.type]||'#555',fillColor:colors[p.type]||'#555',fillOpacity:.85,radius:8,weight:2})
+      .addTo(map).bindPopup('<b>'+p.name+'</b><br>'+p.note);
+  });
+}
+
+// ===================================================
+// DLR MAP
+// ===================================================
+const DLR_MAP_PLACES = [
+  {name:"Disneyland Park",lat:33.8121,lng:-117.9190,type:"park",note:"The original Disneyland. Main Street, Fantasyland, Galaxy's Edge, New Orleans Square. Trams from the parking structure."},
+  {name:"Disney California Adventure",lat:33.8093,lng:-117.9190,type:"park",note:"Cars Land, Avengers Campus, Incredicoaster, World of Color. Shares the Esplanade entrance with Disneyland."},
+  {name:"Downtown Disney",lat:33.8079,lng:-117.9183,type:"shopping",note:"Shopping and dining with no park ticket required. Black Tap, Ralph Brennan's Jazz Kitchen, and more."},
+  {name:"Disneyland Hotel",lat:33.8102,lng:-117.9231,type:"resort",note:"Classic Disney resort connected to Downtown Disney. Fantasy Tower, Adventure Tower, Frontier Tower."},
+  {name:"Disney's Grand Californian Hotel",lat:33.8085,lng:-117.9215,type:"resort",note:"Arts & Crafts-style hotel with direct DCA entrance. Napa Rose restaurant, Craftsman Bar."},
+  {name:"Pixar Place Hotel",lat:33.8068,lng:-117.9224,type:"resort",note:"Formerly Paradise Pier Hotel — newly reimagined with Pixar theming. Budget-friendly option."},
+  {name:"Anaheim Resort Transit Hub",lat:33.8003,lng:-117.9228,type:"transit",note:"ART shuttle hub connecting nearby hotels to the parks. Cheaper and often faster than rideshare during peak times."},
+  {name:"LAX — Los Angeles Airport",lat:33.9425,lng:-118.4081,type:"airport",note:"~35-45 min drive (no traffic). Uber/Lyft ~$60-90 each way. Prime or Karmel shuttle options available."},
+  {name:"SNA — John Wayne Airport",lat:33.6757,lng:-117.8682,type:"airport",note:"Closest airport — ~15 min drive. Smaller, easier to navigate. Check for direct flights from your city."},
+  {name:"LGB — Long Beach Airport",lat:33.8177,lng:-118.1516,type:"airport",note:"~25 min drive. Often has great fares on Southwest and JetBlue."},
+];
+function buildDlrMap(t) {
+  var typeColors = {park:"#7c3aed",resort:"#0ea5e9",shopping:"#a855f7",transit:"#16a34a",airport:"#f59e0b"};
+  var typeLabels = {park:"🏰 Park",resort:"🏨 Hotel",shopping:"🛍️ Downtown Disney",transit:"🚌 Transit",airport:"✈️ Airport"};
+  var cards = DLR_MAP_PLACES.map(function(p){
+    return '<div style="background:#f8f8ff;border-radius:10px;padding:12px 14px;border-left:3px solid '+(typeColors[p.type]||"#aaa")+'">'
+      +'<div style="font-size:12px;font-weight:800;color:#1a1a2e;margin-bottom:3px;">'+esc(p.name)+'</div>'
+      +'<div style="font-size:11px;color:'+(typeColors[p.type]||"#888")+';font-weight:700;margin-bottom:4px;">'+(typeLabels[p.type]||p.type)+'</div>'
+      +'<div style="font-size:11px;color:#777;">'+esc(p.note)+'</div>'
+      +'<a href="https://www.google.com/maps/dir/Disneyland+Resort+Anaheim/'+encodeURIComponent(p.name)+'" target="_blank"'
+      +' style="display:inline-block;margin-top:6px;font-size:11px;font-weight:700;color:#1a1a5e;text-decoration:none;background:#e8e8ff;padding:3px 8px;border-radius:5px;">🗺 Directions →</a>'
+      +'</div>';
+  }).join('');
+  return '<div class="card" style="margin-bottom:16px;">'
+    +'<div class="card-header">🗺️ Disneyland Resort — Anaheim Map</div>'
+    +'<p style="font-size:13px;color:#777;margin-bottom:16px;">Both parks, Downtown Disney, resort hotels, and all three nearby airports. Tap any marker for details.</p>'
+    +'<div id="dlr-map" style="border-radius:12px;overflow:hidden;border:2px solid #e4e4f0;margin-bottom:18px;height:420px;background:#ede9fe;display:flex;align-items:center;justify-content:center;">'
+    +'<div style="text-align:center;color:#6b21a8;font-size:13px;font-weight:700;">🗺️ Loading map…</div></div>'
+    +'<div style="font-size:12px;font-weight:700;color:#1a1a5e;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">📍 Parks, Hotels & Airports</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:8px;">'+cards+'</div>'
+    +'</div>';
+}
+function initDlrMap() {
+  if (!document.getElementById('dlr-map')) return;
+  if (typeof L === 'undefined') { setTimeout(initDlrMap, 300); return; }
+  if (window._dlrMap) { window._dlrMap.remove(); window._dlrMap = null; }
+  var map = L.map('dlr-map',{zoomControl:true}).setView([33.8105,-117.9193],15);
+  window._dlrMap = map;
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',maxZoom:18
+  }).addTo(map);
+  var colors = {park:'#7c3aed',resort:'#0ea5e9',shopping:'#a855f7',transit:'#16a34a',airport:'#f59e0b'};
+  DLR_MAP_PLACES.forEach(function(p){
+    L.circleMarker([p.lat,p.lng],{color:colors[p.type]||'#555',fillColor:colors[p.type]||'#555',fillOpacity:.85,radius:8,weight:2})
+      .addTo(map).bindPopup('<b>'+p.name+'</b><br>'+p.note);
+  });
+}
+
+
+
+// ===================================================
 // PHOTO SPOTS TAB
 // ===================================================
 function buildPhotoSpots(t) {
@@ -6793,6 +6930,7 @@ function buildPhotoSpots(t) {
 
   const parkLabels = t.tripType === 'dlp'
     ? { dp:'🏰 Disneyland Park', daw:'🚀 Disney Adventure World' }
+    : t.tripType==='dlr' ? { dl:'🏰 Disneyland Park', dca:'🎡 Disney California Adventure' }
     : { mk:'🏰 Magic Kingdom', ep:'🌍 EPCOT', hs:'🎬 Hollywood Studios', ak:'🦁 Animal Kingdom' };
 
   return `
@@ -10266,7 +10404,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-05-F";
+var SKIPPER_BUILD="2026-07-05-G";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
