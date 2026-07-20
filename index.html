@@ -2473,90 +2473,184 @@ function buildParkMode(t,tm,dates,today,sel){
   const parkKey=parkDay&&parkDay.park;
   const entries=rosEntriesForDate(t,sel).filter(function(e){return !e.isSentinel&&e.cls!=='auto';});
   const journal=(tm.journal||{})[sel]||{};
-  const nowMins=(function(){const n=new Date();return n.getHours()*60+n.getMinutes();})();
-  const upcoming=entries.filter(function(e){const k=e.id||(e.cls+'|'+e.text);const j=journal[k]||{};return !j.done&&!j.skipped;}).slice(0,3);
+  const nowD=new Date();
+  const nowMins=nowD.getHours()*60+nowD.getMinutes();
+  const nowHHMM=String(nowD.getHours()).padStart(2,'0')+':'+String(nowD.getMinutes()).padStart(2,'0');
+  
+  // Get NOW + NEXT items
+  let nowItem=null,nextItems=[];
+  entries.forEach(function(e){
+    const k=e.id||(e.cls+'|'+e.text);const j=journal[k]||{};
+    if(j.done||j.skipped)return;
+    const m=timeToMins(e.time);
+    if(m<=nowMins&&!nowItem)nowItem=e;
+    else if(nextItems.length<3)nextItems.push(e);
+  });
+  
   const ph=(SEPT_PARK_HOURS[parkKey]||DLP_PARK_HOURS[parkKey]||DLR_PARK_HOURS[parkKey]);
   const parkLabel=parkKey&&parkKey!=='rest'&&parkKey!=='unassigned'?parkName(parkKey):'';
   const doneCount=entries.filter(function(e){const k=e.id||(e.cls+'|'+e.text);return (journal[k]||{}).done;}).length;
   const total=entries.length;const pct=total>0?Math.round(doneCount/total*100):0;
+  const dayNum=parkDay&&parkDay.dayNum?'Day '+parkDay.dayNum:'Today';
   const dayParks=[parkKey].concat((parkDay&&parkDay.parkHops)||[]).filter(function(p){return p&&QT_PARK_IDS[p];});
   const unique=dayParks.filter(function(p,i){return dayParks.indexOf(p)===i;});
-  const wtOpen=S.ui.parkModeWT===true;
-  const logOpen=S.ui.parkModeLog===true;
   const wxLine=wxStrip(t,sel);
-  const upNextCards=upcoming.length?upcoming.map(function(e,ei){
-    const k=e.id||(e.cls+'|'+e.text);const j=journal[k]||{};
-    const kAttr=esc(k).replace(/'/g,'&#39;');
-    const isNow=timeToMins(e.time)<=nowMins&&ei===0;
-    return '<div style="background:'+(isNow?'#eef2ff':'#f9f9ff')+';border:2px solid '+(isNow?'#6366f1':'#e4e4f0')+';border-radius:14px;padding:13px 14px;margin-bottom:8px;">'+
-      '<div style="display:flex;align-items:center;gap:10px;">'+
+  
+  // Next Meal (within 90 minutes)
+  const meals=parkDay&&parkDay.meals||{};
+  let nextMeal=null;
+  for(const mtype of ['breakfast','lunch','dinner','snacks']){
+    const m=meals[mtype]||{};
+    if(!m.place||!m.adrTime)continue;
+    const mMins=timeToMins(m.adrTime);
+    if(mMins>nowMins&&mMins<nowMins+90){nextMeal={type:mtype,time:m.adrTime,place:m.place,adrBooked:m.adrBooked};break;}
+  }
+  
+  const cats=(t.budget||{}).categories||[];
+  const foodId=(cats.find(function(c){return /food/i.test(c.name||'');})||{}).id||'';
+  const merchId=(cats.find(function(c){return /merch/i.test(c.name||'');})||{}).id||'';
+  const catName=function(cid){return (cats.find(function(c){return c.id===cid;})||{}).name||'';};
+  
+  // TODAY budget
+  let todayBudget=0,todaySpent=0;
+  (t.budget||{}).categories||[].forEach(function(c){
+    (c.transactions||[]).forEach(function(tx){
+      if(tx.onTrip&&tx.tripDate===sel){todaySpent+=tx.amount||0;}
+    });
+  });
+  
+  // Build NOW section
+  const nowSection=nowItem?'<div style="background:#6366f1;border-radius:16px;padding:16px;margin-bottom:14px;color:#fff;">'+
+    '<div style="font-size:11px;font-weight:900;opacity:.8;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">⏰ RIGHT NOW</div>'+
+    '<div style="font-size:28px;font-weight:900;margin-bottom:8px;">'+nowItem.icon+' '+esc(nowItem.text)+'</div>'+
+    '<div style="font-size:13px;opacity:.9;margin-bottom:12px;">'+(nowItem.time?fmt12(nowItem.time):'')+' • '+(nowItem.sub||'')+'</div>'+
+    '<div style="display:flex;gap:8px;">'+
+      '<button onclick="tmToggleDone(\''+sel+'\',\''+esc(nowItem.id||(nowItem.cls+\'|\'+nowItem.text)).replace(/\'/g,'&#39;\')+'\');S.ui.parkMode=false;render()" style="flex:1;background:#fff;color:#6366f1;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:900;cursor:pointer;font-family:inherit;">✓ Mark Done</button>'+
+      '<button onclick="S.ui.parkModeWT=true;render()" style="flex:1;background:rgba(255,255,255,.2);color:#fff;border:2px solid #fff;border-radius:12px;padding:12px;font-size:15px;font-weight:900;cursor:pointer;font-family:inherit;">⏱️ Log Wait</button>'+
+    '</div>'+
+  '</div>':'';
+  
+  // Build NEXT items
+  const nextSection=nextItems.length?'<div style="margin-bottom:14px;">'+
+    '<div style="font-size:11px;font-weight:900;color:#555;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">📋 UP NEXT</div>'+
+    nextItems.map(function(e){
+      const k=e.id||(e.cls+'|'+e.text);const j=journal[k]||{};
+      const kAttr=esc(k).replace(/'/g,'&#39;');
+      return '<div style="background:#f9f9ff;border:2px solid #e4e4f0;border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">'+
+        '<button onclick="tmToggleDone(\''+sel+'\',\''+kAttr+'\');render()" style="width:48px;height:48px;flex-shrink:0;border-radius:10px;border:2px solid #c4b5fd;background:#fff;color:#6366f1;font-size:20px;cursor:pointer;font-family:inherit;font-weight:900;">'+(j.done?'✓':'·')+'</button>'+
         '<div style="flex:1;min-width:0;">'+
-          '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">'+
-            (isNow?'<span style="background:#6366f1;color:#fff;font-size:10px;font-weight:900;padding:2px 8px;border-radius:9px;">NOW</span>':'')+
-            '<span style="font-size:11px;color:#999;font-weight:700;">'+(e.time?fmt12(e.time):'')+'</span>'+
-          '</div>'+
-          '<div style="font-size:16px;font-weight:900;color:#1a1a5e;">'+e.icon+' '+esc(e.text)+'</div>'+
-          (e.sub&&!String(e.sub).startsWith('auto:')?'<div style="font-size:12px;color:#888;margin-top:2px;">'+esc(String(e.sub))+'</div>':'')+
+          '<div style="font-size:14px;font-weight:900;color:#1a1a5e;">'+e.icon+' '+esc(e.text)+'</div>'+
+          '<div style="font-size:12px;color:#888;margin-top:3px;">'+(e.time?fmt12(e.time):'')+' • '+(e.sub||'')+'</div>'+
         '</div>'+
-        '<button onclick="tmToggleDone(\''+sel+'\',\''+kAttr+'\')" style="width:52px;height:52px;flex-shrink:0;border-radius:14px;border:3px solid '+(j.done?'#16a34a':'#c4b5fd')+';background:'+(j.done?'#16a34a':'#fff')+';color:'+(j.done?'#fff':'#6366f1')+';font-size:22px;cursor:pointer;font-family:inherit;line-height:1;font-weight:900;">'+(j.done?'✓':'·')+'</button>'+
-      '</div></div>';
-  }).join(''):'<div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:14px;padding:20px;text-align:center;color:#16a34a;font-size:15px;font-weight:800;">🎉 All done for today!</div>';
-  const wtSection=unique.length?'<div style="padding:12px 14px;background:#fff;border-radius:14px;border:1.5px solid #e4e4f0;margin-bottom:8px;">'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:'+(wtOpen?'10px':'0')+';">'+
-      '<div style="font-size:14px;font-weight:800;color:#1a1a5e;">⏱️ Wait Times</div>'+
-      '<button onclick="S.ui.parkModeWT=!S.ui.parkModeWT;render()" style="background:#f3f0ff;border:1.5px solid #c4b5fd;border-radius:9px;padding:6px 14px;font-size:13px;font-weight:800;color:#5b21b6;cursor:pointer;font-family:inherit;">'+(wtOpen?'Hide ▴':'Show ▾')+'</button>'+
+      '</div>';
+    }).join('')+
+  '</div>':'';
+  
+  // Build NEXT MEAL alert
+  const mealSection=nextMeal?'<div style="background:#fef3c7;border:2px solid #fcd34d;border-radius:14px;padding:14px;margin-bottom:14px;">'+
+    '<div style="display:flex;align-items:center;gap:10px;">'+
+      '<div style="font-size:24px;">🍽️</div>'+
+      '<div style="flex:1;">'+
+        '<div style="font-size:13px;font-weight:900;color:#92400e;">NEXT MEAL</div>'+
+        '<div style="font-size:15px;font-weight:900;color:#1a1a5e;">'+esc(nextMeal.place)+'</div>'+
+        '<div style="font-size:12px;color:#854d0e;margin-top:2px;">'+nextMeal.time+' • '+(nextMeal.adrBooked?'✓ ADR Booked':'⚠️ No ADR')+'</div>'+
+      '</div>'+
     '</div>'+
-    (wtOpen?unique.map(function(pk){
-      const data=_QT.cache[pk];
-      if(!data){qtFetch(pk);return '<div style="font-size:12px;color:#bbb;padding:4px 0;">Loading '+parkName(pk)+'…</div>';}
-      if(data==='err')return '<div style="font-size:12px;color:#bbb;padding:4px 0;">'+parkName(pk)+' unavailable</div>';
-      const byLand={};
-      data.filter(function(r){return r.is_open&&r.wait_time>0;}).forEach(function(r){const land=r.land||'Other';if(!byLand[land])byLand[land]=[];byLand[land].push(r);});
-      return '<div style="margin-bottom:8px;"><div style="font-size:12px;font-weight:800;color:#555;margin-bottom:4px;">'+parkName(pk)+'</div>'+
-        Object.keys(byLand).sort().map(function(land){
-          return '<div style="margin-bottom:6px;"><div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:.5px;padding:2px 0;">'+esc(land)+'</div>'+
-            byLand[land].sort(function(a,b){return (b.wait_time||0)-(a.wait_time||0);}).map(function(r){
-              const w=r.wait_time||0;const col=w>=60?'#dc2626':w>=30?'#d97706':'#16a34a';
-              return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13px;"><span>'+esc(r.name)+'</span><b style="color:'+col+';">'+w+' min</b></div>';
-            }).join('')+'</div>';
-        }).join('')+'</div>';
-    }).join(''):'')+'</div>':'';
-  const logSection='<div style="padding:12px 14px;background:#fff;border-radius:14px;border:1.5px solid #e4e4f0;margin-bottom:8px;">'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:'+(logOpen?'10px':'0')+';">'+
-      '<div style="font-size:14px;font-weight:800;color:#1a1a5e;">⚡ Log moment</div>'+
-      '<button onclick="S.ui.parkModeLog=!S.ui.parkModeLog;if(S.ui.parkModeLog)setTimeout(function(){var el=document.getElementById(\'upl-text2\');if(el)el.focus();},60);render()" style="background:#fef9c3;border:1.5px solid #fde047;border-radius:9px;padding:6px 14px;font-size:13px;font-weight:800;color:#854d0e;cursor:pointer;font-family:inherit;">'+(logOpen?'Done ▴':'＋ Log ▾')+'</button>'+
+  '</div>':'';
+  
+  // Wait Timer UI
+  const wtTimerOpen=S.ui.parkModeWT===true;
+  const timerState=S.ui.parkModeTimer||{active:false,start:0,ride:''};
+  const timerElapsed=timerState.active?Math.floor((Date.now()-timerState.start)/1000):'—';
+  
+  const wtSection=wtTimerOpen?'<div style="background:#fff;border:2px solid #e4e4f0;border-radius:14px;padding:16px;margin-bottom:14px;">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'+
+      '<div style="font-size:14px;font-weight:900;color:#1a1a5e;">⏱️ LOG WAIT TIME</div>'+
+      '<button onclick="S.ui.parkModeWT=false;render()" style="background:none;border:1px solid #e4e4f0;border-radius:8px;padding:4px 10px;font-size:12px;color:#999;cursor:pointer;font-family:inherit;">✕ Close</button>'+
     '</div>'+
-    (logOpen?'<div style="display:flex;flex-direction:column;gap:8px;">'+
-      '<div style="display:flex;gap:6px;">'+
-        '<select id="upl-type2" style="flex:1;padding:12px;border:1.5px solid #fde047;border-radius:10px;font-size:15px;font-family:inherit;background:#fffbeb;">'+
-          '<option value="ride">🎢 Ride</option><option value="food">🍔 Food/Drink</option>'+
-          '<option value="photo">📸 Photo</option><option value="purchase">🛍️ Purchase</option><option value="moment">✨ Moment</option>'+
+    '<div style="display:flex;flex-direction:column;gap:10px;">'+
+      '<div>'+
+        '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Ride:</label>'+
+        '<input id="wt-ride" placeholder="Space Mountain" value="'+(timerState.ride||'')+'" style="width:100%;padding:12px;border:2px solid #e4e4f0;border-radius:10px;font-size:15px;font-family:inherit;box-sizing:border-box;">'+
+      '</div>'+
+      '<div>'+
+        '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Time Started:</label>'+
+        '<input id="wt-time" value="'+(timerState.time||nowHHMM)+'" style="width:100%;padding:12px;border:2px solid #e4e4f0;border-radius:10px;font-size:15px;font-family:inherit;box-sizing:border-box;">'+
+      '</div>'+
+      '<div>'+
+        '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Timer: '+timerElapsed+' sec</label>'+
+        '<div style="display:flex;gap:8px;">'+
+          (timerState.active?
+            '<button onclick="pmWaitTimerStop(\''+sel+'\')" style="flex:1;background:#dc2626;color:#fff;border:none;border-radius:10px;padding:14px;font-size:16px;font-weight:900;cursor:pointer;font-family:inherit;">⏹️ STOP</button>':
+            '<button onclick="pmWaitTimerStart(\''+sel+'\')" style="flex:1;background:#16a34a;color:#fff;border:none;border-radius:10px;padding:14px;font-size:16px;font-weight:900;cursor:pointer;font-family:inherit;">▶️ START</button>')+
+        '</div>'+
+      '</div>'+
+      (timerState.elapsed?'<div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:10px;padding:12px;">'+
+        '<div style="font-size:13px;font-weight:900;color:#16a34a;">✓ Actual Wait: '+timerState.elapsed+' min</div>'+
+        '<div style="font-size:12px;color:#4b7c0f;margin-top:4px;">Reported: ~45 min • You waited +'+Math.round(timerState.elapsed-45)+' min</div>'+
+      '</div>':'')+
+      '<div>'+
+        '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Your Experience:</label>'+
+        '<textarea id="wt-notes" placeholder="Lines moving fast · Staff confused · mechanical problem…" style="width:100%;padding:12px;border:2px solid #e4e4f0;border-radius:10px;font-size:14px;font-family:inherit;box-sizing:border-box;min-height:80px;resize:vertical;"></textarea>'+
+      '</div>'+
+      '<button onclick="pmSaveWait(\''+sel+'\')" style="width:100%;background:#1a1a5e;color:#FFD700;border:none;border-radius:12px;padding:16px;font-size:16px;font-weight:900;cursor:pointer;font-family:inherit;">✓ LOG THIS WAIT</button>'+
+    '</div>'+
+  '</div>':'';
+  
+  // Quick Spend Section
+  const spendOpen=S.ui.parkModeSpend===true;
+  const spendSection='<div style="background:#fff;border:2px solid #e4e4f0;border-radius:14px;padding:16px;margin-bottom:14px;">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'+
+      '<div style="font-size:14px;font-weight:900;color:#1a1a5e;">💵 QUICK SPEND</div>'+
+      '<button onclick="S.ui.parkModeSpend=!S.ui.parkModeSpend;render()" style="background:#fef9c3;border:2px solid #fde047;border-radius:9px;padding:6px 14px;font-size:13px;font-weight:800;color:#854d0e;cursor:pointer;font-family:inherit;">'+(spendOpen?'Done ▴':'Add ▾')+'</button>'+
+    '</div>'+
+    (spendOpen?'<div style="display:flex;flex-direction:column;gap:10px;">'+
+      '<div>'+
+        '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Category:</label>'+
+        '<select id="ps-cat" style="width:100%;padding:12px;border:2px solid #e4e4f0;border-radius:10px;font-size:14px;font-family:inherit;">'+
+          '<option value="'+foodId+'">🍔 Food</option>'+
+          '<option value="'+merchId+'">🛍️ Merch</option>'+
         '</select>'+
       '</div>'+
-      '<input id="upl-text2" placeholder="What happened?" style="width:100%;padding:13px 12px;border:1.5px solid #fde047;border-radius:10px;font-size:16px;font-family:inherit;box-sizing:border-box;background:#fffbeb;">'+
       '<div style="display:flex;gap:8px;">'+
-        '<input id="upl-note2" placeholder="Quick note (optional)" style="flex:1;padding:12px;border:1.5px solid #fde047;border-radius:10px;font-size:16px;font-family:inherit;background:#fffbeb;">'+
+        '<div style="flex:1;">'+
+          '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Amount:</label>'+
+          '<input id="ps-amt" type="number" step="0.01" min="0" placeholder="0.00" style="width:100%;padding:12px;border:2px solid #e4e4f0;border-radius:10px;font-size:15px;font-family:inherit;box-sizing:border-box;">'+
+        '</div>'+
+        '<div style="flex:1;">'+
+          '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Time:</label>'+
+          '<input id="ps-time" value="'+nowHHMM+'" style="width:100%;padding:12px;border:2px solid #e4e4f0;border-radius:10px;font-size:15px;font-family:inherit;box-sizing:border-box;">'+
+        '</div>'+
       '</div>'+
-      '<button onclick="tmSaveUnplanned2(\''+sel+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:900;cursor:pointer;font-family:inherit;width:100%;">Save moment</button>'+
-    '</div>':'')+'</div>';
-  return '<div style="background:linear-gradient(135deg,#1a1a5e,#312e81);border-radius:16px;padding:14px 16px 10px;margin-bottom:10px;color:#fff;">'+
-    '<div style="font-size:12px;font-weight:800;letter-spacing:.1em;opacity:.7;text-transform:uppercase;">'+(parkLabel||'Today')+'</div>'+
-    '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:2px;">'+
-      '<div><div style="font-size:15px;font-weight:800;">'+(ph?ph.open+' – '+ph.close:'Today')+'</div>'+
-      '<div style="font-size:12px;opacity:.7;margin-top:2px;">'+(ph&&ph.note?ph.note:'')+'</div></div>'+
-      '<div style="text-align:right;"><div style="font-size:13px;font-weight:700;">'+doneCount+'/'+total+' done</div>'+
-      '<div style="font-size:11px;opacity:.6;">'+pct+'% complete</div></div>'+
+      '<div>'+
+        '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Notes:</label>'+
+        '<input id="ps-notes" placeholder="Popcorn at MK · Souvenir · etc" style="width:100%;padding:12px;border:2px solid #e4e4f0;border-radius:10px;font-size:14px;font-family:inherit;box-sizing:border-box;">'+
+      '</div>'+
+      '<div style="background:#f3f0ff;border:2px solid #e9d5ff;border-radius:10px;padding:12px;">'+
+        '<div style="font-size:12px;color:#666;margin-bottom:4px;">TODAY\'S BUDGET</div>'+
+        '<div style="font-size:20px;font-weight:900;color:#1a1a5e;margin-bottom:8px;">Spent: $'+todaySpent.toFixed(2)+'</div>'+
+        '<div style="background:#e9d5ff;border-radius:8px;height:8px;overflow:hidden;">'+
+          '<div style="background:#6366f1;height:8px;width:'+(todayBudget>0?Math.min(100,todaySpent/todayBudget*100):0)+'%;border-radius:8px;"></div>'+
+        '</div>'+
+      '</div>'+
+      '<button onclick="pmSaveSpend(\''+sel+'\')" style="width:100%;background:#1a1a5e;color:#FFD700;border:none;border-radius:12px;padding:16px;font-size:16px;font-weight:900;cursor:pointer;font-family:inherit;">✓ LOG SPEND</button>'+
+    '</div>':'');
+  
+  // END DAY Button (for trip mode on today)
+  const isToday=sel===today;
+  const endDayBtn=isToday?'<button onclick="pmShowEndDay(\''+sel+'\')" style="width:100%;background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff;border:none;border-radius:12px;padding:16px;font-size:16px;font-weight:900;cursor:pointer;font-family:inherit;margin-bottom:10px;">📋 END DAY SUMMARY</button>':'';
+  
+  return '<div style="padding:0;">'+
+    '<div style="background:linear-gradient(135deg,#1a1a5e,#312e81);border-radius:16px;padding:16px;margin-bottom:14px;color:#fff;">'+
+      '<div style="font-size:13px;font-weight:800;opacity:.7;text-transform:uppercase;letter-spacing:.1em;">'+parkLabel+' • '+dayNum+'</div>'+
+      '<div style="font-size:20px;font-weight:900;margin-top:4px;margin-bottom:10px;">'+(ph?ph.open+' – '+ph.close:'')+' • '+doneCount+'/'+total+' done</div>'+
+      '<div style="background:rgba(255,255,255,.15);border-radius:8px;height:8px;overflow:hidden;">'+
+        '<div style="background:#FFD700;height:8px;width:'+pct+'%;border-radius:8px;transition:width .4s;"></div>'+
+      '</div>'+
     '</div>'+
-    (wxLine?'<div style="margin-top:6px;font-size:12px;opacity:.9;">'+wxLine+'</div>':'')+
-    '<div style="margin-top:8px;background:rgba(255,255,255,.15);border-radius:8px;height:6px;overflow:hidden;">'+
-      '<div style="background:#FFD700;height:6px;width:'+pct+'%;border-radius:8px;transition:width .4s;"></div>'+
-    '</div></div>'+
-    '<div style="font-size:12px;font-weight:800;color:#1a1a5e;margin:0 2px 6px;text-transform:uppercase;letter-spacing:.08em;">Up next</div>'+
-    upNextCards+
-    '<div style="height:10px;"></div>'+
-    wtSection+logSection+
-    '<div style="margin-bottom:8px;"><button onclick="S.ui.todayBottomTab=\'spend\';S.ui.parkMode=false;render()" style="width:100%;background:#FFD700;color:#1a1a5e;border:none;border-radius:14px;padding:15px;font-size:16px;font-weight:900;cursor:pointer;font-family:inherit;">💵 Quick Spend</button></div>'+
-    '<div style="text-align:center;margin-top:8px;"><button onclick="S.ui.parkMode=false;render()" style="background:none;border:1px solid #e4e4f0;border-radius:9px;padding:7px 16px;font-size:12px;color:#999;cursor:pointer;font-family:inherit;">← Full day view</button></div>';
+    nowSection+mealSection+nextSection+wtSection+spendSection+endDayBtn+
+    '<div style="text-align:center;margin-top:8px;"><button onclick="S.ui.parkMode=false;render()" style="background:none;border:1px solid #e4e4f0;border-radius:9px;padding:10px 20px;font-size:12px;color:#999;cursor:pointer;font-family:inherit;">← FULL DAY VIEW</button></div>'+
+  '</div>';
 }
 function tmSaveUnplanned2(date){
   const t=trip();if(!t)return;
@@ -2570,6 +2664,82 @@ function tmSaveUnplanned2(date){
   if(!t.tripMode.unplanned[date])t.tripMode.unplanned[date]=[];
   t.tripMode.unplanned[date].push({id:uid(),text:txt,note:note,time:timeVal,type:type,createdAt:Date.now()});
   S.ui.parkModeLog=false;persist();render();
+}
+
+// Park Mode Wait Timer
+function pmWaitTimerStart(date){
+  const ride=(document.getElementById('wt-ride')?.value||'').trim();
+  const time=(document.getElementById('wt-time')?.value||'');
+  if(!ride||!time){alert('Please enter ride name and start time');return;}
+  S.ui.parkModeTimer={active:true,start:Date.now(),elapsed:0,ride:ride,time:time};
+  render();
+  setInterval(function(){if(S.ui.parkModeTimer&&S.ui.parkModeTimer.active)render();},1000);
+}
+
+function pmWaitTimerStop(date){
+  if(!S.ui.parkModeTimer)return;
+  S.ui.parkModeTimer.active=false;
+  S.ui.parkModeTimer.elapsed=Math.round((Date.now()-S.ui.parkModeTimer.start)/60000);
+  render();
+}
+
+function pmSaveWait(date){
+  const t=trip();if(!t)return;
+  if(!S.ui.parkModeTimer||S.ui.parkModeTimer.elapsed===0){alert('Start and stop the timer first');return;}
+  const ride=(document.getElementById('wt-ride')?.value||'').trim();
+  const notes=(document.getElementById('wt-notes')?.value||'').trim();
+  ensureTripMode(t);
+  if(!t.tripMode.unplanned)t.tripMode.unplanned={};
+  if(!t.tripMode.unplanned[date])t.tripMode.unplanned[date]=[];
+  t.tripMode.unplanned[date].push({
+    id:uid(),
+    text:ride,
+    note:notes,
+    time:S.ui.parkModeTimer.time,
+    type:'ride',
+    waitActual:S.ui.parkModeTimer.elapsed,
+    createdAt:Date.now()
+  });
+  S.ui.parkModeWT=false;S.ui.parkModeTimer={};persist();render();
+}
+
+function pmSaveSpend(date){
+  const t=trip();if(!t)return;
+  const amt=parseFloat(document.getElementById('ps-amt')?.value||0);
+  const cat=document.getElementById('ps-cat')?.value||'';
+  const notes=(document.getElementById('ps-notes')?.value||'').trim();
+  if(!amt||amt<=0||!cat){alert('Please enter amount and category');return;}
+  const cats=(t.budget||{}).categories||[];
+  const catObj=cats.find(function(c){return c.id===cat;});
+  if(!catObj){alert('Category not found');return;}
+  if(!catObj.transactions)catObj.transactions=[];
+  catObj.transactions.push({id:uid(),amount:amt,note:notes,date:date,onTrip:true,tripDate:date,createdAt:Date.now()});
+  S.ui.parkModeSpend=false;persist();render();
+}
+
+function pmShowEndDay(date){
+  const t=trip();if(!t)return;
+  const parkDay=(t.parks||[]).find(function(d){return d.date===date;});
+  const dayNum=parkDay&&parkDay.dayNum?'Day '+parkDay.dayNum:'Today';
+  const cats=(t.budget||{}).categories||[];
+  let daySpent=0;
+  const catBreakdown=[];
+  cats.forEach(function(c){
+    let catSpent=0;
+    (c.transactions||[]).forEach(function(tx){
+      if(tx.onTrip&&tx.tripDate===date){catSpent+=tx.amount||0;daySpent+=tx.amount||0;}
+    });
+    if(catSpent>0)catBreakdown.push({name:c.name,emoji:c.emoji,spent:catSpent});
+  });
+  const msg='END OF DAY: '+dayNum+'\n\nToday Spent: $'+daySpent.toFixed(2)+'\n\n'+
+    catBreakdown.map(function(c){return c.emoji+' '+c.name+': $'+c.spent.toFixed(2);}).join('\n')+
+    '\n\nReady for tomorrow?';
+  if(confirm(msg)){
+    S.ui.parkMode=false;
+    const nextIdx=t.parks.findIndex(function(d){return d.date===date;})+1;
+    if(nextIdx<t.parks.length){S.ui.todayDate=t.parks[nextIdx].date;}
+    persist();render();
+  }
 }
 function buildTodayLive(t,tm,dates,today){
   let sel=S.ui.todayDate;
