@@ -1517,6 +1517,7 @@ function buildHeader(t) {
     // Right: countdown + buttons
     + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
     + countdownHtml
+    + '<button onclick="inDemo()?exitDemo():enterDemo()" style="background:'+(inDemo()?'#dc2626':'rgba(255,255,255,.15)')+';border:none;border-radius:8px;padding:5px 9px;color:'+(inDemo()?'#fff':'#a5b4fc')+';font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">'+(inDemo()?'&#10005; Demo':'&#127918; Demo')+'</button>'
     + '<button onclick="openSyncModal()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#FFD700;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">&#9729; Sync</button>'
     + '<button onclick="S.ui.settingsOpen=!S.ui.settingsOpen;render()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fff;font-size:15px;cursor:pointer;font-family:inherit;">&#9881;&#65039;</button>'
     + '</div>'
@@ -2176,10 +2177,25 @@ function tmSetNote(date,eKey){
   t.tripMode.journal[date][eKey].note=v.trim(); persist(); render();
 }
 
-// ---- Swipe / long-press gestures on Park Mode items ----
+// ---- iOS-style swipe reveal + long-press gestures on Park Mode items ----
 var _pmG={x:0,y:0,el:null,lp:null,moved:false};
+var _PM_THRESH=64;
 function _pmDecode(k){ try{return decodeURIComponent(k);}catch(e){return k||'';} }
-function _pmTx(el,dx){ el.style.transform=dx?'translateX('+Math.max(-90,Math.min(90,dx))+'px)':''; el.style.transition=dx?'none':'transform .18s'; }
+function _pmReveal(el,dx){
+  var fg=el.querySelector('.pm-fg'); if(!fg)return;
+  var done=el.querySelector('.pm-bg-done'), skip=el.querySelector('.pm-bg-skip');
+  var cl=Math.max(-110,Math.min(110,dx));
+  fg.style.transition='none'; fg.style.transform='translateX('+cl+'px)';
+  var r=Math.min(1,Math.abs(cl)/_PM_THRESH), past=Math.abs(cl)>=_PM_THRESH;
+  if(done){ done.style.opacity=(dx>0?(0.4+0.6*r):0); done.style.paddingLeft=(dx>0&&past?'26px':'20px'); }
+  if(skip){ skip.style.opacity=(dx<0?(0.4+0.6*r):0); skip.style.paddingRight=(dx<0&&past?'26px':'20px'); }
+}
+function _pmSnap(el){
+  if(!el)return;
+  var fg=el.querySelector('.pm-fg'); if(fg){ fg.style.transition='transform .2s'; fg.style.transform=''; }
+  var done=el.querySelector('.pm-bg-done'), skip=el.querySelector('.pm-bg-skip');
+  if(done)done.style.opacity=0; if(skip)skip.style.opacity=0;
+}
 function pmGestureInit(){
   if(window._pmGestureReady)return; window._pmGestureReady=true;
   document.addEventListener('touchstart',function(e){
@@ -2189,27 +2205,27 @@ function pmGestureInit(){
     if(_pmG.lp)clearTimeout(_pmG.lp);
     _pmG.lp=setTimeout(function(){
       if(_pmG.el===el&&!_pmG.moved){ var d=el.getAttribute('data-d'),k=el.getAttribute('data-k'); _pmG.el=null; if(d!=null&&k!=null)tmSetNote(d,_pmDecode(k)); }
-    },600);
+    },550);
   },{passive:true});
   document.addEventListener('touchmove',function(e){
     if(!_pmG.el)return; var tp=e.touches[0], dx=tp.clientX-_pmG.x, dy=tp.clientY-_pmG.y;
-    if(Math.abs(dy)>18&&Math.abs(dy)>Math.abs(dx)){ _pmG.moved=true; if(_pmG.lp){clearTimeout(_pmG.lp);_pmG.lp=null;} _pmTx(_pmG.el,0); _pmG.el=null; return; }
-    if(Math.abs(dx)>6){ _pmG.moved=true; if(_pmG.lp){clearTimeout(_pmG.lp);_pmG.lp=null;} _pmTx(_pmG.el,dx); }
+    if(!_pmG.moved && Math.abs(dy)>16 && Math.abs(dy)>Math.abs(dx)){ _pmG.moved=true; if(_pmG.lp){clearTimeout(_pmG.lp);_pmG.lp=null;} _pmSnap(_pmG.el); _pmG.el=null; return; }
+    if(Math.abs(dx)>5){ _pmG.moved=true; if(_pmG.lp){clearTimeout(_pmG.lp);_pmG.lp=null;} _pmReveal(_pmG.el,dx); }
   },{passive:true});
   document.addEventListener('touchend',function(e){
     if(_pmG.lp){clearTimeout(_pmG.lp);_pmG.lp=null;}
     var el=_pmG.el; _pmG.el=null; if(!el)return;
     var tp=(e.changedTouches&&e.changedTouches[0])||null; var dx=tp?tp.clientX-_pmG.x:0;
-    _pmTx(el,0);
-    var d=el.getAttribute('data-d'), k=el.getAttribute('data-k'); if(d==null||k==null)return;
-    if(dx>60){ tmToggleDone(d,_pmDecode(k)); } else if(dx<-60){ tmSetSkipped(d,_pmDecode(k)); }
+    var d=el.getAttribute('data-d'), k=el.getAttribute('data-k');
+    if(d!=null&&k!=null&&dx>=_PM_THRESH){ tmToggleDone(d,_pmDecode(k)); return; }
+    if(d!=null&&k!=null&&dx<=-_PM_THRESH){ tmSetSkipped(d,_pmDecode(k)); return; }
+    _pmSnap(el);
   },{passive:true});
 }
 
 function pmBootExtras(){
   try{ S.ui=S.ui||{}; pmTimerRestore(); }catch(e){}
   try{ pmGestureInit(); }catch(e){}
-  try{ makeDemoBtn(); }catch(e){}
 }
 
 function catSpent(c){return (c.transactions||[]).reduce((s,tx)=>s+(tx.amount||0),0);}
@@ -2681,11 +2697,21 @@ function buildParkMode(t,tm,dates,today,sel){
     nextItems.map(function(e){
       const k=e.id||(e.cls+'|'+e.text);const j=journal[k]||{};
       const kAttr=esc(k).replace(/'/g,'&#39;');
-      return '<div class="pm-swipe" data-d="'+sel+'" data-k="'+encodeURIComponent(k)+'" style="background:#f9f9ff;border:2px solid #e4e4f0;border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;touch-action:pan-y;">'+
-        '<button onclick="tmToggleDone(\''+sel+'\',\''+kAttr+'\');render()" style="width:48px;height:48px;flex-shrink:0;border-radius:10px;border:2px solid #c4b5fd;background:#fff;color:#6366f1;font-size:20px;cursor:pointer;font-family:inherit;font-weight:900;">'+(j.done?'✓':'·')+'</button>'+
-        '<div style="flex:1;min-width:0;">'+
-          '<div style="font-size:14px;font-weight:900;color:#1a1a5e;">'+e.icon+' '+esc(e.text)+'</div>'+
-          '<div style="font-size:12px;color:#888;margin-top:3px;">'+(e.time?fmt12(e.time):'')+' • '+(e.sub||'')+'</div>'+
+      const doneLbl=j.done?'↺ Undo':'✓ Done';
+      const skipLbl=j.skipped?'↺ Unskip':'Skip';
+      const rowBg=j.skipped?'#f4f4f8':'#f9f9ff';
+      const rowExtra=j.skipped?'opacity:.55;':'';
+      return '<div class="pm-swipe" data-d="'+sel+'" data-k="'+encodeURIComponent(k)+'" style="position:relative;overflow:hidden;border-radius:12px;margin-bottom:8px;touch-action:pan-y;">'+
+        '<div class="pm-bg" style="position:absolute;inset:0;display:flex;border-radius:12px;overflow:hidden;">'+
+          '<div class="pm-bg-done" style="flex:1;background:#16a34a;display:flex;align-items:center;padding-left:20px;color:#fff;font-weight:900;font-size:15px;opacity:0;transition:opacity .05s;">'+doneLbl+'</div>'+
+          '<div class="pm-bg-skip" style="flex:1;background:#f59e0b;display:flex;align-items:center;justify-content:flex-end;padding-right:20px;color:#fff;font-weight:900;font-size:15px;opacity:0;transition:opacity .05s;">'+skipLbl+'</div>'+
+        '</div>'+
+        '<div class="pm-fg" style="position:relative;background:'+rowBg+';border:2px solid #e4e4f0;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px;will-change:transform;'+rowExtra+'">'+
+          '<button onclick="tmToggleDone(\''+sel+'\',\''+kAttr+'\');render()" style="width:48px;height:48px;flex-shrink:0;border-radius:10px;border:2px solid #c4b5fd;background:#fff;color:#6366f1;font-size:20px;cursor:pointer;font-family:inherit;font-weight:900;">'+(j.done?'✓':'·')+'</button>'+
+          '<div style="flex:1;min-width:0;">'+
+            '<div style="font-size:14px;font-weight:900;color:#1a1a5e;">'+e.icon+' '+esc(e.text)+'</div>'+
+            '<div style="font-size:12px;color:#888;margin-top:3px;">'+(e.time?fmt12(e.time):'')+' • '+(e.sub||'')+'</div>'+
+          '</div>'+
         '</div>'+
       '</div>';
     }).join('')+
@@ -10769,7 +10795,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-20-K";
+var SKIPPER_BUILD="2026-07-20-L";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
