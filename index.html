@@ -2746,7 +2746,7 @@ function buildParkMode(t,tm,dates,today,sel){
       '</div>'+
       '<div>'+
         '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Time Started:</label>'+
-        '<input id="wt-time" value="'+(timerState.time||nowHHMM)+'" style="width:100%;padding:12px;border:2px solid #e4e4f0;border-radius:10px;font-size:15px;font-family:inherit;box-sizing:border-box;">'+
+        '<input id="wt-time" type="time" value="'+(timerState.time||nowHHMM)+'" style="width:100%;padding:12px;border:2px solid #e4e4f0;border-radius:10px;font-size:15px;font-family:inherit;box-sizing:border-box;">'+
       '</div>'+
       '<div>'+
         '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Timer: '+timerElapsed+' sec</label>'+
@@ -2789,7 +2789,7 @@ function buildParkMode(t,tm,dates,today,sel){
         '</div>'+
         '<div style="flex:1;">'+
           '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Time:</label>'+
-          '<input id="ps-time" value="'+nowHHMM+'" style="width:100%;padding:12px;border:2px solid #e4e4f0;border-radius:10px;font-size:15px;font-family:inherit;box-sizing:border-box;">'+
+          '<input id="ps-time" type="time" value="'+nowHHMM+'" style="width:100%;padding:12px;border:2px solid #e4e4f0;border-radius:10px;font-size:15px;font-family:inherit;box-sizing:border-box;">'+
         '</div>'+
       '</div>'+
       '<div>'+
@@ -2877,12 +2877,13 @@ function pmSaveSpend(date){
   const amt=parseFloat(document.getElementById('ps-amt')?.value||0);
   const cat=document.getElementById('ps-cat')?.value||'';
   const notes=(document.getElementById('ps-notes')?.value||'').trim();
+  const stime=(document.getElementById('ps-time')?.value||'').trim();
   if(!amt||amt<=0||!cat){alert('Please enter amount and category');return;}
   const cats=(t.budget||{}).categories||[];
   const catObj=cats.find(function(c){return c.id===cat;});
   if(!catObj){alert('Category not found');return;}
   if(!catObj.transactions)catObj.transactions=[];
-  catObj.transactions.push({id:uid(),amount:amt,note:notes,date:date,onTrip:true,tripDate:date,createdAt:Date.now()});
+  catObj.transactions.push({id:uid(),amount:amt,note:notes,time:stime,date:date,onTrip:true,tripDate:date,createdAt:Date.now()});
   S.ui.parkModeSpend=false;persist();render();
 }
 
@@ -10795,7 +10796,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-20-L";
+var SKIPPER_BUILD="2026-07-20-M";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
