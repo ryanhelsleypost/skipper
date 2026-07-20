@@ -1167,7 +1167,7 @@ function migrateAllTrips() {
 
 function persist() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ trips: S.trips, currentTripId: S.currentTripId }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ trips: _demoFreeTrips(), currentTripId: (S.currentTripId==='__demo__'?(S._prevTripId||null):S.currentTripId) }));
   } catch(e) {}
 }
 
@@ -2070,6 +2070,148 @@ function tripDates(t){
   return out;
 }
 function todayISO(){return new Date().toISOString().split('T')[0];}
+
+// ===== PARK MODE v3 ADD-ONS: demo trip, gestures, persisted timer =====
+function _demoFreeTrips(){ return (S.trips||[]).filter(function(x){return x.id!=='__demo__';}); }
+function inDemo(){ return S.currentTripId==='__demo__'; }
+function _pmHHMM(mins){ mins=((Math.round(mins)%1440)+1440)%1440; return String(Math.floor(mins/60)).padStart(2,'0')+':'+String(mins%60).padStart(2,'0'); }
+
+function makeDemoTrip(){
+  var today=todayISO();
+  var base=new Date(today+'T00:00:00');
+  var sD=new Date(base); sD.setDate(sD.getDate()-1);
+  var eD=new Date(base); eD.setDate(eD.getDate()+2);
+  var sISO=sD.toISOString().split('T')[0], eISO=eD.toISOString().split('T')[0];
+  var t=makeDefaultTrip();
+  t.id='__demo__'; t.name='Demo Day (Live)';
+  t.startDate=sISO; t.endDate=eISO; t.parkDays=4; t.partySize=4;
+  t.parks=makeParkDays(sISO,eISO,4);
+  var pd=t.parks.find(function(p){return p.date===today;});
+  if(pd){ pd.park='mk'; pd.dayNum=2; }
+  var now=new Date(); var nm=now.getHours()*60+now.getMinutes(); var A=Math.max(140,Math.min(1250,nm));
+  var plan=[
+    {off:-95,icon:'\u{1F3F0}',label:'Rope Drop \u2014 Main Street U.S.A.',sub:'Park opening'},
+    {off:-55,icon:'\u{1F680}',label:'Space Mountain',sub:'Tomorrowland \u00b7 posted 40 min'},
+    {off:-15,icon:'\u26F5',label:'Pirates of the Caribbean',sub:'Adventureland \u00b7 posted 20 min'},
+    {off:30, icon:'\u{1F334}',label:'Jungle Cruise',sub:'Adventureland \u00b7 Lightning Lane'},
+    {off:75, icon:'\u{1F47B}',label:'Haunted Mansion',sub:'Liberty Square \u00b7 posted 35 min'},
+    {off:130,icon:'\u{1F386}',label:'Happily Ever After',sub:'Fireworks \u00b7 Main Street'}
+  ];
+  t.rosEntries=plan.map(function(pl,i){ return {id:'demo-'+i,date:today,time:_pmHHMM(A+pl.off),icon:pl.icon,label:pl.label,notes:pl.sub}; });
+  ensureTripMode(t);
+  t.tripMode.active=true;
+  t.tripMode.journal[today]={};
+  plan.forEach(function(pl,i){ if(pl.off<-30){ t.tripMode.journal[today]['demo-'+i]={done:true,skipped:false,note:'',actual:null}; } });
+  if(pd){ pd.meals=pd.meals||{}; pd.meals.lunch={place:'Skipper Canteen',adrTime:_pmHHMM(nm+50),adrBooked:true,cost:0,note:''}; }
+  var foodCat=(t.budget.categories||[]).find(function(c){return /food/i.test(c.name||'');});
+  if(foodCat){ foodCat.transactions=foodCat.transactions||[]; foodCat.transactions.push({id:'demo-tx1',amount:24.5,note:'Mickey pretzel + drinks',date:today,onTrip:true,tripDate:today,createdAt:Date.now()}); }
+  return t;
+}
+function enterDemo(){
+  S.trips=_demoFreeTrips();
+  if(S.currentTripId && S.currentTripId!=='__demo__') S._prevTripId=S.currentTripId;
+  S.trips.push(makeDemoTrip());
+  S.currentTripId='__demo__'; S.tab='today';
+  S.ui=S.ui||{}; S.ui.todayDate=todayISO();
+  S.ui.parkMode=true; S.ui.parkModeWT=false; S.ui.parkModeLog=false; S.ui.parkModeSpend=false;
+  render(); updateDemoBtn();
+}
+function exitDemo(){
+  S.trips=_demoFreeTrips(); S.ui.parkMode=false;
+  if(S._prevTripId && S.trips.find(function(x){return x.id===S._prevTripId;})) S.currentTripId=S._prevTripId;
+  else if(S.trips.length) S.currentTripId=S.trips[0].id;
+  render(); updateDemoBtn();
+}
+function resetDemo(){ if(inDemo()){ S.trips=_demoFreeTrips(); S.trips.push(makeDemoTrip()); S.ui.parkMode=true; render(); } }
+function updateDemoBtn(){
+  var b=document.getElementById('demo-fab'); if(!b)return;
+  if(inDemo()){ b.textContent='\u2715 Exit Demo'; b.style.background='#dc2626'; }
+  else { b.textContent='\u{1F3AE} Live Demo'; b.style.background='#6366f1'; }
+}
+function makeDemoBtn(){
+  if(document.getElementById('demo-fab'))return;
+  var b=document.createElement('button');
+  b.id='demo-fab';
+  b.style.cssText='position:fixed;right:14px;bottom:82px;z-index:9998;border:none;border-radius:22px;padding:10px 15px;font-size:13px;font-weight:900;color:#fff;background:#6366f1;box-shadow:0 4px 16px rgba(0,0,0,.28);cursor:pointer;font-family:inherit;';
+  b.onclick=function(){ inDemo()?exitDemo():enterDemo(); };
+  document.body.appendChild(b); updateDemoBtn();
+}
+
+// ---- Persisted wait timer ----
+var _pmTimerInt=null;
+function pmTimerSave(){ try{ localStorage.setItem('skipper_pm_timer', JSON.stringify(S.ui.parkModeTimer||null)); }catch(e){} }
+function pmTimerRestore(){
+  try{ var r=localStorage.getItem('skipper_pm_timer'); if(r){ var v=JSON.parse(r); if(v&&typeof v==='object'){ S.ui.parkModeTimer=v; if(v.active){ S.ui.parkModeWT=true; pmTimerTick(); } } } }catch(e){}
+}
+function pmTimerTick(){
+  if(_pmTimerInt)return;
+  _pmTimerInt=setInterval(function(){
+    if(S.ui.parkModeTimer&&S.ui.parkModeTimer.active){ render(); }
+    else { clearInterval(_pmTimerInt); _pmTimerInt=null; }
+  },1000);
+}
+
+// ---- Quick Spend: all budget categories ----
+function pmSpendOptions(cats,foodId){
+  return (cats||[]).map(function(c){
+    var sel=(c.id===foodId)?' selected':'';
+    return '<option value="'+c.id+'"'+sel+'>'+(c.emoji?c.emoji+' ':'')+esc(c.name||'Category')+'</option>';
+  }).join('');
+}
+
+// ---- Journal helpers for gestures ----
+function tmSetSkipped(date,eKey){
+  var t=trip(); if(!t)return; ensureTripMode(t);
+  if(!t.tripMode.journal[date])t.tripMode.journal[date]={};
+  if(!t.tripMode.journal[date][eKey])t.tripMode.journal[date][eKey]={done:false,skipped:false,note:'',actual:null};
+  var j=t.tripMode.journal[date][eKey]; j.skipped=!j.skipped; if(j.skipped)j.done=false;
+  persist(); render();
+}
+function tmSetNote(date,eKey){
+  var t=trip(); if(!t)return; ensureTripMode(t);
+  if(!t.tripMode.journal[date])t.tripMode.journal[date]={};
+  if(!t.tripMode.journal[date][eKey])t.tripMode.journal[date][eKey]={done:false,skipped:false,note:'',actual:null};
+  var cur=t.tripMode.journal[date][eKey].note||'';
+  var v=prompt('Note for this item:',cur); if(v===null)return;
+  t.tripMode.journal[date][eKey].note=v.trim(); persist(); render();
+}
+
+// ---- Swipe / long-press gestures on Park Mode items ----
+var _pmG={x:0,y:0,el:null,lp:null,moved:false};
+function _pmDecode(k){ try{return decodeURIComponent(k);}catch(e){return k||'';} }
+function _pmTx(el,dx){ el.style.transform=dx?'translateX('+Math.max(-90,Math.min(90,dx))+'px)':''; el.style.transition=dx?'none':'transform .18s'; }
+function pmGestureInit(){
+  if(window._pmGestureReady)return; window._pmGestureReady=true;
+  document.addEventListener('touchstart',function(e){
+    var el=e.target.closest?e.target.closest('.pm-swipe'):null; if(!el)return;
+    var tp=e.touches[0];
+    _pmG.x=tp.clientX; _pmG.y=tp.clientY; _pmG.el=el; _pmG.moved=false;
+    if(_pmG.lp)clearTimeout(_pmG.lp);
+    _pmG.lp=setTimeout(function(){
+      if(_pmG.el===el&&!_pmG.moved){ var d=el.getAttribute('data-d'),k=el.getAttribute('data-k'); _pmG.el=null; if(d!=null&&k!=null)tmSetNote(d,_pmDecode(k)); }
+    },600);
+  },{passive:true});
+  document.addEventListener('touchmove',function(e){
+    if(!_pmG.el)return; var tp=e.touches[0], dx=tp.clientX-_pmG.x, dy=tp.clientY-_pmG.y;
+    if(Math.abs(dy)>18&&Math.abs(dy)>Math.abs(dx)){ _pmG.moved=true; if(_pmG.lp){clearTimeout(_pmG.lp);_pmG.lp=null;} _pmTx(_pmG.el,0); _pmG.el=null; return; }
+    if(Math.abs(dx)>6){ _pmG.moved=true; if(_pmG.lp){clearTimeout(_pmG.lp);_pmG.lp=null;} _pmTx(_pmG.el,dx); }
+  },{passive:true});
+  document.addEventListener('touchend',function(e){
+    if(_pmG.lp){clearTimeout(_pmG.lp);_pmG.lp=null;}
+    var el=_pmG.el; _pmG.el=null; if(!el)return;
+    var tp=(e.changedTouches&&e.changedTouches[0])||null; var dx=tp?tp.clientX-_pmG.x:0;
+    _pmTx(el,0);
+    var d=el.getAttribute('data-d'), k=el.getAttribute('data-k'); if(d==null||k==null)return;
+    if(dx>60){ tmToggleDone(d,_pmDecode(k)); } else if(dx<-60){ tmSetSkipped(d,_pmDecode(k)); }
+  },{passive:true});
+}
+
+function pmBootExtras(){
+  try{ S.ui=S.ui||{}; pmTimerRestore(); }catch(e){}
+  try{ pmGestureInit(); }catch(e){}
+  try{ makeDemoBtn(); }catch(e){}
+}
+
 function catSpent(c){return (c.transactions||[]).reduce((s,tx)=>s+(tx.amount||0),0);}
 function onTripSpent(t,date){
   let sum=0;
@@ -2499,11 +2641,13 @@ function buildParkMode(t,tm,dates,today,sel){
   // Next Meal (within 90 minutes)
   const meals=parkDay&&parkDay.meals||{};
   let nextMeal=null;
+  const _DEF_MT={breakfast:'08:30',lunch:'12:30',dinner:'18:30',snacks:'15:30'};
   for(const mtype of ['breakfast','lunch','dinner','snacks']){
     const m=meals[mtype]||{};
-    if(!m.place||!m.adrTime)continue;
-    const mMins=timeToMins(m.adrTime);
-    if(mMins>nowMins&&mMins<nowMins+90){nextMeal={type:mtype,time:m.adrTime,place:m.place,adrBooked:m.adrBooked};break;}
+    if(!m.place)continue;
+    const _mt=m.adrTime||_DEF_MT[mtype];
+    const mMins=timeToMins(_mt);
+    if(mMins>nowMins&&mMins<nowMins+90){nextMeal={type:mtype,time:(m.adrTime?m.adrTime:'~'+_mt),place:m.place,adrBooked:m.adrBooked};break;}
   }
   
   const cats=(t.budget||{}).categories||[];
@@ -2513,7 +2657,7 @@ function buildParkMode(t,tm,dates,today,sel){
   
   // TODAY budget
   let todayBudget=0,todaySpent=0;
-  (t.budget||{}).categories||[].forEach(function(c){
+  ((t.budget||{}).categories||[]).forEach(function(c){
     (c.transactions||[]).forEach(function(tx){
       if(tx.onTrip&&tx.tripDate===sel){todaySpent+=tx.amount||0;}
     });
@@ -2533,10 +2677,11 @@ function buildParkMode(t,tm,dates,today,sel){
   // Build NEXT items
   const nextSection=nextItems.length?'<div style="margin-bottom:14px;">'+
     '<div style="font-size:11px;font-weight:900;color:#555;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">📋 UP NEXT</div>'+
+    '<div style="font-size:10px;color:#a5a5c0;margin-bottom:8px;">swipe → done · ← skip · hold to note</div>'+
     nextItems.map(function(e){
       const k=e.id||(e.cls+'|'+e.text);const j=journal[k]||{};
       const kAttr=esc(k).replace(/'/g,'&#39;');
-      return '<div style="background:#f9f9ff;border:2px solid #e4e4f0;border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">'+
+      return '<div class="pm-swipe" data-d="'+sel+'" data-k="'+encodeURIComponent(k)+'" style="background:#f9f9ff;border:2px solid #e4e4f0;border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;touch-action:pan-y;">'+
         '<button onclick="tmToggleDone(\''+sel+'\',\''+kAttr+'\');render()" style="width:48px;height:48px;flex-shrink:0;border-radius:10px;border:2px solid #c4b5fd;background:#fff;color:#6366f1;font-size:20px;cursor:pointer;font-family:inherit;font-weight:900;">'+(j.done?'✓':'·')+'</button>'+
         '<div style="flex:1;min-width:0;">'+
           '<div style="font-size:14px;font-weight:900;color:#1a1a5e;">'+e.icon+' '+esc(e.text)+'</div>'+
@@ -2608,8 +2753,7 @@ function buildParkMode(t,tm,dates,today,sel){
       '<div>'+
         '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Category:</label>'+
         '<select id="ps-cat" style="width:100%;padding:12px;border:2px solid #e4e4f0;border-radius:10px;font-size:14px;font-family:inherit;">'+
-          '<option value="'+foodId+'">🍔 Food</option>'+
-          '<option value="'+merchId+'">🛍️ Merch</option>'+
+          pmSpendOptions(cats,foodId)+
         '</select>'+
       '</div>'+
       '<div style="display:flex;gap:8px;">'+
@@ -2672,15 +2816,14 @@ function pmWaitTimerStart(date){
   const time=(document.getElementById('wt-time')?.value||'');
   if(!ride||!time){alert('Please enter ride name and start time');return;}
   S.ui.parkModeTimer={active:true,start:Date.now(),elapsed:0,ride:ride,time:time};
-  render();
-  setInterval(function(){if(S.ui.parkModeTimer&&S.ui.parkModeTimer.active)render();},1000);
+  pmTimerSave();pmTimerTick();render();
 }
 
 function pmWaitTimerStop(date){
   if(!S.ui.parkModeTimer)return;
   S.ui.parkModeTimer.active=false;
   S.ui.parkModeTimer.elapsed=Math.round((Date.now()-S.ui.parkModeTimer.start)/60000);
-  render();
+  pmTimerSave();render();
 }
 
 function pmSaveWait(date){
@@ -2700,7 +2843,7 @@ function pmSaveWait(date){
     waitActual:S.ui.parkModeTimer.elapsed,
     createdAt:Date.now()
   });
-  S.ui.parkModeWT=false;S.ui.parkModeTimer={};persist();render();
+  S.ui.parkModeWT=false;S.ui.parkModeTimer={};pmTimerSave();persist();render();
 }
 
 function pmSaveSpend(date){
@@ -10501,7 +10644,7 @@ function syncPushNow(){
   if(!SYNC.ref)return;
   SYNC.localStamp=Date.now();
   localStorage.setItem('skipper_sync_stamp',String(SYNC.localStamp));
-  var payload=JSON.parse(JSON.stringify({updatedAt:SYNC.localStamp,clientId:SYNC.clientId,app:'skipper',trips:S.trips,currentTripId:S.currentTripId}));
+  var payload=JSON.parse(JSON.stringify({updatedAt:SYNC.localStamp,clientId:SYNC.clientId,app:'skipper',trips:_demoFreeTrips(),currentTripId:(S.currentTripId==='__demo__'?(S._prevTripId||null):S.currentTripId)}));
   SYNC.ref.set(payload).then(function(){syncSetStatus('synced');}).catch(function(e){syncSetStatus('error',e.message);});
 }
 function syncQueuePush(){
@@ -10626,7 +10769,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-05-J";
+var SKIPPER_BUILD="2026-07-20-K";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
@@ -10661,6 +10804,7 @@ try{
     if(_bd.length&&_bnow>=_bd[0]&&_bnow<=_bd[_bd.length-1])S.tab='today';
   }
 }catch(e){}
+pmBootExtras();
 render();
 </script>
 </body>
