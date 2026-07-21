@@ -2142,11 +2142,13 @@ function makeDemoBtn(){
 var _pmTimerInt=null;
 function pmTimerSave(){ try{ localStorage.setItem('skipper_pm_timer', JSON.stringify(S.ui.parkModeTimer||null)); }catch(e){} }
 function pmTimerRestore(){
-  try{ var r=localStorage.getItem('skipper_pm_timer'); if(r){ var v=JSON.parse(r); if(v&&typeof v==='object'){ S.ui.parkModeTimer=v; if(v.active){ S.ui.parkModeWT=true; pmTimerTick(); } } } }catch(e){}
+  try{ var r=localStorage.getItem('skipper_pm_timer'); if(r){ var v=JSON.parse(r); if(v&&typeof v==='object'){ if(v.active&&v.start&&(Date.now()-v.start)>6*3600*1000){ v={}; localStorage.removeItem('skipper_pm_timer'); } S.ui.parkModeTimer=v; if(v.active){ S.ui.parkModeWT=true; pmTimerTick(); } } } }catch(e){}
 }
 function pmTimerTick(){
   if(_pmTimerInt)return;
   _pmTimerInt=setInterval(function(){
+    var ae=document.activeElement;
+    if(ae&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName))return; // don't destroy an open picker or wipe typing
     if(S.ui.parkModeTimer&&S.ui.parkModeTimer.active){ render(); }
     else { clearInterval(_pmTimerInt); _pmTimerInt=null; }
   },1000);
@@ -2221,6 +2223,55 @@ function pmGestureInit(){
     if(d!=null&&k!=null&&dx<=-_PM_THRESH){ tmSetSkipped(d,_pmDecode(k)); return; }
     _pmSnap(el);
   },{passive:true});
+}
+
+// ---- Park Mode v4: action row, ride picker, logged-today ----
+function pmActionRow(wtOpen,spendOpen){
+  return '<div style="display:flex;gap:8px;margin-bottom:14px;">'+
+    pmBigBtn('⏱️','Wait Times',wtOpen,"S.ui.parkModeWT=!S.ui.parkModeWT;S.ui.parkModeSpend=false;render()")+
+    pmBigBtn('💵','Quick Spend',spendOpen,"S.ui.parkModeSpend=!S.ui.parkModeSpend;S.ui.parkModeWT=false;render()")+
+    pmBigBtn('📋','Full Day',false,"S.ui.parkMode=false;render()")+
+  '</div>';
+}
+function pmBigBtn(icon,label,active,onclick){
+  return '<button onclick="'+onclick+'" style="flex:1;min-height:76px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;background:'+(active?'#1a1a5e':'#fff')+';color:'+(active?'#fff':'#1a1a5e')+';border:2px solid '+(active?'#1a1a5e':'#e4e4f0')+';border-radius:16px;font-family:inherit;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.06);-webkit-tap-highlight-color:transparent;">'+
+    '<span style="font-size:26px;line-height:1;">'+icon+'</span>'+
+    '<span style="font-size:12px;font-weight:900;letter-spacing:.02em;">'+label+'</span>'+
+  '</button>';
+}
+function pmRidePicker(parks,targetId){
+  var groups=[],need=[];
+  (parks||[]).forEach(function(pk){
+    var data=_QT.cache[pk];
+    if(!data||data==='err'){ if(data!=='err'){qtFetch(pk);need.push(pk);} return; }
+    var byLand={};
+    data.forEach(function(r){ if(!r||!r.name)return; var l=r.land||'Other'; (byLand[l]=byLand[l]||[]).push(r); });
+    var multi=(parks.length>1);
+    Object.keys(byLand).sort().forEach(function(land){
+      var rides=byLand[land].slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+      var opts=rides.map(function(r){
+        var nm=esc(r.name).replace(/"/g,'&quot;');
+        var wt=(r.is_open&&r.wait_time)?' — '+r.wait_time+'m':'';
+        return '<option value="'+nm+'">'+esc(r.name)+wt+'</option>';
+      }).join('');
+      groups.push('<optgroup label="'+esc((multi?parkName(pk)+' · ':'')+land)+'">'+opts+'</optgroup>');
+    });
+  });
+  var loading=need.length?'<option value="" disabled>Loading '+need.map(parkName).join(', ')+'…</option>':'';
+  var empty=(!groups.length&&!need.length)?'<option value="" disabled>No ride list for this park</option>':'';
+  return '<select onchange="if(this.value){document.getElementById(\''+targetId+'\').value=this.value;this.selectedIndex=0;}" style="width:100%;padding:12px;border:2px solid #c4b5fd;border-radius:10px;font-size:15px;font-family:inherit;box-sizing:border-box;margin-bottom:8px;background:#faf5ff;color:#4c1d95;font-weight:700;">'+
+    '<option value="">🎢 Pick a ride by land…</option>'+loading+empty+groups.join('')+
+  '</select>';
+}
+function pmLoggedToday(t,sel){
+  var upl=(((t.tripMode||{}).unplanned||{})[sel])||[];
+  if(!upl.length)return '';
+  var rows=upl.slice().sort(function(a,b){return (a.time||'').localeCompare(b.time||'');}).map(function(u){
+    var ic={ride:'🎢',food:'🍔',photo:'📸',purchase:'🛍️',moment:'✨'}[u.type]||'📌';
+    var wait=u.waitActual?' · waited '+u.waitActual+'m':'';
+    return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px dashed #eee;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+ic+' '+esc(u.text)+'</span><span style="color:#888;flex-shrink:0;margin-left:8px;">'+(u.time?fmt12(u.time):'')+wait+'</span></div>';
+  }).join('');
+  return '<div style="background:#fff;border:2px solid #e4e4f0;border-radius:14px;padding:14px;margin-bottom:14px;"><div style="font-size:11px;font-weight:900;color:#555;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">📝 Logged Today ('+upl.length+')</div>'+rows+'</div>';
 }
 
 function pmBootExtras(){
@@ -2707,7 +2758,7 @@ function buildParkMode(t,tm,dates,today,sel){
           '<div class="pm-bg-skip" style="flex:1;background:#f59e0b;display:flex;align-items:center;justify-content:flex-end;padding-right:20px;color:#fff;font-weight:900;font-size:15px;opacity:0;transition:opacity .05s;">'+skipLbl+'</div>'+
         '</div>'+
         '<div class="pm-fg" style="position:relative;background:'+rowBg+';border:2px solid #e4e4f0;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px;will-change:transform;'+rowExtra+'">'+
-          '<button onclick="tmToggleDone(\''+sel+'\',\''+kAttr+'\');render()" style="width:48px;height:48px;flex-shrink:0;border-radius:10px;border:2px solid #c4b5fd;background:#fff;color:#6366f1;font-size:20px;cursor:pointer;font-family:inherit;font-weight:900;">'+(j.done?'✓':'·')+'</button>'+
+          '<button onclick="tmToggleDone(\''+sel+'\',\''+kAttr+'\');render()" style="width:46px;height:46px;flex-shrink:0;border-radius:50%;border:2px solid '+(j.done?'#16a34a':'#cbd5e1')+';background:'+(j.done?'#16a34a':'#fff')+';color:'+(j.done?'#fff':'#d1d5db')+';font-size:22px;cursor:pointer;font-family:inherit;font-weight:900;line-height:1;display:flex;align-items:center;justify-content:center;">✓</button>'+
           '<div style="flex:1;min-width:0;">'+
             '<div style="font-size:14px;font-weight:900;color:#1a1a5e;">'+e.icon+' '+esc(e.text)+'</div>'+
             '<div style="font-size:12px;color:#888;margin-top:3px;">'+(e.time?fmt12(e.time):'')+' • '+(e.sub||'')+'</div>'+
@@ -2742,7 +2793,8 @@ function buildParkMode(t,tm,dates,today,sel){
     '<div style="display:flex;flex-direction:column;gap:10px;">'+
       '<div>'+
         '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Ride:</label>'+
-        '<input id="wt-ride" placeholder="Space Mountain" value="'+(timerState.ride||'')+'" style="width:100%;padding:12px;border:2px solid #e4e4f0;border-radius:10px;font-size:15px;font-family:inherit;box-sizing:border-box;">'+
+        pmRidePicker(unique,'wt-ride')+
+        '<input id="wt-ride" placeholder="Or type a ride name…" value="'+(timerState.ride||'')+'" style="width:100%;padding:12px;border:2px solid #e4e4f0;border-radius:10px;font-size:15px;font-family:inherit;box-sizing:border-box;">'+
       '</div>'+
       '<div>'+
         '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Time Started:</label>'+
@@ -2770,7 +2822,7 @@ function buildParkMode(t,tm,dates,today,sel){
   
   // Quick Spend Section
   const spendOpen=S.ui.parkModeSpend===true;
-  const spendSection='<div style="background:#fff;border:2px solid #e4e4f0;border-radius:14px;padding:16px;margin-bottom:14px;">'+
+  const spendSection=!spendOpen?'':'<div style="background:#fff;border:2px solid #e4e4f0;border-radius:14px;padding:16px;margin-bottom:14px;">'+
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'+
       '<div style="font-size:14px;font-weight:900;color:#1a1a5e;">💵 QUICK SPEND</div>'+
       '<button onclick="S.ui.parkModeSpend=!S.ui.parkModeSpend;render()" style="background:#fef9c3;border:2px solid #fde047;border-radius:9px;padding:6px 14px;font-size:13px;font-weight:800;color:#854d0e;cursor:pointer;font-family:inherit;">'+(spendOpen?'Done ▴':'Add ▾')+'</button>'+
@@ -2818,7 +2870,7 @@ function buildParkMode(t,tm,dates,today,sel){
         '<div style="background:#FFD700;height:8px;width:'+pct+'%;border-radius:8px;transition:width .4s;"></div>'+
       '</div>'+
     '</div>'+
-    nowSection+mealSection+nextSection+wtSection+spendSection+endDayBtn+
+    pmActionRow(wtTimerOpen,spendOpen)+nowSection+mealSection+nextSection+pmLoggedToday(t,sel)+wtSection+spendSection+endDayBtn+
     '<div style="text-align:center;margin-top:8px;"><button onclick="S.ui.parkMode=false;render()" style="background:none;border:1px solid #e4e4f0;border-radius:9px;padding:10px 20px;font-size:12px;color:#999;cursor:pointer;font-family:inherit;">← FULL DAY VIEW</button></div>'+
   '</div>';
 }
@@ -2966,7 +3018,7 @@ function buildTodayLive(t,tm,dates,today){
         ${e.cls==='auto'?
           '<div style="width:30px;height:30px;flex-shrink:0;border-radius:9px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:13px;">ℹ️</div>'
           :`<button onclick="tmToggleDone('${sel}','${kAttr}')" title="${j.done?'Undo':'Mark done'}"
-          style="width:30px;height:30px;flex-shrink:0;border-radius:9px;border:2px solid ${j.done?'#16a34a':'#ddd'};background:${j.done?'#16a34a':'#fff'};color:#fff;font-size:15px;cursor:pointer;font-family:inherit;line-height:1;">${j.done?'✓':''}</button>`}
+          style="width:30px;height:30px;flex-shrink:0;border-radius:50%;border:2px solid ${j.done?'#16a34a':'#cbd5e1'};background:${j.done?'#16a34a':'#fff'};color:${j.done?'#fff':'#d1d5db'};font-size:15px;cursor:pointer;font-family:inherit;line-height:1;display:flex;align-items:center;justify-content:center;">✓</button>`}
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             ${isNow?'<span style="background:#eef2ff;color:#4338ca;font-size:10px;font-weight:900;padding:2px 8px;border-radius:9px;">NOW</span>':''}
@@ -3177,7 +3229,7 @@ function buildTodayLive(t,tm,dates,today){
           '<div style="display:flex;align-items:flex-start;gap:10px;">'+
             (e.cls==='auto'
               ? '<div style="width:30px;height:30px;flex-shrink:0;border-radius:9px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:13px;">ℹ️</div>'
-              : '<button onclick="tmToggleDone(\''+sel+'\',\''+kAttr+'\')" title="'+(j.done?'Undo':'Mark done')+'" style="width:30px;height:30px;flex-shrink:0;border-radius:9px;border:2px solid '+(j.done?'#16a34a':'#ddd')+';background:'+(j.done?'#16a34a':'#fff')+';color:#fff;font-size:15px;cursor:pointer;font-family:inherit;line-height:1;">'+(j.done?'✓':'')+'</button>'
+              : '<button onclick="tmToggleDone(\''+sel+'\',\''+kAttr+'\')" title="'+(j.done?'Undo':'Mark done')+'" style="width:30px;height:30px;flex-shrink:0;border-radius:50%;border:2px solid '+(j.done?'#16a34a':'#cbd5e1')+';background:'+(j.done?'#16a34a':'#fff')+';color:'+(j.done?'#fff':'#d1d5db')+';font-size:15px;cursor:pointer;font-family:inherit;line-height:1;display:flex;align-items:center;justify-content:center;">✓</button>'
             )+
             '<div style="flex:1;min-width:0;">'+
               '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'+
@@ -10796,7 +10848,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-20-M";
+var SKIPPER_BUILD="2026-07-20-N";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
