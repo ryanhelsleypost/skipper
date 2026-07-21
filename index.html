@@ -10743,6 +10743,9 @@ function syncInit(){
   if(typeof firebase==='undefined'){syncSetStatus('error','Firebase SDK didn\'t load (offline?)');return;}
   try{
     if(!firebase.apps.length)firebase.initializeApp(SYNC.cfg);
+    // iOS Safari: force WebSockets so RTDB never falls back to long-polling,
+    // whose hidden .lp frame can navigate the whole browser to firebaseio.com.
+    try{ if(firebase.database&&firebase.database.INTERNAL&&firebase.database.INTERNAL.forceWebSockets){ firebase.database.INTERNAL.forceWebSockets(); } }catch(e){}
     if(SYNC.ref)SYNC.ref.off();
     SYNC.ref=firebase.database().ref('ledgers/'+SYNC.code);
     syncSetStatus('connecting');
@@ -10848,7 +10851,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-20-N";
+var SKIPPER_BUILD="2026-07-20-O";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){

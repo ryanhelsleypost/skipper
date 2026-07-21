@@ -1,12 +1,22 @@
 // Skipper/Heath offline shell — cache-first with background refresh.
 // Upload this file to each repo alongside index.html.
-const CACHE = 'app-shell-v1';
+const CACHE = 'app-shell-v2';
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./'])).then(() => self.skipWaiting()));
 });
-self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys()
+      .then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+  // Only ever handle same-origin requests. Cross-origin traffic (Firebase
+  // Realtime Database, CORS relays, Queue-Times) must pass through untouched —
+  // intercepting it can break Firebase's transport and hijack navigation.
+  if (url.origin !== location.origin) return;
   // Update-check and force-refresh requests always hit the network,
   // and force-refresh responses replace the cached shell.
   if (url.searchParams.has('u')) { e.respondWith(fetch(e.request)); return; }
