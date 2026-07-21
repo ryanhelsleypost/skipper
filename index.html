@@ -2885,7 +2885,7 @@ function buildParkMode(t,tm,dates,today,sel){
         '<div style="background:#FFD700;height:8px;width:'+pct+'%;border-radius:8px;transition:width .4s;"></div>'+
       '</div>'+
     '</div>'+
-    pmActionRow(wtTimerOpen,spendOpen)+nowSection+mealSection+nextSection+pmLoggedToday(t,sel)+wtSection+spendSection+endDayBtn+
+    pmActionRow(wtTimerOpen,spendOpen)+wtSection+spendSection+nowSection+mealSection+nextSection+pmLoggedToday(t,sel)+endDayBtn+
     '<div style="text-align:center;margin-top:8px;"><button onclick="S.ui.parkMode=false;render()" style="background:none;border:1px solid #e4e4f0;border-radius:9px;padding:10px 20px;font-size:12px;color:#999;cursor:pointer;font-family:inherit;">← FULL DAY VIEW</button></div>'+
   '</div>';
 }
@@ -10866,7 +10866,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-20-P";
+var SKIPPER_BUILD="2026-07-20-Q";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
