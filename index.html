@@ -2264,14 +2264,28 @@ function pmRidePicker(parks,targetId){
   '</select>';
 }
 function pmLoggedToday(t,sel){
+  var items=[];
   var upl=(((t.tripMode||{}).unplanned||{})[sel])||[];
-  if(!upl.length)return '';
-  var rows=upl.slice().sort(function(a,b){return (a.time||'').localeCompare(b.time||'');}).map(function(u){
+  upl.forEach(function(u){
     var ic={ride:'🎢',food:'🍔',photo:'📸',purchase:'🛍️',moment:'✨'}[u.type]||'📌';
-    var wait=u.waitActual?' · waited '+u.waitActual+'m':'';
-    return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px dashed #eee;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+ic+' '+esc(u.text)+'</span><span style="color:#888;flex-shrink:0;margin-left:8px;">'+(u.time?fmt12(u.time):'')+wait+'</span></div>';
+    var right=(u.time?fmt12(u.time):'')+(u.waitActual?' · waited '+u.waitActual+'m':'');
+    items.push({time:u.time||'',icon:ic,text:u.text,right:right});
+  });
+  ((t.budget||{}).categories||[]).forEach(function(c){
+    (c.transactions||[]).forEach(function(tx){
+      if(tx.onTrip&&tx.tripDate===sel){
+        var tm=tx.time||'';
+        if(!tm&&tx.createdAt){var d=new Date(tx.createdAt);tm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+        items.push({time:tm,icon:(c.emoji||'💵'),text:(tx.note||c.name||'Spend'),right:(tm?fmt12(tm)+' · ':'')+'$'+(tx.amount||0).toFixed(2)});
+      }
+    });
+  });
+  if(!items.length)return '';
+  items.sort(function(a,b){return (a.time||'').localeCompare(b.time||'');});
+  var rows=items.map(function(it){
+    return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px dashed #eee;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+it.icon+' '+esc(it.text)+'</span><span style="color:#888;flex-shrink:0;margin-left:8px;">'+esc(it.right)+'</span></div>';
   }).join('');
-  return '<div style="background:#fff;border:2px solid #e4e4f0;border-radius:14px;padding:14px;margin-bottom:14px;"><div style="font-size:11px;font-weight:900;color:#555;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">📝 Logged Today ('+upl.length+')</div>'+rows+'</div>';
+  return '<div style="background:#fff;border:2px solid #e4e4f0;border-radius:14px;padding:14px;margin-bottom:14px;"><div style="font-size:11px;font-weight:900;color:#555;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">📝 Logged Today ('+items.length+')</div>'+rows+'</div>';
 }
 
 function pmBootExtras(){
@@ -2790,6 +2804,7 @@ function buildParkMode(t,tm,dates,today,sel){
       '<div style="font-size:14px;font-weight:900;color:#1a1a5e;">⏱️ LOG WAIT TIME</div>'+
       '<button onclick="S.ui.parkModeWT=false;render()" style="background:none;border:1px solid #e4e4f0;border-radius:8px;padding:4px 10px;font-size:12px;color:#999;cursor:pointer;font-family:inherit;">✕ Close</button>'+
     '</div>'+
+    '<div style="font-size:11px;color:#666;margin-bottom:10px;background:#f6f6fb;border-radius:8px;padding:8px 10px;">⏱️ Stopwatch — tap START when you join the line, STOP when you board, then LOG THIS WAIT.</div>'+
     '<div style="display:flex;flex-direction:column;gap:10px;">'+
       '<div>'+
         '<label style="font-size:12px;font-weight:800;color:#666;display:block;margin-bottom:6px;">Ride:</label>'+
@@ -10851,7 +10866,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-20-O";
+var SKIPPER_BUILD="2026-07-20-P";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
