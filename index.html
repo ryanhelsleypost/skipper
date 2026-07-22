@@ -6123,7 +6123,7 @@ function buildDayRow(day, i, t, parkOpts) {
         return html;
       })()}
       ${!isMealExpanded ? (function(){
-        var chips = dayMealChips(day);
+        var chips = dayMealChips(day, t);
         if (!chips.length) return '';
         return '<div onclick="toggleDayFull('+i+','+(canLL?'true':'false')+')" title="Tap to open dining" style="padding:4px 8px 6px 12px;display:flex;flex-wrap:wrap;gap:4px;border-top:1px solid #f0f0f8;cursor:pointer;">'+chips.join('')+'</div>';
       })() : ''}
@@ -6133,16 +6133,21 @@ function buildDayRow(day, i, t, parkOpts) {
 }
 
 // Restaurant chips for a collapsed day card (so dining shows without expanding)
-function dayMealChips(day) {
+function dayMealChips(day, t) {
   const meals = day.meals || blankMeals();
+  const md = (t && t.mealDefaults) || blankMealDefaults();
   return ['breakfast','lunch','dinner','snacks'].map(function(key){
     const m = meals[key] || {};
     const place = m.place || '';
-    if (!place) return '';
+    const cost = (m.cost != null) ? m.cost : (md[key] || 0);
+    if (!place && !cost) return '';
     const icon = {breakfast:'\u{1F95E}',lunch:'\u{1F959}',dinner:'\u{1F37D}\uFE0F',snacks:'\u{1F366}'}[key];
     const tm = m.adrTime ? ' <span style="color:#86b89a;font-weight:600;">'+fmt12(m.adrTime)+'</span>' : '';
     const bk = m.adrBooked ? ' \u2713' : '';
-    return '<span style="font-size:11px;background:#f0fdf4;color:#15803d;border:1px solid #dcfce7;border-radius:6px;padding:2px 8px;font-weight:700;">'+icon+' '+esc(place)+tm+bk+'</span>';
+    const nm = place ? esc(place) : '<span style="color:#b9b9c9;">TBD</span>';
+    const bg = place ? '#f0fdf4' : '#fafafa';
+    const bd = place ? '#dcfce7' : '#eeeef4';
+    return '<span style="font-size:11px;background:'+bg+';color:#15803d;border:1px solid '+bd+';border-radius:6px;padding:2px 8px;font-weight:700;">'+icon+' '+nm+tm+bk+'</span>';
   }).filter(Boolean);
 }
 
@@ -6208,7 +6213,7 @@ function buildLockedDayCard(day, i, t, parkOpts, llCost, mealCost, cruiseDay) {
     const cost  = (m.cost != null) ? m.cost : (md[key] || 0);
     if (!place && cost === 0) return '';
     const icon = {breakfast:'🥞',lunch:'🥙',dinner:'🍽️',snacks:'🍦'}[key];
-    return `<span style="font-size:12px;">${icon}${place?` <strong>${esc(place)}</strong>`:''} <span style="color:#888;">${fmtDual(cost,t)}</span></span>`;
+    return `<span style="font-size:12px;">${icon}${place?` <strong>${esc(place)}</strong>`:` <strong style="color:#b9b9c9;">TBD</strong>`} <span style="color:#888;">${fmtDual(cost,t)}</span></span>`;
   }).filter(Boolean);
   const mealsSummary = mealItems.length ? `<div class="day-locked-section">
     <span class="day-locked-section-label">🍽️ Meals</span>
@@ -10896,7 +10901,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-21-S";
+var SKIPPER_BUILD="2026-07-21-T";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
