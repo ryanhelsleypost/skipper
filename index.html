@@ -280,6 +280,9 @@ input[type=checkbox]{width:auto;accent-color:#1a1a5e;width:16px;height:16px;curs
 .meal-day-pill{background:#16a34a;color:#fff;border-radius:6px;padding:4px 9px;font-size:11px;font-weight:800;cursor:pointer;border:none;font-family:inherit;white-space:nowrap;transition:all .15s;flex-shrink:0}
 .meal-day-pill:hover{background:#15803d}
 .meal-day-pill.active{background:#FFD700;color:#1a1a5e}
+.day-plan-pill{background:#4f46e5;color:#fff;border-radius:6px;padding:4px 9px;font-size:11px;font-weight:800;cursor:pointer;border:none;font-family:inherit;white-space:nowrap;transition:all .15s;flex-shrink:0}
+.day-plan-pill:hover{background:#4338ca}
+.day-plan-pill.active{background:#FFD700;color:#1a1a5e}
 .meal-section{background:#f0fdf4;border-top:2px solid #bbf7d0;padding:14px 16px}
 .meal-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 0 4px;border-bottom:none}
 .meal-row:last-of-type{border-bottom:none}
@@ -1251,6 +1254,8 @@ function blankDayExtras() {
   };
 }
 
+// Sensible default meal times — used by the planner pickers and the day timeline
+const MEAL_DEF_TIMES = {breakfast:'08:00', lunch:'12:30', dinner:'18:00', snacks:'15:00'};
 function blankMeals() {
   return {
     breakfast: { place:'', cost:null, adrTime:'', adrConfNum:'', adrBooked:false, adrRequired:false },
@@ -2722,7 +2727,7 @@ function buildParkMode(t,tm,dates,today,sel){
   // Next Meal (within 90 minutes)
   const meals=parkDay&&parkDay.meals||{};
   let nextMeal=null;
-  const _DEF_MT={breakfast:'08:30',lunch:'12:30',dinner:'18:30',snacks:'15:30'};
+  const _DEF_MT=MEAL_DEF_TIMES;
   for(const mtype of ['breakfast','lunch','dinner','snacks']){
     const m=meals[mtype]||{};
     if(!m.place)continue;
@@ -6100,8 +6105,7 @@ function buildDayRow(day, i, t, parkOpts) {
                onchange="updPark(${i},'notes',this.value)"
                style="padding:5px 8px;border:1px solid #e4e4f0;border-radius:7px;font-size:12px;font-family:inherit;margin-top:1px;">
         <div style="display:flex;flex-direction:column;gap:3px;align-items:stretch;">
-          ${canLL?`<button class="ll-day-pill${isLLExpanded?' active':''}" onclick="toggleLLDay(${i})" title="${PA_DATA.hasOwnProperty(day.park)?'Premier Access':'Lightning Lane'}${llCost>0&&t.tripType==='dlp'?' — '+fmtDualPlain(llCost,t):''}">${PA_DATA.hasOwnProperty(day.park)?'🎫':'⚡'}${llCost>0?' '+curSym(t)+llCost:''}</button>`:''}
-          <button class="meal-day-pill${isMealExpanded?' active':''}" onclick="toggleMealDay(${i})" title="Plan Meals${mealCost>0&&t.tripType==='dlp'?' — '+fmtDualPlain(mealCost,t):''}">🍽️${mealCost>0?' '+curSym(t)+mealCost:''}</button>
+          <button class="day-plan-pill${(isLLExpanded||isMealExpanded)?' active':''}" onclick="toggleDayFull(${i},${canLL?'true':'false'})" title="Open this day — ${canLL?(PA_DATA.hasOwnProperty(day.park)?'Premier Access':'Lightning Lane')+' + ':''}Dining">${canLL?(PA_DATA.hasOwnProperty(day.park)?'🎫':'⚡'):''}🍽️ Day${(function(){var _c=(canLL?(llCost||0):0)+(mealCost||0);return _c>0?' '+curSym(t)+Math.round(_c):'';})()}</button>
         </div>
       </div>
       ${parkHopsHtml}
@@ -6702,7 +6706,7 @@ function buildMealsSection(day, i, t) {
           onchange="updMeal(${i},'${mt.key}','adrBooked',this.checked)"
           style="width:14px;height:14px;accent-color:#16a34a;cursor:pointer;">
         <span style="font-size:11px;font-weight:700;color:#${adrBooked?'15803d':'aaa'};">ADR</span>
-        ${buildTP(`tp-meal-${i}-${mt.key}`,esc(adrTime),`updMeal(${i},'${mt.key}','adrTime',this.value)`)}
+        ${buildTP(`tp-meal-${i}-${mt.key}`,esc(adrTime||MEAL_DEF_TIMES[mt.key]||''),`updMeal(${i},'${mt.key}','adrTime',this.value)`)}
         <input type="text" value="${esc(adrConfNum)}" placeholder="Conf # (optional)"
           onchange="updMeal(${i},'${mt.key}','adrConfNum',this.value)"
           style="flex:1;padding:2px 7px;border:1px solid #e4e4f0;border-radius:5px;font-size:11px;font-family:inherit;max-width:150px;">
@@ -8617,7 +8621,7 @@ function rosEntriesForDate(t, date) {
             const meal = meals[mt]||{};
             if (meal.adrTime || meal.place) {
               const mIcon = {breakfast:'🥞',lunch:'🥙',dinner:'🍽️',snacks:'🍦'}[mt];
-              const defTime = {breakfast:'08:30',lunch:'12:30',dinner:'18:30',snacks:'15:00'}[mt];
+              const defTime = MEAL_DEF_TIMES[mt];
               const cost = meal.cost != null ? meal.cost : (md[mt]||0);
               entries.push({
                 time: meal.adrTime || defTime,
@@ -8644,7 +8648,7 @@ function rosEntriesForDate(t, date) {
           const meal = anyDay.meals[mt]||{};
           if (meal.adrTime || meal.place) {
             const mIcon = {breakfast:'🥞',lunch:'🥙',dinner:'🍽️',snacks:'🍦'}[mt];
-            const defTime = {breakfast:'08:30',lunch:'12:30',dinner:'18:30',snacks:'15:00'}[mt];
+            const defTime = MEAL_DEF_TIMES[mt];
             const cost = meal.cost != null ? meal.cost : (cruise2 ? 0 : (md2[mt]||0));
             entries.push({
               time: meal.adrTime || defTime,
@@ -8688,7 +8692,7 @@ function rosEntriesForDate(t, date) {
           const meal = (actDay.meals||{})[mt]||{};
           if (meal.place || meal.note) {
             const mIcon = {breakfast:'🥞',lunch:'🥙',dinner:'🍽️',snacks:'🍦'}[mt];
-            const defTime = {breakfast:'08:00',lunch:'12:30',dinner:'18:30',snacks:'15:00'}[mt];
+            const defTime = MEAL_DEF_TIMES[mt];
             entries.push({time:defTime, icon:mIcon, text:`${cap(mt)}: ${meal.place||'TBD'}`, sub:meal.note||'', cls:'meal', est:(meal.cost!=null&&meal.cost>0)?meal.cost:null, mealType:mt});
           }
         });
@@ -10258,6 +10262,13 @@ function toggleMealDay(i) {
   S.ui.expandedMealDay = S.ui.expandedMealDay===i ? null : i;
   render();
 }
+// One toggle opens the whole day (Lightning Lane + Dining together)
+function toggleDayFull(i, canLL) {
+  const open = (S.ui.expandedMealDay===i) || (S.ui.expandedLLDay===i);
+  if (open) { S.ui.expandedMealDay=null; S.ui.expandedLLDay=null; }
+  else { S.ui.expandedMealDay=i; S.ui.expandedLLDay=canLL?i:null; }
+  render();
+}
 function updMeal(i, mealType, field, val) {
   const t=trip(); const parks=[...t.parks];
   const meals={...(parks[i].meals||blankMeals())};
@@ -10866,7 +10877,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-20-Q";
+var SKIPPER_BUILD="2026-07-21-R";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
