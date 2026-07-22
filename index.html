@@ -6122,9 +6122,28 @@ function buildDayRow(day, i, t, parkOpts) {
         html += '</div>';
         return html;
       })()}
+      ${!isMealExpanded ? (function(){
+        var chips = dayMealChips(day);
+        if (!chips.length) return '';
+        return '<div onclick="toggleDayFull('+i+','+(canLL?'true':'false')+')" title="Tap to open dining" style="padding:4px 8px 6px 12px;display:flex;flex-wrap:wrap;gap:4px;border-top:1px solid #f0f0f8;cursor:pointer;">'+chips.join('')+'</div>';
+      })() : ''}
       ${isLLExpanded && canLL ? buildSkipLineSection(day,i,t) : ''}
       ${isMealExpanded ? buildMealsSection(day,i,t) : ''}
     </div>`;
+}
+
+// Restaurant chips for a collapsed day card (so dining shows without expanding)
+function dayMealChips(day) {
+  const meals = day.meals || blankMeals();
+  return ['breakfast','lunch','dinner','snacks'].map(function(key){
+    const m = meals[key] || {};
+    const place = m.place || '';
+    if (!place) return '';
+    const icon = {breakfast:'\u{1F95E}',lunch:'\u{1F959}',dinner:'\u{1F37D}\uFE0F',snacks:'\u{1F366}'}[key];
+    const tm = m.adrTime ? ' <span style="color:#86b89a;font-weight:600;">'+fmt12(m.adrTime)+'</span>' : '';
+    const bk = m.adrBooked ? ' \u2713' : '';
+    return '<span style="font-size:11px;background:#f0fdf4;color:#15803d;border:1px solid #dcfce7;border-radius:6px;padding:2px 8px;font-weight:700;">'+icon+' '+esc(place)+tm+bk+'</span>';
+  }).filter(Boolean);
 }
 
 function buildLockedDayCard(day, i, t, parkOpts, llCost, mealCost, cruiseDay) {
@@ -10877,7 +10896,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-21-R";
+var SKIPPER_BUILD="2026-07-21-S";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
