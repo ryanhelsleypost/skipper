@@ -6132,6 +6132,11 @@ function buildDayRow(day, i, t, parkOpts) {
     </div>`;
 }
 
+// A meal counts as confirmed only when the ADR box is checked AND a conf # is entered
+function mealConfirmed(m) {
+  return !!(m && m.adrBooked && String(m.adrConfNum || '').trim());
+}
+
 // Restaurant chips for a collapsed day card (so dining shows without expanding)
 function dayMealChips(day, t) {
   const meals = day.meals || blankMeals();
@@ -6143,7 +6148,7 @@ function dayMealChips(day, t) {
     if (!place && !cost) return '';
     const icon = {breakfast:'\u{1F95E}',lunch:'\u{1F959}',dinner:'\u{1F37D}\uFE0F',snacks:'\u{1F366}'}[key];
     const tm = m.adrTime ? ' <span style="color:#86b89a;font-weight:600;">'+fmt12(m.adrTime)+'</span>' : '';
-    const bk = m.adrBooked ? ' \u2713' : '';
+    const bk = mealConfirmed(m) ? ' <span style="color:#16a34a;">\u2713</span>' : '';
     const nm = place ? esc(place) : '<span style="color:#b9b9c9;">TBD</span>';
     const bg = place ? '#f0fdf4' : '#fafafa';
     const bd = place ? '#dcfce7' : '#eeeef4';
@@ -6161,7 +6166,7 @@ function dayPlanProgress(day, t) {
     const cost = (m.cost != null) ? m.cost : (md[k] || 0);
     if (!m.place && !cost) return;
     items.push(!!m.place);
-    if (m.adrRequired) items.push(!!m.adrBooked);
+    if (m.adrRequired) items.push(mealConfirmed(m));
   });
   const isParkDay = day.park && day.park!=='rest' && day.park!=='travel' && day.park!=='unassigned';
   if (isParkDay) {
@@ -6189,7 +6194,7 @@ function dayTimelineRows(day, t) {
       icon: icon,
       label: m.place || (cap(k)+' — TBD'),
       muted: !m.place,
-      booked: !!m.adrBooked,
+      booked: mealConfirmed(m),
       cost: cost
     });
   });
@@ -10951,7 +10956,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-21-U";
+var SKIPPER_BUILD="2026-07-21-V";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
