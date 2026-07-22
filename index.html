@@ -6151,117 +6151,167 @@ function dayMealChips(day, t) {
   }).filter(Boolean);
 }
 
+// Planning completeness for a day — drives the progress meter
+function dayPlanProgress(day, t) {
+  const meals = day.meals || blankMeals();
+  const md = (t && t.mealDefaults) || blankMealDefaults();
+  const items = [];
+  ['breakfast','lunch','dinner','snacks'].forEach(function(k){
+    const m = meals[k] || {};
+    const cost = (m.cost != null) ? m.cost : (md[k] || 0);
+    if (!m.place && !cost) return;
+    items.push(!!m.place);
+    if (m.adrRequired) items.push(!!m.adrBooked);
+  });
+  const isParkDay = day.park && day.park!=='rest' && day.park!=='travel' && day.park!=='unassigned';
+  if (isParkDay) {
+    const ll = day.ll || (PA_DATA[day.park] ? blankPA() : blankLL());
+    items.push(!!(ll.passType && ll.passType !== 'none'));
+  }
+  return { done: items.filter(Boolean).length, total: items.length };
+}
+
+// Time-ordered rows for a day (meals + activities), sorted by clock time
+function dayTimelineRows(day, t) {
+  const meals = day.meals || blankMeals();
+  const md = (t && t.mealDefaults) || blankMealDefaults();
+  const rows = [];
+  ['breakfast','lunch','dinner','snacks'].forEach(function(k){
+    const m = meals[k] || {};
+    const cost = (m.cost != null) ? m.cost : (md[k] || 0);
+    if (!m.place && !cost) return;
+    const icon = {breakfast:'🥞',lunch:'🥙',dinner:'🍽️',snacks:'🍦'}[k];
+    const tm = m.adrTime || MEAL_DEF_TIMES[k];
+    rows.push({
+      sort: tm,
+      time: fmt12(tm),
+      approx: !m.adrTime,
+      icon: icon,
+      label: m.place || (cap(k)+' — TBD'),
+      muted: !m.place,
+      booked: !!m.adrBooked,
+      cost: cost
+    });
+  });
+  (getDayActivities(t, day.date) || []).forEach(function(e){
+    rows.push({
+      sort: e.time || '23:59',
+      time: e.time ? fmt12(e.time) : '',
+      approx: false,
+      icon: e.icon || '📌',
+      label: e.label || e.title || '',
+      muted: false,
+      booked: false,
+      cost: null
+    });
+  });
+  rows.sort(function(a,b){ return String(a.sort||'').localeCompare(String(b.sort||'')); });
+  return rows;
+}
+
 function buildLockedDayCard(day, i, t, parkOpts, llCost, mealCost, cruiseDay) {
   const isSwapMode     = S.ui.swapMode;
   const isSwapSelected = S.ui.swapMode && (S.ui.swapSelected||[]).includes(i);
-  const bg       = day.park==='rest'||day.park==='travel'?'#f9fafb':day.park==='unassigned'?'#fffbeb':cruiseDay?'#eff6ff':'#f8f8ff';
+  const bg       = day.park==='rest'||day.park==='travel'?'#f9fafb':day.park==='unassigned'?'#fffbeb':cruiseDay?'#eff6ff':'#fcfcff';
   const parkHops = day.parkHops || [];
   const dayExtras= day.dayExtras || blankDayExtras();
   const isDlpDay = !!PA_DATA[day.park];
   const ll       = day.ll || (isDlpDay ? blankPA() : blankLL());
-  const meals    = day.meals || blankMeals();
-  const md       = t.mealDefaults || blankMealDefaults();
   const totalDay = llCost + mealCost;
-  const sym      = curSym(t);
+  const pcolor   = parkColor(day.park) || '#1a1a5e';
 
-  // -- Park badges --
+  // -- Headline: park chain (Animal Kingdom → EPCOT on hop days) --
   const allParks = [day.park, ...parkHops.filter(Boolean)];
-  const parkBadges = allParks.filter(p=>p&&p!=='rest'&&p!=='unassigned').map(p=>
-    `<span class="park-badge ${parkClass(p)}">${parkName(p)}</span>`).join('');
+  const namedParks = allParks.filter(p=>p&&p!=='rest'&&p!=='unassigned');
+  const headline = namedParks.length
+    ? namedParks.map(parkName).join(' <span style="color:#c2c2d0;font-weight:600;">→</span> ')
+    : parkName(day.park);
 
-  // -- Extras badges --
-  const extrasBadges = [
-    dayExtras.earlyEntry ? `<span class="sbadge" style="background:#fef9c3;color:#854d0e;">🌅 Magic Morning</span>` : '',
-    dayExtras.lateStay   ? `<span class="sbadge" style="background:#e0f2fe;color:#075985;">🌙 Late Stay</span>` : '',
-    dayExtras.afterHours ? `<span class="sbadge" style="background:#fae8ff;color:#701a75;">🎉 After Hours</span>` : '',
-    dayExtras.bonusHours ? `<span class="sbadge" style="background:#e0f2fe;color:#0369a1;">🌟 Bonus Hours${dayExtras.bonusHoursStart?' '+fmt12(dayExtras.bonusHoursStart):''}</span>` : '',
-  ].filter(Boolean).join('');
+  // -- Extras as quiet chips --
+  const extrasChips = [
+    dayExtras.earlyEntry ? ['🌅','Magic Morning'] : null,
+    dayExtras.lateStay   ? ['🌙','Late Stay'] : null,
+    dayExtras.afterHours ? ['🎉','After Hours'] : null,
+    dayExtras.bonusHours ? ['🌟','Bonus Hours'+(dayExtras.bonusHoursStart?' '+fmt12(dayExtras.bonusHoursStart):'')] : null
+  ].filter(Boolean).map(function(c){
+    return '<span style="font-size:11px;background:#f4f4f9;color:#6b6b85;border-radius:6px;padding:2px 8px;font-weight:700;white-space:nowrap;">'+c[0]+' '+c[1]+'</span>';
+  }).join('');
 
-  // -- LL / Premier Access summary --
-  let llSummary = '';
-  if (isDlpDay && ll.passType !== 'none') {
-    const passLabel = ll.passType === 'ultimate' ? '👑 Ultimate' : '🎫 Premier Access One';
-    const picks = ll.passType === 'one' ? (ll.oneSelected||[]) : [];
-    llSummary = `<div class="day-locked-section">
-      <span class="day-locked-section-label">🎫 PA</span>
-      <span style="font-weight:700;">${passLabel}</span>
-      ${picks.map(p=>`<span style="background:#ede9fe;color:#4c1d95;border-radius:5px;padding:1px 7px;font-size:11px;font-weight:700;">${esc(p)}</span>`).join('')}
-      ${llCost>0?`<span style="font-weight:800;color:#7c3aed;">${fmtDual(llCost,t)}</span>`:''}
-    </div>`;
-  } else if (!isDlpDay && ll.passType !== 'none') {
-    const ps = (ll.partySize != null) ? ll.partySize : (t.partySize || 4);
-    const pd = LL_DATA[day.park];
-    const passLabel = ll.passType === 'multi' ? '⚡ LLMP' : '👑 Premier';
+  // -- Time-ordered rows --
+  const rows = dayTimelineRows(day, t);
+  const rowHtml = rows.map(function(r){
+    const timeCol = r.time
+      ? '<span style="width:58px;flex-shrink:0;color:'+(r.approx?'#c8c8d4':'#9a9ab0')+';font-size:12px;font-variant-numeric:tabular-nums;">'+r.time+'</span>'
+      : '<span style="width:58px;flex-shrink:0;"></span>';
+    const costCol = (r.cost!=null && r.cost>0)
+      ? '<span style="color:#8a8aa0;font-size:12px;font-variant-numeric:tabular-nums;flex-shrink:0;">'+fmtDual(r.cost,t)+'</span>'
+      : '<span style="flex-shrink:0;"></span>';
+    return '<div style="display:flex;align-items:baseline;gap:10px;padding:2px 0;">'
+      + timeCol
+      + '<span style="flex:1;min-width:0;font-size:12.5px;color:'+(r.muted?'#b9b9c9':'#2a2a4a')+';font-weight:'+(r.muted?'600':'700')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+      + r.icon+' '+esc(r.label)+(r.booked?' <span style="color:#16a34a;">✓</span>':'')+'</span>'
+      + costCol
+      + '</div>';
+  }).join('');
+
+  // -- Lightning Lane / Premier Access as one aligned row --
+  let llRow = '';
+  if (ll.passType && ll.passType !== 'none') {
     const picks = [];
-    if (ll.passType === 'multi') {
-      if (ll.tier1Pick) picks.push(ll.tier1Pick);
-      (ll.tier2Picks||[]).forEach(r => picks.push(r));
+    if (isDlpDay) {
+      if (ll.passType === 'one') (ll.oneSelected||[]).forEach(p=>picks.push(p));
+    } else {
+      if (ll.passType === 'multi') {
+        if (ll.tier1Pick) picks.push(ll.tier1Pick);
+        (ll.tier2Picks||[]).forEach(r=>picks.push(r));
+      }
+      (ll.illSelected||[]).forEach(n=>picks.push(n));
     }
-    (ll.illSelected||[]).forEach(name => picks.push(`${name} (ILL)`));
-    llSummary = `<div class="day-locked-section">
-      <span class="day-locked-section-label">⚡ LL</span>
-      <span style="font-weight:700;">${passLabel}</span>
-      ${picks.map(p=>`<span style="background:#ede9fe;color:#4c1d95;border-radius:5px;padding:1px 7px;font-size:11px;font-weight:700;">${esc(p)}</span>`).join('')}
-      ${llCost>0?`<span style="font-weight:800;color:#7c3aed;">${sym}${llCost.toLocaleString()}</span>`:''}
-    </div>`;
+    const passLabel = isDlpDay
+      ? (ll.passType==='ultimate'?'Ultimate':'Premier Access One')
+      : (ll.passType==='multi'?'LLMP':'Premier');
+    llRow = '<div style="display:flex;align-items:baseline;gap:10px;padding:2px 0;">'
+      + '<span style="width:58px;flex-shrink:0;color:#c0b6e8;font-size:12px;">⚡</span>'
+      + '<span style="flex:1;min-width:0;font-size:12.5px;color:#5b4b9e;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+      + passLabel + (picks.length?' <span style="color:#9a90c4;font-weight:600;">· '+picks.length+' pick'+(picks.length>1?'s':'')+'</span>':'') + '</span>'
+      + (llCost>0?'<span style="color:#8a8aa0;font-size:12px;font-variant-numeric:tabular-nums;flex-shrink:0;">'+fmtDual(llCost,t)+'</span>':'')
+      + '</div>';
   }
 
-  // -- Meals summary --
-  const mealItems = ['breakfast','lunch','dinner','snacks'].map(key => {
-    const m = meals[key] || {};
-    const place = m.place || '';
-    const cost  = (m.cost != null) ? m.cost : (md[key] || 0);
-    if (!place && cost === 0) return '';
-    const icon = {breakfast:'🥞',lunch:'🥙',dinner:'🍽️',snacks:'🍦'}[key];
-    return `<span style="font-size:12px;">${icon}${place?` <strong>${esc(place)}</strong>`:` <strong style="color:#b9b9c9;">TBD</strong>`} <span style="color:#888;">${fmtDual(cost,t)}</span></span>`;
-  }).filter(Boolean);
-  const mealsSummary = mealItems.length ? `<div class="day-locked-section">
-    <span class="day-locked-section-label">🍽️ Meals</span>
-    ${mealItems.join('')}
-  </div>` : '';
+  // -- Planning progress --
+  const prog = dayPlanProgress(day, t);
+  const pct = prog.total ? Math.round((prog.done/prog.total)*100) : 100;
+  const barColor = pct>=100 ? '#16a34a' : pct>=50 ? '#f59e0b' : '#e4e4f0';
+  const progHtml = prog.total ? '<div style="display:flex;align-items:center;gap:8px;margin-top:9px;">'
+    + '<div style="flex:1;height:4px;background:#eeeef4;border-radius:2px;overflow:hidden;"><div style="width:'+pct+'%;height:100%;background:'+barColor+';"></div></div>'
+    + '<span style="font-size:10.5px;color:#a8a8ba;font-weight:700;white-space:nowrap;">'+prog.done+' of '+prog.total+' planned</span>'
+    + '</div>' : '';
+
+  const railInner = isSwapMode
+    ? '<div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:'+(isSwapSelected?'#7c3aed':'#f5f3ff')+';border:2px solid '+(isSwapSelected?'#7c3aed':'#a78bfa')+';font-size:'+(isSwapSelected?'18px':'13px')+';font-weight:800;color:'+(isSwapSelected?'#fff':'#7c3aed')+';">'+(isSwapSelected?'✓':'⇄')+'</div>'
+    : '<div style="font-size:9.5px;font-weight:800;color:#c0c0cf;text-transform:uppercase;letter-spacing:.06em;">Day</div>'
+      + '<div style="font-size:23px;font-weight:900;color:#1a1a5e;line-height:1.05;">'+day.dayNum+'</div>'
+      + '<div style="font-size:10.5px;color:#a8a8ba;font-weight:700;margin-top:1px;white-space:nowrap;">'+fmtDateShort(day.date)+'</div>'
+      + '<button onclick="toggleDayLock('+i+')" title="Click to unlock" style="margin-top:6px;width:32px;height:21px;border-radius:5px;border:1px solid #1a1a5e;background:#1a1a5e;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#FFD700;">'+LOCK_CLOSED_SVG+'</button>';
 
   return `
-    <div class="day-locked-card" style="background:${bg};border-left:4px solid ${parkColor(day.park)};${isSwapSelected?'box-shadow:0 0 0 3px #7c3aed;':''}">
-      <div class="day-locked-header" style="background:${bg};">
-        <div style="text-align:center;min-width:40px;cursor:${isSwapMode?'pointer':'default'};"
+    <div class="day-locked-card" style="background:${bg};border-left:4px solid ${pcolor};${isSwapSelected?'box-shadow:0 0 0 3px #7c3aed;':''}">
+      <div style="display:flex;align-items:flex-start;gap:14px;padding:11px 14px 12px;">
+        <div style="width:56px;flex-shrink:0;text-align:center;border-right:1px solid #eeeef4;padding-right:10px;cursor:${isSwapMode?'pointer':'default'};"
           onclick="${isSwapMode?'selectSwapDay('+i+')':''}">
-          ${isSwapMode
-            ? `<div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;
-                           background:${isSwapSelected?'#7c3aed':'#f5f3ff'};
-                           border:2px solid ${isSwapSelected?'#7c3aed':'#a78bfa'};
-                           font-size:${isSwapSelected?'18px':'13px'};font-weight:800;
-                           color:${isSwapSelected?'#fff':'#7c3aed'};">
-                ${isSwapSelected ? '✓' : '⇄'}
-              </div>`
-            : `<div style="font-size:10px;font-weight:800;color:#aaa;text-transform:uppercase;">Day</div>
-               <div style="font-size:18px;font-weight:900;color:#1a1a5e;">${day.dayNum}</div>
-               <button onclick="toggleDayLock(${i})" title="Click to unlock"
-                 style="margin-top:4px;width:34px;height:22px;border-radius:5px;border:1px solid #1a1a5e;
-                        background:#1a1a5e;cursor:pointer;
-                        display:flex;align-items:center;justify-content:center;color:#FFD700;">
-                 ${LOCK_CLOSED_SVG}
-               </button>`}
+          ${railInner}
         </div>
-        <span style="font-size:11px;font-weight:700;color:#999;white-space:nowrap;">${fmtDateShort(day.date)}</span>
-        ${parkBadges || `<span class="park-badge p-rest">${parkName(day.park)}</span>`}
-        ${extrasBadges}
-        ${totalDay>0?`<span style="font-size:12px;font-weight:900;color:#1a1a5e;background:rgba(255,255,255,.7);border-radius:8px;padding:2px 9px;">💰 ${fmtDual(totalDay,t)}</span>`:''}
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;">
+            <div style="font-size:15.5px;font-weight:900;color:#1a1a5e;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${headline}</div>
+            ${totalDay>0?`<div style="font-size:15.5px;font-weight:900;color:#1a1a5e;flex-shrink:0;font-variant-numeric:tabular-nums;">${fmtDual(totalDay,t)}</div>`:''}
+          </div>
+          ${extrasChips?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px;">${extrasChips}</div>`:''}
+          ${(rowHtml||llRow)?`<div style="margin-top:9px;border-top:1px solid #f0f0f6;padding-top:7px;">${rowHtml}${llRow}</div>`:''}
+          ${day.notes?`<div style="font-size:11.5px;color:#9a9ab0;font-style:italic;margin-top:7px;">📝 ${esc(day.notes)}</div>`:''}
+          ${progHtml}
+        </div>
       </div>
-      ${llSummary}
-      ${mealsSummary}
-      ${day.notes?`<div style="padding:5px 14px 8px;font-size:12px;color:#777;font-style:italic;">📝 ${esc(day.notes)}</div>`:''}
-      ${(()=>{
-        var acts = getDayActivities(t, day.date);
-        if (!acts.length) return '';
-        var color = parkColor(day.park)||'#1a1a5e';
-        var html = '<div style="padding:4px 14px 8px;display:flex;flex-wrap:wrap;gap:4px;">';
-        acts.forEach(function(e) {
-          html += '<span style="font-size:11px;background:'+color+'15;color:'+color+';border-radius:6px;padding:2px 8px;font-weight:700;">'
-                + (e.icon||'📌')+' '+(e.label||e.title||'')+(e.time?' · '+fmt12(e.time):'')+'</span>';
-        });
-        html += '</div>';
-        return html;
-      })()}
     </div>`;
 }
 
@@ -10901,7 +10951,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-21-T";
+var SKIPPER_BUILD="2026-07-21-U";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
