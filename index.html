@@ -1406,7 +1406,6 @@ function buildApp() {
     ${S.wizard.open ? buildWizard() : ''}
     ${buildGlossaryModal()}
     ${S.dpModal.open ? buildDpModal() : ''}
-    ${buildUpcomingReminder(t)}
     ${S.ui.feedbackOpen ? buildFeedbackModal() : ''}
     ${S.ui.showTripSelect ? buildTripSelectOverlay() : ''}
     ${S.ui.tourActive ? buildTourOverlay() : ''}
@@ -2692,6 +2691,7 @@ function buildTodayLauncher(t,tm,dates,today){
     </div>
     ${recap}
     ${wasEnded?'':buildSetupChecklist(t)}
+    ${wasEnded?'':buildCountdownChecklist(t)}
     <div class="card">
       <div style="font-size:13px;font-weight:800;color:#1a1a5e;margin-bottom:4px;">🧾 Pre-flight — budget check</div>
       <div style="font-size:12px;color:#888;margin-bottom:10px;">Targets come from your itinerary where available (meal planner, hotel legs, LL picks) — closer to real than the rough budget. Pre-trip costs should be logged and paid before you start. When you hit Start, budgets are snapshotted and on-trip spending counts up from $0.</div>
@@ -7824,7 +7824,10 @@ function buildCountdownChecklist(t) {
     </div>`;
 }
 
-// -- On-load "Coming Up" reminder popup --
+// LEGACY / UNUSED: the on-load "Coming Up" popup. Removed from render() because it
+// re-appeared on every page load (S.ui.reminderDismissed never persisted) and its
+// "View Full Checklist" button led nowhere. The same milestones now render as a
+// normal section via buildCountdownChecklist() in the Today tab. Do not wire back up.
 function buildUpcomingReminder(t) {
   if (!t || !t.startDate) return '';
   const milestones = buildMilestones(t);
@@ -11014,7 +11017,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-23-Y";
+var SKIPPER_BUILD="2026-07-23-Z";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
