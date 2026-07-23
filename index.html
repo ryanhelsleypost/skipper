@@ -970,6 +970,7 @@ let S = {
     tourStep: 0,
     tourSeen: false,
     glossaryKey: null,
+    convertPreview: false,
     openSuitcase: {},
     assignPicker: {},
     feedbackCopied: false,
@@ -1282,6 +1283,58 @@ function blankHotelLeg(t) {
     nightlyRate: null,
     locked: false,
   };
+}
+
+// ---- Per-person meal rates -------------------------------------
+// Food scales with headcount, so rates are stored PER PERSON and
+// multiplied by party size. Older trips stored whole-party totals in
+// t.mealDefaults; those keep working until the user opts in.
+function blankMealRates() {
+  return { breakfast:15, lunch:30, dinner:55, snacks:12 };
+}
+const DINING_STYLES = {
+  quick:  { label:'Quick Service',  note:'Counter service, grab-and-go',      rates:{breakfast:12, lunch:20, dinner:25, snacks:10} },
+  mixed:  { label:'Mixed',          note:'Some sit-down, some counter',       rates:{breakfast:15, lunch:30, dinner:55, snacks:12} },
+  table:  { label:'Table Service',  note:'Sit-down meals, character dining',  rates:{breakfast:28, lunch:45, dinner:85, snacks:15} }
+};
+function mealRatesActive(t) { return !!(t && t.mealRatesMode === 'perperson' && t.mealRates); }
+// Always returns whole-party per-day amounts, whichever model the trip uses
+function mealDefaultsFor(t) {
+  if (mealRatesActive(t)) {
+    const n = Math.max(1, parseInt(t.partySize) || 1);
+    const r = t.mealRates;
+    return {
+      breakfast: (r.breakfast||0) * n,
+      lunch:     (r.lunch||0)     * n,
+      dinner:    (r.dinner||0)    * n,
+      snacks:    (r.snacks||0)    * n
+    };
+  }
+  return (t && t.mealDefaults) || blankMealDefaults();
+}
+function updMealRate(meal, val) {
+  const t = trip(); if (!t) return;
+  const mealRates = { ...(t.mealRates || blankMealRates()), [meal]: val };
+  patchTrip({ mealRates }, true); render();
+}
+function applyDiningStyle(key) {
+  const st = DINING_STYLES[key]; if (!st) return;
+  const t = trip(); if (!t) return;
+  patchTrip({ mealRates:{ ...st.rates }, mealRatesMode:'perperson', diningStyle:key }, true); render();
+}
+// One-time opt-in: convert stored whole-party totals to per-person rates
+function convertToPerPerson() {
+  const t = trip(); if (!t) return;
+  const n = Math.max(1, parseInt(t.partySize) || 1);
+  const md = t.mealDefaults || blankMealDefaults(); // raw whole-party totals
+  const mealRates = {
+    breakfast: Math.round((md.breakfast||0)/n * 100)/100,
+    lunch:     Math.round((md.lunch||0)/n     * 100)/100,
+    dinner:    Math.round((md.dinner||0)/n    * 100)/100,
+    snacks:    Math.round((md.snacks||0)/n    * 100)/100
+  };
+  patchTrip({ mealRates, mealRatesMode:'perperson' }, true);
+  S.ui.convertPreview = false; render();
 }
 
 function blankMealDefaults() {
@@ -3832,7 +3885,7 @@ function resolveTransportActual(t, dir) {
 }
 
 function buildFoodBreakdown(t) {
-  const md = t.mealDefaults || blankMealDefaults();
+  const md = mealDefaultsFor(t);
   const days = (t.parks||[]).filter(d => d.park !== 'rest');
   let bk=0, lu=0, di=0, sn=0;
   days.forEach(d => {
@@ -5852,7 +5905,7 @@ function buildCalendarView(t) {
           <div style="font-size:18px;margin:2px 0;">${isAulani ? label : ''}</div>
           <div style="font-size:11px;font-weight:800;color:${color};line-height:1.2;">${isAulani ? sublabel : label}</div>`}
           ${notes ? `<div style="font-size:10px;color:#888;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(notes)}</div>` : ''}
-          ${!isCruise ? buildCalMealBlock(meals, color, t.mealDefaults||blankMealDefaults(), curSym(t)) : ''}
+          ${!isCruise ? buildCalMealBlock(meals, color, mealDefaultsFor(t), curSym(t)) : ''}
           ${buildDayActivityBadges(t, d.date, color)}
         </div>`;
       } else {
@@ -6230,7 +6283,7 @@ function mealConfirmed(m) {
 // Restaurant chips for a collapsed day card (so dining shows without expanding)
 function dayMealChips(day, t) {
   const meals = day.meals || blankMeals();
-  const md = (t && t.mealDefaults) || blankMealDefaults();
+  const md = mealDefaultsFor(t);
   return ['breakfast','lunch','dinner','snacks'].map(function(key){
     const m = meals[key] || {};
     const place = m.place || '';
@@ -6249,7 +6302,7 @@ function dayMealChips(day, t) {
 // Planning completeness for a day — drives the progress meter
 function dayPlanProgress(day, t) {
   const meals = day.meals || blankMeals();
-  const md = (t && t.mealDefaults) || blankMealDefaults();
+  const md = mealDefaultsFor(t);
   const items = [];
   ['breakfast','lunch','dinner','snacks'].forEach(function(k){
     const m = meals[k] || {};
@@ -6269,7 +6322,7 @@ function dayPlanProgress(day, t) {
 // Time-ordered rows for a day (meals + activities), sorted by clock time
 function dayTimelineRows(day, t) {
   const meals = day.meals || blankMeals();
-  const md = (t && t.mealDefaults) || blankMealDefaults();
+  const md = mealDefaultsFor(t);
   const rows = [];
   ['breakfast','lunch','dinner','snacks'].forEach(function(k){
     const m = meals[k] || {};
@@ -6782,7 +6835,7 @@ function buildLLSection(day, i, t) {
 // ===================================================
 
 function calcDayFoodCost(day, t) {
-  const md      = (t && t.mealDefaults) || blankMealDefaults();
+  const md      = mealDefaultsFor(t);
   const meals   = day.meals || blankMeals();
   const cruise  = isCruiseDay(day, t);
   return ['breakfast','lunch','dinner','snacks'].reduce((s, type) => {
@@ -6798,7 +6851,7 @@ function calcTripFoodCost(t) {
 
 function buildMealsSection(day, i, t) {
   const meals    = day.meals || blankMeals();
-  const md       = t.mealDefaults || blankMealDefaults();
+  const md       = mealDefaultsFor(t);
   const park     = day.park;
   const sugs     = DCL_RESTAURANTS[park] || PARK_RESTAURANTS[park] || {};
   const cruise   = isCruiseDay(day, t);
@@ -7079,7 +7132,7 @@ function buildActivityDayRow(day, i, t) {
   // Support both old single 'activity' and new 'activities' array
   const acts = day.activities || (day.activity ? [day.activity] : ['pool']);
   const isOpen = S.ui.expandedMealDay === i;
-  const md = t.mealDefaults || blankMealDefaults();
+  const md = mealDefaultsFor(t);
   const meals = day.meals || {};
   const foodEst = (meals.breakfast?.cost ?? md.breakfast)
                 + (meals.lunch?.cost    ?? md.lunch)
@@ -7234,7 +7287,7 @@ function buildActivityDayRow(day, i, t) {
             ${['breakfast','lunch','dinner','snacks'].map(meal => {
               const icon = {breakfast:'🥞',lunch:'🥙',dinner:'🍽️',snacks:'🍦'}[meal];
               const mc = (day.meals||{})[meal] || {};
-              const def = (t.mealDefaults||blankMealDefaults())[meal];
+              const def = mealDefaultsFor(t)[meal];
               return `<div style="background:#f8f8ff;border-radius:9px;padding:10px 12px;">
                 <div style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;margin-bottom:6px;">${icon} ${meal}</div>
                 <input type="number" value="${mc.cost!==undefined?mc.cost:''}" placeholder="~$${def}"
@@ -8603,7 +8656,7 @@ function endTour() {
 function rosEntriesForDate(t, date) {
   const manualByDate = {};
   (t.rosEntries||[]).forEach(e => { if (!manualByDate[e.date]) manualByDate[e.date] = []; manualByDate[e.date].push(e); });
-  const md = t.mealDefaults || blankMealDefaults();
+  const md = mealDefaultsFor(t);
     const parkDay   = (t.parks||[]).find(d=>d.date===date);
     const cruise    = parkDay && isCruiseDay(parkDay, t);
     const hotelCIs  = (t.hotelLegs||[]).filter(l=>l.checkInDate===date);
@@ -8782,7 +8835,7 @@ function rosEntriesForDate(t, date) {
     if (!parkDay || parkDay.park==='rest' || parkDay.park==='travel' || cruise) {
       const anyDay = (t.parks||[]).find(d=>d.date===date);
       if (anyDay && anyDay.meals) {
-        const md2 = t.mealDefaults || blankMealDefaults();
+        const md2 = mealDefaultsFor(t);
         const cruise2 = isCruiseDay(anyDay, t);
         ['breakfast','lunch','dinner','snacks'].forEach(mt => {
           const meal = anyDay.meals[mt]||{};
@@ -8955,7 +9008,7 @@ function buildRunOfShow(t) {
     return `<div class="empty-rich" style="margin:8px 0;"><div class="er-icon">📋</div><div class="er-title">Set your trip dates first</div><div class="er-body">Head to Settings and enter your start and end dates. The Day Schedule will auto-build from your parks, flights, hotel check-ins, and dining reservations.</div><button class="btn btn-primary" onclick="S.ui.settingsOpen=true;render()">Go to Settings →</button></div>`;
   }
 
-  const md = t.mealDefaults || blankMealDefaults();
+  const md = mealDefaultsFor(t);
 
   let html = `
     <div class="card" style="margin-bottom:12px;background:#f0f4ff;border:2px solid #c7d2fe;">
@@ -9318,7 +9371,10 @@ function buildHotel(t) {
 // ===================================================
 
 function buildSettings(t) {
-  const md = t.mealDefaults || blankMealDefaults();
+  const md = mealDefaultsFor(t);
+  const perPerson = mealRatesActive(t);
+  const rates = t.mealRates || blankMealRates();
+  const party = Math.max(1, parseInt(t.partySize) || 1);
   const dailyMealTotal = (md.breakfast||0)+(md.lunch||0)+(md.dinner||0)+(md.snacks||0);
   const tripMealEst    = dailyMealTotal * (t.parks||[]).length;
   return `
@@ -9426,6 +9482,36 @@ function buildSettings(t) {
 
     <div class="card">
       <div class="card-header">🍽️ Default Meal Costs</div>
+      ${perPerson ? `
+      <p style="font-size:13px;color:#777;margin-bottom:12px;">Rates are <strong>per person</strong> and multiply by your party size (${party}). Override any individual day in the Itinerary tab by clicking 🍽️.</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+        ${Object.keys(DINING_STYLES).map(k=>{
+          const st=DINING_STYLES[k]; const on=(t.diningStyle===k);
+          return `<button onclick="applyDiningStyle('${k}')" title="${st.note}"
+            style="flex:1;min-width:96px;padding:9px 10px;border-radius:9px;cursor:pointer;font-family:inherit;
+                   border:2px solid ${on?'#1a1a5e':'#e4e4f0'};background:${on?'#1a1a5e':'#fff'};color:${on?'#FFD700':'#555'};
+                   font-size:12px;font-weight:800;">
+            ${st.label}
+            <div style="font-size:10px;font-weight:600;opacity:.75;margin-top:2px;">${curSym(t)}${st.rates.breakfast+st.rates.lunch+st.rates.dinner+st.rates.snacks}/person/day</div>
+          </button>`;
+        }).join('')}
+      </div>
+      <div class="form-row">
+        <div class="fg"><label class="lbl">🥞 Breakfast <span style="color:#aaa;font-weight:600;">/person</span></label>
+          <input type="number" value="${rates.breakfast||0}" min="0" onchange="updMealRate('breakfast',parseFloat(this.value)||0)">
+          <div style="font-size:11px;color:#888;margin-top:3px;">× ${party} = <strong>${fmtDual((rates.breakfast||0)*party,t)}</strong>/day</div></div>
+        <div class="fg"><label class="lbl">🥙 Lunch <span style="color:#aaa;font-weight:600;">/person</span></label>
+          <input type="number" value="${rates.lunch||0}" min="0" onchange="updMealRate('lunch',parseFloat(this.value)||0)">
+          <div style="font-size:11px;color:#888;margin-top:3px;">× ${party} = <strong>${fmtDual((rates.lunch||0)*party,t)}</strong>/day</div></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label class="lbl">🍽️ Dinner <span style="color:#aaa;font-weight:600;">/person</span></label>
+          <input type="number" value="${rates.dinner||0}" min="0" onchange="updMealRate('dinner',parseFloat(this.value)||0)">
+          <div style="font-size:11px;color:#888;margin-top:3px;">× ${party} = <strong>${fmtDual((rates.dinner||0)*party,t)}</strong>/day</div></div>
+        <div class="fg"><label class="lbl">🍦 Snacks <span style="color:#aaa;font-weight:600;">/person</span></label>
+          <input type="number" value="${rates.snacks||0}" min="0" onchange="updMealRate('snacks',parseFloat(this.value)||0)">
+          <div style="font-size:11px;color:#888;margin-top:3px;">× ${party} = <strong>${fmtDual((rates.snacks||0)*party,t)}</strong>/day</div></div>
+      </div>` : `
       <p style="font-size:13px;color:#777;margin-bottom:14px;">Set your per-day meal budget for the whole trip. Override any individual day in the Itinerary tab by clicking 🍽️. All amounts are totals for your group.</p>
       <div class="form-row">
         <div class="fg"><label class="lbl">🥞 Breakfast</label>
@@ -9443,11 +9529,23 @@ function buildSettings(t) {
           <input type="number" value="${md.snacks||0}" min="0" onchange="updMealDefault('snacks',parseFloat(this.value)||0)">
           ${eurHint(md.snacks,t)}</div>
       </div>
-      <div style="background:#f0fdf4;border-radius:9px;padding:11px 14px;font-size:13px;color:#16a34a;font-weight:700;margin-top:6px;">
-        📅 Default per day: <strong>${fmtDual(dailyMealTotal,t)}</strong>
-        &nbsp;·&nbsp; Trip est. (${(t.parks||[]).length} days): <strong>${fmtDual(tripMealEst,t)}</strong>
-      </div>
-    </div>
+      <div style="background:#fffbeb;border:2px solid #fde68a;border-radius:10px;padding:12px 14px;margin-top:10px;">
+        <div style="font-size:12.5px;color:#92400e;font-weight:700;margin-bottom:6px;">These are whole-group totals, so they don't update if your party size changes.</div>
+        ${S.ui.convertPreview ? `
+          <div style="font-size:12px;color:#78350f;line-height:1.7;background:#fff;border-radius:8px;padding:9px 11px;margin-bottom:8px;">
+            Splitting across <strong>${party}</strong> ${party===1?'person':'people'}:<br>
+            🥞 ${fmtDual(md.breakfast||0,t)} → <strong>${fmtDual(Math.round((md.breakfast||0)/party*100)/100,t)}</strong>/person<br>
+            🥙 ${fmtDual(md.lunch||0,t)} → <strong>${fmtDual(Math.round((md.lunch||0)/party*100)/100,t)}</strong>/person<br>
+            🍽️ ${fmtDual(md.dinner||0,t)} → <strong>${fmtDual(Math.round((md.dinner||0)/party*100)/100,t)}</strong>/person<br>
+            🍦 ${fmtDual(md.snacks||0,t)} → <strong>${fmtDual(Math.round((md.snacks||0)/party*100)/100,t)}</strong>/person<br>
+            <span style="color:#a16207;">Your daily total stays ${fmtDual(dailyMealTotal,t)} — nothing changes until you edit a rate or your party size.</span>
+          </div>
+          <div style="display:flex;gap:7px;">
+            <button onclick="convertToPerPerson()" style="flex:1;padding:9px;border:none;border-radius:8px;background:#1a1a5e;color:#FFD700;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;">Convert</button>
+            <button onclick="S.ui.convertPreview=false;render()" style="padding:9px 14px;border:1px solid #d6d3d1;border-radius:8px;background:#fff;color:#78716c;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;">Cancel</button>
+          </div>`
+        : `<button onclick="S.ui.convertPreview=true;render()" style="padding:8px 14px;border:1px solid #d97706;border-radius:8px;background:#fff;color:#b45309;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;">Switch to per-person rates →</button>`}
+      </div>`}
 
     <div style="background:#eff6ff;border:2px solid #bfdbfe;border-radius:12px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:#1e40af;font-weight:700;">
       🏨 Hotel stays are now managed in the <a href="#" onclick="setTab('logistics');return false;" style="color:#1a1a5e;text-decoration:underline;">Logistics tab</a> (supports multiple legs + check-in times).
@@ -9763,6 +9861,27 @@ function buildWiz4() {
     </div>`;
 }
 
+function wizTripDays() {
+  const sd = S.wizard.data.startDate, ed = S.wizard.data.endDate;
+  if (!sd || !ed) return 7;
+  const d = Math.round((new Date(ed+'T00:00:00') - new Date(sd+'T00:00:00'))/86400000) + 1;
+  return d > 0 ? d : 7;
+}
+function wizSetDiningStyle(key) {
+  const st = DINING_STYLES[key]; if (!st) return;
+  S.wizard.data.diningStyle = key;
+  S.wizard.data.mealRates = { ...st.rates };
+  // Recompute the Food budget line from rates x party x days
+  const pty = Math.max(1, (S.wizard.data.partyMembers||[]).filter(m=>m&&m.name&&m.name.trim()).length || parseInt(S.wizard.data.partySize) || 2);
+  const days = wizTripDays();
+  const perDay = st.rates.breakfast + st.rates.lunch + st.rates.dinner + st.rates.snacks;
+  const food = Math.round(perDay * pty * days);
+  const items = S.wizard.data.budgetItems || [];
+  const fi = items.findIndex(it => /food|dining/i.test(it.name||''));
+  if (fi > -1) items[fi] = { ...items[fi], amount: food };
+  render();
+}
+
 function buildWiz5() {
   const hasCruise  = !!S.wizard.data.cruise;
   const isAulani   = S.wizard.data.destination === 'aulani';
@@ -9819,6 +9938,29 @@ function buildWiz5() {
   return `
     <div class="modal-h">💰 Budget Setup</div>
     <div class="modal-sub">Set up your initial budget categories (edit anytime later)</div>
+    ${(function(){
+      const pty = Math.max(1, (S.wizard.data.partyMembers||[]).filter(m=>m&&m.name&&m.name.trim()).length || parseInt(S.wizard.data.partySize) || 2);
+      const days = wizTripDays();
+      const cur = S.wizard.data.diningStyle || 'mixed';
+      return `
+      <div style="background:#f8f8ff;border:2px solid #e4e4f0;border-radius:11px;padding:12px 14px;margin-bottom:14px;">
+        <div style="font-size:12.5px;font-weight:800;color:#1a1a5e;margin-bottom:3px;">🍽️ How do you plan to eat?</div>
+        <div style="font-size:11.5px;color:#888;margin-bottom:9px;">Sets your per-person meal rates — we'll do the math for ${pty} ${pty===1?'person':'people'} over ${days} day${days===1?'':'s'}.</div>
+        <div style="display:flex;gap:6px;">
+          ${Object.keys(DINING_STYLES).map(k=>{
+            const st=DINING_STYLES[k], on=(cur===k);
+            const per=st.rates.breakfast+st.rates.lunch+st.rates.dinner+st.rates.snacks;
+            return `<button onclick="wizSetDiningStyle('${k}')" title="${st.note}"
+              style="flex:1;padding:9px 6px;border-radius:9px;cursor:pointer;font-family:inherit;
+                     border:2px solid ${on?'#1a1a5e':'#e4e4f0'};background:${on?'#1a1a5e':'#fff'};
+                     color:${on?'#FFD700':'#555'};font-size:11.5px;font-weight:800;">
+              ${st.label}
+              <div style="font-size:10px;font-weight:600;opacity:.75;margin-top:2px;">$${per}/person/day</div>
+            </button>`;
+          }).join('')}
+        </div>
+      </div>`;
+    })()}
     <div style="display:flex;flex-direction:column;gap:7px;max-height:340px;overflow-y:auto;padding-right:4px;">
       ${visible.map(({item,i})=>`
         <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;
@@ -10804,6 +10946,9 @@ function createTrip() {
     tripType,
     partySize, partyMembers,
     mealDefaults:blankMealDefaults(),
+    mealRates: data.mealRates ? {...data.mealRates} : blankMealRates(),
+    mealRatesMode: 'perperson',
+    diningStyle: data.diningStyle || 'mixed',
     cruise:data.cruise||false, cruiseStartDate:data.cruiseStartDate||'',
     cruiseEndDate:data.cruiseEndDate||'',
     cruiseLine:'Disney Cruise Line', cruiseShip:data.cruiseShip||'',
@@ -11017,7 +11162,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-23-Z";
+var SKIPPER_BUILD="2026-07-23-AA";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
