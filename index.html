@@ -8194,6 +8194,19 @@ function buildBulkAddModal(t) {
     </div>`;
 }
 
+// Count packing by item lines or by actual units (3x Ponchos = 3)
+function packCountUnits(t) { return !!(t && t.packCountUnits); }
+function packQty(i) { const q = parseInt(i && i.qty); return q > 0 ? q : 1; }
+function packCount(items, t, filterFn) {
+  const list = (items || []).filter(filterFn || (() => true));
+  return packCountUnits(t) ? list.reduce((s, i) => s + packQty(i), 0) : list.length;
+}
+function togglePackCountMode() {
+  const t = trip(); if (!t) return;
+  patchTrip({ packCountUnits: !t.packCountUnits }, true); render();
+}
+const PACKED_STATUSES = ['packed','repacked'];
+
 function buildPackingList(t) {
   const suitcases = t.suitcases || [];
 
@@ -8217,17 +8230,20 @@ function buildPackingList(t) {
   }
 
   const members = (t.partyMembers||[]).filter(m=>m.name);
-  const totalItems = suitcases.reduce((s,sc)=>s+(sc.items||[]).length,0);
-  const packedItems = suitcases.reduce((s,sc)=>s+(sc.items||[]).filter(i=>i.status==='packed'||i.status==='repacked').length,0);
-  const needBuy = suitcases.reduce((s,sc)=>s+(sc.items||[]).filter(i=>i.status==='needbuy').length,0);
-  const issues  = suitcases.reduce((s,sc)=>s+(sc.items||[]).filter(i=>i.status==='issue').length,0);
+  const byUnits     = packCountUnits(t);
+  const totalItems  = suitcases.reduce((s,sc)=>s+packCount(sc.items,t),0);
+  const packedItems = suitcases.reduce((s,sc)=>s+packCount(sc.items,t,i=>PACKED_STATUSES.includes(i.status)),0);
+  const needBuy     = suitcases.reduce((s,sc)=>s+packCount(sc.items,t,i=>i.status==='needbuy'),0);
+  const issues      = suitcases.reduce((s,sc)=>s+packCount(sc.items,t,i=>i.status==='issue'),0);
+  const totalLines  = suitcases.reduce((s,sc)=>s+(sc.items||[]).length,0);
+  const totalUnits  = suitcases.reduce((s,sc)=>s+(sc.items||[]).reduce((a,i)=>a+packQty(i),0),0);
 
   return `
     
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px;">
       <div class="card" style="padding:14px;text-align:center;margin:0;">
         <div style="font-size:28px;font-weight:900;color:#1a1a5e;">${packedItems}/${totalItems}</div>
-        <div style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;">Packed</div>
+        <div style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;">Packed ${byUnits?'(units)':'(items)'}</div>
         <div style="background:#e8e8f2;border-radius:99px;height:4px;margin-top:6px;overflow:hidden;">
           <div style="height:100%;background:#22c55e;border-radius:99px;width:${totalItems?((packedItems/totalItems)*100).toFixed(0):0}%;transition:width .4s;"></div>
         </div>
@@ -8247,6 +8263,17 @@ function buildPackingList(t) {
       <button class="btn btn-primary" onclick="addSuitcase('${t.id}')">🧳 New Suitcase / Bag</button>
       <button class="btn btn-primary" onclick="openBulkAdd('')">⚡ Quick Add Items</button>
       <button class="btn btn-ghost btn-sm" onclick="resetPackingList('${t.id}')">↺ Reset to Defaults</button>
+      <div style="display:flex;align-items:center;gap:0;margin-left:auto;background:#f0f0f8;border-radius:9px;padding:3px;"
+           title="Count 3x Ponchos as 1 item or 3 units">
+        ${[[false,'Items',totalLines],[true,'Units',totalUnits]].map(function(o){
+          const on = (byUnits===o[0]);
+          return `<button onclick="${on?'':'togglePackCountMode()'}"
+            style="padding:6px 11px;border:none;border-radius:7px;cursor:${on?'default':'pointer'};font-family:inherit;
+                   font-size:12px;font-weight:800;background:${on?'#1a1a5e':'transparent'};color:${on?'#FFD700':'#666'};">
+            ${o[1]} <span style="opacity:.6;font-weight:700;">${o[2]}</span>
+          </button>`;
+        }).join('')}
+      </div>
     </div>
 
     
@@ -8333,7 +8360,8 @@ function clearBoughtStoreItems() {
 
 function buildSuitcaseCard(sc, si, t, members) {
   const items = sc.items || [];
-  const packed = items.filter(i=>i.status==='packed'||i.status==='repacked').length;
+  const packed = packCount(items, t, i=>PACKED_STATUSES.includes(i.status));
+  const bagTotal = packCount(items, t);
   const isOpen = (S.ui.openSuitcase||{})[sc.id] !== false; // open by default
 
   return `
@@ -8347,7 +8375,7 @@ function buildSuitcaseCard(sc, si, t, members) {
             onchange="updSuitcase('${sc.id}','name',this.value)"
             style="background:transparent;border:none;border-bottom:1px dashed rgba(255,255,255,.3);color:#FFD700;font-size:14px;font-weight:800;font-family:inherit;outline:none;width:100%;">
         </div>
-        <span style="font-size:12px;font-weight:700;color:${packed===items.length&&items.length>0?'#6ee7b7':'rgba(255,255,255,.5)'};">${packed}/${items.length} packed</span>
+        <span style="font-size:12px;font-weight:700;color:${packed===bagTotal&&bagTotal>0?'#6ee7b7':'rgba(255,255,255,.5)'};">${packed}/${bagTotal} packed</span>
         <span style="font-size:12px;color:rgba(255,255,255,.4);transform:${isOpen?'rotate(180deg)':'rotate(0)'};display:inline-block;transition:transform .2s;">▼</span>
         <button onclick="event.stopPropagation();deleteSuitcase('${sc.id}')"
           style="background:none;border:none;color:rgba(255,255,255,.3);cursor:pointer;font-size:16px;padding:0 3px;"
@@ -11299,7 +11327,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-23-AB";
+var SKIPPER_BUILD="2026-07-23-AC";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
