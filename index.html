@@ -972,6 +972,7 @@ let S = {
     glossaryKey: null,
     convertPreview: false,
     bulkAdd: null,
+    imp: null,
     openSuitcase: {},
     assignPicker: {},
     feedbackCopied: false,
@@ -1599,6 +1600,223 @@ function buildHeader(t) {
       : '')
     + '</div>';
 }
+// ---- Optional confirmation import -------------------------------
+// Entirely opt-in: manual entry is unchanged. Parses on-device only —
+// nothing is uploaded. Anything it can't read confidently is left blank.
+const IMP_MON = {JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,JUL:6,AUG:7,SEP:8,OCT:9,NOV:10,DEC:11};
+function impAirportCodes(text){
+  const known = {}; (COMMON_AIRPORTS||[]).forEach(function(a){
+    const c = (typeof a === 'string') ? a.split(/[^A-Z]/)[0] : (a.code||a.value||'');
+    if (c && /^[A-Z]{3}$/.test(c)) known[c] = true;
+  });
+  const out = []; const re = /\b([A-Z]{3})\b/g; let m;
+  while ((m = re.exec(text))) if (known[m[1]] && (!out.length || out[out.length-1] !== m[1])) out.push(m[1]);
+  return out;
+}
+function impAirline(text){
+  const low = text.toLowerCase();
+  const list = (AIRLINES||[]).filter(function(a){ return a && a.indexOf('—') === -1 && a !== 'Other'; });
+  for (let i=0;i<list.length;i++){
+    const first = list[i].split(' ')[0].toLowerCase();
+    if (first.length > 3 && low.indexOf(first) > -1) return list[i];
+  }
+  return '';
+}
+function impFlightNum(text){
+  let m = text.match(/\bflight\s*(?:no\.?|number|#)?\s*:?\s*([A-Z]{0,2}\s?\d{1,4})\b/i);
+  if (m) return m[1].replace(/\s/g,'').toUpperCase();
+  // "Delta 1592" — a known airline name followed by a number
+  const al = impAirline(text);
+  if (al) {
+    const first = al.split(' ')[0];
+    m = text.match(new RegExp('\\b'+first+'\\s+(\\d{1,4})\\b','i'));
+    if (m) return m[1];
+  }
+  m = text.match(/\b([A-Z]{2})\s?(\d{1,4})\b/);
+  if (m) return (m[1]+m[2]).toUpperCase();
+  return '';
+}
+function impConf(text){
+  const m = text.match(/(?:confirmation|record\s*locator|booking|reservation|conf)\s*(?:number|code|reference|ref|no\.?|#)?\s*[:#-]?\s*([A-Z0-9]{5,12})\b/i);
+  if (!m) return '';
+  const v = m[1];
+  if (/^(number|code|refer|reference)$/i.test(v)) return '';
+  return v.toUpperCase();
+}
+function impTimes(text){
+  const out = []; const re = /\b(\d{1,2}):(\d{2})\s*([AP]\.?M\.?)?/gi; let m;
+  while ((m = re.exec(text))){
+    let h = parseInt(m[1]); const mi = m[2];
+    const ap = (m[3]||'').replace(/\./g,'').toUpperCase();
+    if (h > 23 || parseInt(mi) > 59) continue;
+    if (ap === 'PM' && h < 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+    out.push(String(h).padStart(2,'0')+':'+mi);
+  }
+  return out;
+}
+function impDates(text){
+  const found = [];
+  let re = /(\d{1,2})\s?(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s?,?\s?(\d{2,4})\b/gi, m;
+  while ((m = re.exec(text))){
+    // Skip when the leading number is really the minutes of a time (e.g. "06:10")
+    const before = text.slice(Math.max(0, m.index-1), m.index);
+    if (before === ':') continue;
+    let y = parseInt(m[3]); if (y < 100) y += 2000;
+    found.push({i:m.index, d:y+'-'+String(IMP_MON[m[2].toUpperCase()]+1).padStart(2,'0')+'-'+String(parseInt(m[1])).padStart(2,'0')});
+  }
+  re = /\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Za-z]*\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/gi;
+  while ((m = re.exec(text))){
+    found.push({i:m.index, d:m[3]+'-'+String(IMP_MON[m[1].toUpperCase()]+1).padStart(2,'0')+'-'+String(parseInt(m[2])).padStart(2,'0')});
+  }
+  // Numeric dates are ambiguous (US vs EU) — only accept when unambiguous
+  re = /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g;
+  while ((m = re.exec(text))){
+    const a = parseInt(m[1]), b = parseInt(m[2]);
+    if (a > 12 && b <= 12)      found.push({i:m.index, d:m[3]+'-'+String(b).padStart(2,'0')+'-'+String(a).padStart(2,'0'), amb:false});
+    else if (b > 12 && a <= 12) found.push({i:m.index, d:m[3]+'-'+String(a).padStart(2,'0')+'-'+String(b).padStart(2,'0'), amb:false});
+    else found.push({i:m.index, d:'', amb:true}); // can't tell — leave blank
+  }
+  found.sort(function(x,y){ return x.i - y.i; });
+  const seen = {}, out = [];
+  found.forEach(function(f){ if (f.d && !seen[f.d]) { seen[f.d]=1; out.push(f.d); } });
+  return { dates: out, ambiguous: found.some(function(f){ return f.amb; }) };
+}
+function impMoney(text){
+  const out = []; const re = /[$£€]\s?([\d,]+(?:\.\d{2})?)/g; let m;
+  while ((m = re.exec(text))) out.push(parseFloat(m[1].replace(/,/g,'')));
+  return out;
+}
+function impParseFlight(text){
+  const ap = impAirportCodes(text), ti = impTimes(text), dt = impDates(text), mo = impMoney(text);
+  let departDate = dt.dates[0] || '', arriveDate = dt.dates[1] || departDate;
+  const departTime = ti[0] || '', arriveTime = ti[1] || '';
+  // Red-eye: landing earlier than takeoff means next day
+  if (departDate && departTime && arriveTime && arriveTime < departTime && arriveDate === departDate) {
+    const d = new Date(departDate+'T00:00:00'); d.setDate(d.getDate()+1);
+    arriveDate = d.toISOString().split('T')[0];
+  }
+  return {
+    kind:'flight',
+    origin: ap[0] || '', destination: ap[1] || '',
+    airline: impAirline(text), flightNum: impFlightNum(text),
+    departDate: departDate, departTime: departTime,
+    arriveDate: arriveDate, arriveTime: arriveTime,
+    cost: mo.length ? Math.max.apply(null, mo) : null,
+    _conf: impConf(text), _ambiguousDate: dt.ambiguous
+  };
+}
+function impParseHotel(text){
+  const dt = impDates(text), ti = impTimes(text), mo = impMoney(text);
+  const rateM = text.match(/[$£€]\s?([\d,]+(?:\.\d{2})?)\s*(?:per\s*night|\/\s*night|nightly|a night)/i);
+  const lines = text.trim().split(/\r?\n/).map(function(l){ return l.trim(); }).filter(Boolean);
+  let name = '';
+  for (let i=0;i<lines.length;i++){
+    if (!/confirm|record|check|room|rate|total|\d{4}/i.test(lines[i]) && lines[i].length > 3) { name = lines[i]; break; }
+  }
+  const rate = rateM ? parseFloat(rateM[1].replace(/,/g,'')) : null;
+  let total = mo.length ? Math.max.apply(null, mo) : null;
+  if (rate !== null && total === rate) total = null;
+  return {
+    kind:'hotel', name: name,
+    checkInDate: dt.dates[0] || '', checkOutDate: dt.dates[1] || '',
+    checkInTime: ti[0] || '', confirmationNum: impConf(text),
+    roomType: (text.match(/\broom\s*(?:type)?\s*:\s*(.+)/i) || [])[1] || '',
+    nightlyRate: rate, totalCost: total,
+    _ambiguousDate: dt.ambiguous
+  };
+}
+function impParse(text, kind){ return kind === 'hotel' ? impParseHotel(text) : impParseFlight(text); }
+
+function openImport(kind, dir){
+  S.ui.imp = { kind: kind||'flight', dir: dir||'outbound', text:'' }; render();
+}
+function closeImport(){ S.ui.imp = null; render(); }
+function impSetKind(k){ if(!S.ui.imp) return; const el=document.getElementById('imp-text'); if(el)S.ui.imp.text=el.value; S.ui.imp.kind=k; render(); }
+function impSetDir(d){ if(!S.ui.imp) return; const el=document.getElementById('imp-text'); if(el)S.ui.imp.text=el.value; S.ui.imp.dir=d; render(); }
+function impPreview(){ const el=document.getElementById('imp-text'); if(el&&S.ui.imp)S.ui.imp.text=el.value; render(); }
+function impApply(){
+  const st = S.ui.imp; if (!st) return;
+  const el = document.getElementById('imp-text');
+  const text = el ? el.value : st.text;
+  if (!text.trim()) { alert('Paste a confirmation first.'); return; }
+  const r = impParse(text, st.kind);
+  const t = trip(); if (!t) return;
+  if (st.kind === 'hotel') {
+    const legs = [...(t.hotelLegs||[])];
+    const base = blankHotelLeg(t);
+    const leg = { ...base };
+    ['name','checkInDate','checkOutDate','checkInTime','confirmationNum','roomType'].forEach(function(k){ if (r[k]) leg[k]=r[k]; });
+    if (r.nightlyRate !== null) leg.nightlyRate = r.nightlyRate;
+    if (r.totalCost   !== null) leg.totalCost   = r.totalCost;
+    legs.push(leg);
+    patchTrip({ hotelLegs: legs }, true);
+  } else {
+    const sec = { ...t.transportation[st.dir] };
+    const legs = [...(sec.legs||[])];
+    // Fill the first empty leg, otherwise append a new one
+    let idx = legs.findIndex(function(l){ return !l.origin && !l.departDate && !l.flightNum; });
+    if (idx === -1) { legs.push(blankLeg()); idx = legs.length - 1; }
+    const leg = { ...legs[idx] };
+    ['origin','destination','airline','flightNum','departDate','departTime','arriveDate','arriveTime'].forEach(function(k){ if (r[k]) leg[k]=r[k]; });
+    if (r.cost !== null) leg.cost = r.cost;
+    legs[idx] = leg; sec.legs = legs; sec.mode = 'air';
+    patchTrip({ transportation: { ...t.transportation, [st.dir]: sec } }, true);
+  }
+  S.ui.imp = null; render();
+}
+function impRow(label, val, hint){
+  const has = val !== null && val !== undefined && val !== '';
+  return '<div style="display:flex;align-items:baseline;gap:8px;font-size:12.5px;padding:3px 0;">'
+    + '<span style="width:104px;flex-shrink:0;color:#999;">'+label+'</span>'
+    + '<span style="flex:1;font-weight:'+(has?'800':'600')+';color:'+(has?'#1a1a2e':'#c9c9d6')+';">'
+    + (has ? esc(String(val)) : 'not found — type it in')+'</span>'
+    + (hint?'<span style="font-size:11px;color:#aaa;">'+hint+'</span>':'')
+    + '</div>';
+}
+function buildImportModal(t){
+  const st = S.ui.imp; if (!st) return '';
+  const isHotel = st.kind === 'hotel';
+  const r = st.text.trim() ? impParse(st.text, st.kind) : null;
+  const kindBtn = function(k,label){
+    const on = st.kind===k;
+    return '<button onclick="impSetKind(\''+k+'\')" style="flex:1;padding:8px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:800;'
+      + 'border:2px solid '+(on?'#1a1a5e':'#e4e4f0')+';background:'+(on?'#1a1a5e':'#fff')+';color:'+(on?'#FFD700':'#555')+';">'+label+'</button>';
+  };
+  const dirBtn = function(d,label){
+    const on = st.dir===d;
+    return '<button onclick="impSetDir(\''+d+'\')" style="flex:1;padding:7px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:800;'
+      + 'border:2px solid '+(on?'#4f46e5':'#e4e4f0')+';background:'+(on?'#eef2ff':'#fff')+';color:'+(on?'#4f46e5':'#666')+';">'+label+'</button>';
+  };
+  return '<div class="modal-overlay" onclick="if(event.target===this)closeImport()" style="z-index:2500;">'
+    + '<div class="modal" style="max-width:540px;">'
+    + '<div class="modal-h">📋 Import from a confirmation</div>'
+    + '<div class="modal-sub">Optional shortcut — paste a booking email and we\'ll fill what we can. Everything stays on your device, and you can still type it all in by hand instead.</div>'
+    + '<div style="display:flex;gap:6px;margin-bottom:10px;">'+kindBtn('flight','✈️ Flight')+kindBtn('hotel','🏨 Hotel')+'</div>'
+    + (isHotel?'':'<div style="display:flex;gap:6px;margin-bottom:12px;">'+dirBtn('outbound','🛫 Outbound')+dirBtn('return','🛬 Return')+'</div>')
+    + '<textarea id="imp-text" oninput="impPreview()" rows="7" placeholder="Paste the confirmation email here…"'
+    + ' style="width:100%;padding:11px 12px;border:2px solid #e4e4f0;border-radius:10px;font-size:13px;font-family:inherit;box-sizing:border-box;resize:vertical;line-height:1.6;">'+esc(st.text)+'</textarea>'
+    + (r ? '<div style="margin-top:13px;background:#f8f8ff;border:1.5px solid #e4e4f0;border-radius:10px;padding:11px 13px;">'
+        + '<div style="font-size:11px;font-weight:800;color:#666;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Found — check before importing</div>'
+        + (isHotel
+          ? impRow('Hotel', r.name)+impRow('Check in', r.checkInDate)+impRow('Check out', r.checkOutDate)
+            +impRow('Confirmation', r.confirmationNum)+impRow('Room', r.roomType)
+            +impRow('Nightly rate', r.nightlyRate!==null?'$'+r.nightlyRate:'')+impRow('Total', r.totalCost!==null?'$'+r.totalCost:'')
+          : impRow('Airline', r.airline)+impRow('Flight', r.flightNum)
+            +impRow('From', r.origin)+impRow('To', r.destination)
+            +impRow('Depart', (r.departDate||'')+' '+(r.departTime||''))
+            +impRow('Arrive', (r.arriveDate||'')+' '+(r.arriveTime||''))
+            +impRow('Cost', r.cost!==null?'$'+r.cost:'')
+            +(r._conf?'<div style="font-size:11px;color:#888;margin-top:5px;">Confirmation '+esc(r._conf)+' found — flights don\'t store one, so keep it handy.</div>':''))
+        + (r._ambiguousDate?'<div style="font-size:11.5px;color:#b45309;background:#fffbeb;border-radius:7px;padding:7px 9px;margin-top:8px;">A date like 03/09/2026 could be March 9 or Sept 3 — left blank on purpose. Add it yourself.</div>':'')
+      + '</div>' : '')
+    + '<div style="display:flex;gap:8px;margin-top:18px;align-items:center;">'
+    + '<button class="btn btn-ghost" onclick="closeImport()">Cancel</button>'
+    + '<div style="flex:1;"></div>'
+    + '<button class="btn btn-primary" onclick="impApply()"'+(r?'':' disabled')+'>Import</button>'
+    + '</div></div></div>';
+}
+
 function buildLogistics(t) {
   if (!S.ui.logOpen) S.ui.logOpen = {transport:true, hotel:true};
 
@@ -1614,8 +1832,13 @@ function buildLogistics(t) {
   }
 
   return '<div style="padding:14px;display:flex;flex-direction:column;gap:0;">'
+    + '<div style="display:flex;align-items:center;gap:9px;margin-bottom:12px;flex-wrap:wrap;">'
+    +   '<button onclick="openImport(\'flight\',\'outbound\')" style="background:#fff;border:1.5px solid #c7d2fe;border-radius:9px;padding:8px 13px;font-family:inherit;font-size:12.5px;font-weight:800;color:#4f46e5;cursor:pointer;">📋 Import from confirmation</button>'
+    +   '<span style="font-size:11.5px;color:#aaa;">Optional — or just fill the fields in below.</span>'
+    + '</div>'
     + section('transport','&#9992;&#65039;','Transportation', function(){ return typeof buildTransportation === 'function' ? buildTransportation(t) : '<div style="color:#999;font-size:13px;">Loading...</div>'; })
     + section('hotel','&#127968;','Hotel', function(){ return typeof buildHotel === 'function' ? buildHotel(t) : ''; })
+    + buildImportModal(t)
     + '</div>';
 }
 
@@ -11327,7 +11550,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-23-AC";
+var SKIPPER_BUILD="2026-07-23-AD";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
