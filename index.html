@@ -2594,24 +2594,51 @@ function buildToday(t){
 function buildTodayLauncher(t,tm,dates,today){
   const daysOut=Math.ceil((new Date(dates[0]+'T00:00:00')-new Date(today+'T00:00:00'))/86400000);
   const cats=(t.budget||{}).categories||[];
-  const catRows=cats.map(function(c){
+  // Resolve each category first so we can sort settled items to the bottom
+  const catInfo=cats.map(function(c){
     const spent=catSpent(c),bud=c.budgeted||0;
-    // Prefer the itinerary-derived number (meal planner, hotel legs, LL picks) —
-    // it reflects what's actually planned, not the rough budget figure.
     let res={actual:null,label:'',isLive:false};
     try{ res=resolveActual(c,t)||res; }catch(e){}
     const hasLive=res.actual!=null;
     const target=hasLive?res.actual:bud;
-    const diff=Math.round(target-bud);
     const settled=target>0&&spent>=target-0.01;
     const zero=target===0&&spent===0;
+    return {c:c,spent:spent,bud:bud,res:res,hasLive:hasLive,target:target,settled:settled,zero:zero};
+  });
+  // Open items first (soonest due date leads), then empty, then settled
+  const rank=function(x){ return x.settled?2:(x.zero?1:0); };
+  catInfo.sort(function(a,b){
+    const r=rank(a)-rank(b); if(r) return r;
+    const da=a.c.dueDate||'', db=b.c.dueDate||'';
+    if(da&&db&&da!==db) return da.localeCompare(db);
+    if(da&&!db) return -1;
+    if(!da&&db) return 1;
+    return 0;
+  });
+  const catRows=catInfo.map(function(x){
+    const c=x.c, spent=x.spent, bud=x.bud, res=x.res, hasLive=x.hasLive, target=x.target, settled=x.settled, zero=x.zero;
+    const diff=Math.round(target-bud);
     const deltaNote=(hasLive&&bud>0&&Math.abs(diff)>=1)
       ? `<div style="font-size:10.5px;color:${diff>0?'#d97706':'#16a34a'};margin-top:1px;">${diff>0?'+':'−'}$${Math.abs(diff).toLocaleString()} vs $${Math.round(bud).toLocaleString()} budget</div>`
       : '';
-    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1.5px solid ${settled?'#bbf7d0':'#eee'};border-radius:9px;background:${settled?'#f0fdf4':'#fff'};">
+    // Due date, lifted from the Budget tab
+    let dueChip='';
+    if(c.dueDate){
+      const dueFmt=new Date(c.dueDate+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
+      const days=Math.ceil((new Date(c.dueDate+'T00:00:00')-new Date(todayISO()+'T00:00:00'))/86400000);
+      const overdue=!settled&&days<0, soon=!settled&&days>=0&&days<=14;
+      const col=settled?'#9ca3af':overdue?'#dc2626':soon?'#d97706':'#6b7280';
+      const bgc=settled?'#f4f4f8':overdue?'#fef2f2':soon?'#fffbeb':'#f4f4f8';
+      const note=settled?'':overdue?` · ${Math.abs(days)}d overdue`:days===0?' · today':days<=14?` · in ${days}d`:'';
+      dueChip=`<span style="font-size:10.5px;font-weight:700;color:${col};background:${bgc};border-radius:6px;padding:1px 7px;white-space:nowrap;">📅 due ${dueFmt}${note}</span>`;
+    }
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1.5px solid ${settled?'#bbf7d0':'#eee'};border-radius:9px;background:${settled?'#f0fdf4':'#fff'};${settled?'opacity:.75;':''}">
       <span style="font-size:16px;">${c.emoji||'💰'}</span>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:700;color:#333;">${esc(c.name)}</div>
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+          <span style="font-size:13px;font-weight:700;color:#333;">${esc(c.name)}</span>
+          ${dueChip}
+        </div>
         <div style="font-size:11px;color:#888;">$${Math.round(spent).toLocaleString()} logged of $${Math.round(target).toLocaleString()} ${hasLive?'planned':'budgeted'}${hasLive&&res.label?` <span style="color:#aaa;">· ${esc(res.label)}</span>`:''}</div>
         ${deltaNote}
       </div>
@@ -10967,7 +10994,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-21-W";
+var SKIPPER_BUILD="2026-07-23-X";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
