@@ -3086,7 +3086,7 @@ function buildParkMode(t,tm,dates,today,sel){
     if(!m.place)continue;
     const _mt=m.adrTime||_DEF_MT[mtype];
     const mMins=timeToMins(_mt);
-    if(mMins>nowMins&&mMins<nowMins+90){nextMeal={type:mtype,time:(m.adrTime?m.adrTime:'~'+_mt),place:m.place,adrBooked:m.adrBooked};break;}
+    if(mMins>nowMins&&mMins<nowMins+90){nextMeal={type:mtype,time:(m.adrTime?m.adrTime:'~'+_mt),place:m.place,adrBooked:!!String(m.adrConfNum||'').trim()};break;}
   }
   
   const cats=(t.budget||{}).categories||[];
@@ -4297,13 +4297,13 @@ function buildCatRow(c, info, t) {
                 <input type="checkbox" ${accounted?'checked':''}
                   onclick="event.stopPropagation();toggleAccountedFor('${c.id}')"
                   style="width:13px;height:13px;cursor:pointer;accent-color:#16a34a;">
-                🏦 Bank Cleared
+                🏦 Accounted for in Bank
               </label>
               <label onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;color:${c.isDisney?'#ea580c':'#9ca3af'};font-weight:600;white-space:nowrap;">
                 <input type="checkbox" ${c.isDisney?'checked':''}
                   onclick="event.stopPropagation();toggleCatDisney('${c.id}')"
                   style="width:13px;height:13px;cursor:pointer;accent-color:#ea580c;">
-                🏰 Disney Gift Card
+                🏰 Apply Disney Gift Card discount
               </label>
             </div>
             ${isLive && info.breakdown ? `<div style="font-size:10px;color:#16a34a;margin-top:3px;">${esc(info.breakdown.length>70?info.breakdown.slice(0,68)+'…':info.breakdown)}</div>` : ''}
@@ -4398,7 +4398,7 @@ function buildCatEditPanel(t) {
         <div class="fg"><label class="lbl">Due Date</label>${buildDP('edit-cat-due',esc(cat.dueDate||''),'')}</div>
         <div class="fg" style="display:flex;align-items:center;gap:10px;padding-top:20px;">
           <input type="checkbox" id="edit-cat-accounted" ${cat.accountedFor?'checked':''} style="width:16px;height:16px;accent-color:#16a34a;">
-          <label for="edit-cat-accounted" class="lbl" style="margin:0;cursor:pointer;">Accounted for in billing tracker</label>
+          <label for="edit-cat-accounted" class="lbl" style="margin:0;cursor:pointer;">Accounted for in Bank</label>
         </div>
       </div>
       <div style="display:flex;gap:7px;">
@@ -4428,7 +4428,7 @@ function buildAddCatForm() {
         <div class="fg"><label class="lbl">Due Date</label>${buildDP('cat-due','','')}</div>
         <div class="fg" style="display:flex;align-items:center;gap:10px;padding-top:20px;">
           <input type="checkbox" id="cat-accounted" style="width:16px;height:16px;accent-color:#16a34a;">
-          <label for="cat-accounted" class="lbl" style="margin:0;cursor:pointer;">Accounted for in billing tracker</label>
+          <label for="cat-accounted" class="lbl" style="margin:0;cursor:pointer;">Accounted for in Bank</label>
         </div>
       </div>
       <div style="display:flex;gap:7px;">
@@ -5049,6 +5049,7 @@ function buildTransportation(t) {
     ${transLocked ? `<div style="background:#f0f0ff;border:1px solid #c7d2fe;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;font-size:13px;color:#3730a3;font-weight:700;">
       🔒 Transportation locked — <button onclick="toggleTransportLock()" style="background:none;border:none;cursor:pointer;color:#1a1a5e;font-weight:800;font-size:13px;text-decoration:underline;font-family:inherit;">click to unlock</button> to make changes
     </div>` : ''}
+    <fieldset ${transLocked?'disabled':''} style="border:none;margin:0;padding:0;min-width:0;${transLocked?'opacity:.72;':''}">
     ${!hasAny ? `<div class="tab-hint"><span class="th-icon">💡</span><div><strong>Transportation</strong> — Enter your flights for each group. If part of your party is on a different flight, use <em>＋ Add Separate Flight</em> to add a second booking.</div></div>` : ''}
     ${buildTransSection(t,'outbound','🛫 Outbound Trip')}
     ${extraOutbound.map((sec,i)=>buildExtraTransSection(t,'outbound',i,sec,'🛫 Outbound Trip (Group '+(i+2)+')')).join('')}
@@ -5062,6 +5063,7 @@ function buildTransportation(t) {
       ＋ Add Separate Return Flight (different travelers / booking)
     </button>
     ${buildGroundSection(t,'groundReturn','🚗 Getting to the Airport (Resort → Airport)')}
+    </fieldset>
   `;
 }
 
@@ -6099,8 +6101,12 @@ function buildCalendarView(t) {
           : '';
         const meals = d.meals || {};
         const hasMeals = Object.values(meals).some(m=>m.place||m.note);
-        const hasADR   = Object.values(meals).some(m=>m.adrRequired);
-        const hasLL    = (d.llSelections||[]).length > 0;
+        const hasADR   = Object.values(meals).some(m=>String(m.adrConfNum||'').trim());
+        const _ll      = d.ll || {};
+        const hasLL    = !!(_ll.passType && _ll.passType !== 'none')
+                          || (_ll.tier2Picks||[]).length > 0
+                          || (_ll.illSelected||[]).length > 0
+                          || (_ll.oneSelected||[]).length > 0;
         const notes    = d.notes || '';
 
         // Cruise day check
@@ -6501,7 +6507,8 @@ function buildDayRow(day, i, t, parkOpts) {
 
 // A meal counts as confirmed only when the ADR box is checked AND a conf # is entered
 function mealConfirmed(m) {
-  return !!(m && m.adrBooked && String(m.adrConfNum || '').trim());
+  // A reservation counts as booked once it has a confirmation number.
+  return !!(m && String(m.adrConfNum || '').trim());
 }
 
 // Restaurant chips for a collapsed day card (so dining shows without expanding)
@@ -6533,7 +6540,8 @@ function dayPlanProgress(day, t) {
     const cost = (m.cost != null) ? m.cost : (md[k] || 0);
     if (!m.place && !cost) return;
     items.push(!!m.place);
-    if (m.adrRequired) items.push(mealConfirmed(m));
+    // If a specific reservation time is set, the booking is expected — complete when confirmed
+    if (m.adrTime) items.push(mealConfirmed(m));
   });
   const isParkDay = day.park && day.park!=='rest' && day.park!=='travel' && day.park!=='unassigned';
   if (isParkDay) {
@@ -7124,10 +7132,7 @@ function buildMealsSection(day, i, t) {
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <span style="font-size:16px;flex-shrink:0;">${mt.icon}</span>
         <span style="font-size:13px;font-weight:800;color:#15803d;min-width:60px;">${mt.label}</span>
-        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;font-weight:700;color:${meal.adrRequired?'#15803d':'#aaa'};">
-          <input type="checkbox" ${meal.adrRequired?'checked':''} style="width:auto;cursor:pointer;accent-color:#15803d;"
-            onchange="updMeal(${i},'${mt.key}','adrRequired',this.checked)"> ADR
-        </label>
+        ${mealConfirmed(meal)?`<span style="font-size:11px;font-weight:800;color:#15803d;">✓ Reserved</span>`:''}
         <div style="margin-left:auto;display:flex;align-items:center;gap:3px;">
           <span style="font-size:12px;color:#888;font-weight:700;">${sym}</span>
           <input type="number" value="${displayCost}" min="0" max="9999"
@@ -7148,15 +7153,12 @@ function buildMealsSection(day, i, t) {
       </div>
       
       <div class="adr-row" style="padding-left:22px;">
-        <input type="checkbox" ${adrBooked?'checked':''} title="ADR Booked"
-          onchange="updMeal(${i},'${mt.key}','adrBooked',this.checked)"
-          style="width:14px;height:14px;accent-color:#16a34a;cursor:pointer;">
-        <span style="font-size:11px;font-weight:700;color:#${adrBooked?'15803d':'aaa'};">${gTerm('adr','ADR')}</span>
+        <span style="font-size:11px;font-weight:700;color:${adrConfNum?'#15803d':'#aaa'};">${gTerm('adr','ADR')}</span>
         ${buildTP(`tp-meal-${i}-${mt.key}`,esc(adrTime||MEAL_DEF_TIMES[mt.key]||''),`updMeal(${i},'${mt.key}','adrTime',this.value)`)}
-        <input type="text" value="${esc(adrConfNum)}" placeholder="Conf # (optional)"
+        <input type="text" value="${esc(adrConfNum)}" placeholder="Confirmation # → marks booked"
           onchange="updMeal(${i},'${mt.key}','adrConfNum',this.value)"
-          style="flex:1;padding:2px 7px;border:1px solid #e4e4f0;border-radius:5px;font-size:11px;font-family:inherit;max-width:150px;">
-        ${adrBooked ? `<span class="adr-badge">✓ Booked${adrConfNum?' · '+esc(adrConfNum):''}</span>` : `<span class="adr-badge unbooked">Not booked</span>`}
+          style="flex:1;padding:2px 7px;border:1px solid ${adrConfNum?'#86efac':'#e4e4f0'};border-radius:5px;font-size:11px;font-family:inherit;max-width:170px;">
+        ${adrConfNum ? `<span class="adr-badge">✓ Booked · ${esc(adrConfNum)}</span>` : `<span class="adr-badge unbooked">Add conf # to confirm</span>`}
       </div>
     </div>`;
   });
@@ -9208,7 +9210,7 @@ function rosEntriesForDate(t, date) {
                 time: meal.adrTime || defTime,
                 icon: mIcon,
                 text: cap(mt)+': '+(meal.place||'TBD'),
-                sub: fmtDualPlain(cost,t)+(meal.adrBooked?' · ✓ ADR'+(meal.adrConfNum?' #'+esc(meal.adrConfNum):''):(meal.adrTime?' · ADR time set':'')),
+                sub: fmtDualPlain(cost,t)+(String(meal.adrConfNum||'').trim()?' · ✓ ADR #'+esc(meal.adrConfNum):(meal.adrTime?' · ADR time set':'')),
                 cls:'meal',
                 est:(cost&&cost>0)?cost:null,
                 mealType:mt
@@ -9235,7 +9237,7 @@ function rosEntriesForDate(t, date) {
               time: meal.adrTime || defTime,
               icon: mIcon,
               text: `${cap(mt)}: ${meal.place||'TBD'}`,
-              sub: `${fmtDualPlain(cost,t)}${meal.adrBooked?` · ✓ ADR${meal.adrConfNum?' #'+esc(meal.adrConfNum):''}`:meal.adrTime?' · ADR time set':''}`,
+              sub: `${fmtDualPlain(cost,t)}${String(meal.adrConfNum||'').trim()?` · ✓ ADR #${esc(meal.adrConfNum)}`:meal.adrTime?' · ADR time set':''}`,
               cls: 'meal'
             });
           }
@@ -10686,7 +10688,10 @@ function toggleDayExtra(i,key) {
 }
 
 // Lock / unlock a day
-function toggleHotelLock() {
+// REMOVED: toggleHotelLock() — was never called from the UI and t.hotelLocked was
+// never read. Hotel locking is per-leg via toggleHotelLegLock(), which genuinely
+// swaps the form for a read-only summary.
+function _removedToggleHotelLock() {
   const t = trip();
   patchTrip({ hotelLocked: !t.hotelLocked }, true); render();
 }
@@ -10947,7 +10952,7 @@ function updMeal(i, mealType, field, val) {
   patchTrip({parks});
   // Re-render for anything that affects displayed totals or badges;
   // skip re-render for pure text fields (place, adrTime, adrConfNum) to avoid input focus loss
-  if (field==='cost' || field==='adrBooked') render();
+  if (field==='cost' || field==='adrConfNum') render();
 }
 function clearMealCost(i, mealType) {
   const t=trip(); const parks=[...t.parks];
@@ -11550,7 +11555,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-23-AD";
+var SKIPPER_BUILD="2026-07-23-AE";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
