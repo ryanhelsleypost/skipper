@@ -3861,13 +3861,28 @@ function feWizDetectMode(){
 function feWizParse(){
   const w=S.feWiz; w.error='';
   const grid=(w.raw||'').replace(/\r/g,'').split('\n').map(l=>l.split('\t'));
-  // header = the row with the MOST recognized field names (needs >=2), so a stray title row can't hijack it
-  let hIdx=-1, best=1;
+  // header = row with the MOST recognized field names (needs >=3 so a data row can't hijack it)
+  let hIdx=-1, best=2;
   grid.forEach((cells,i)=>{
     const n=cells.map(feAutoField).filter(f=>f!=='ignore').length;
     if(n>best){ best=n; hIdx=i; }
   });
-  if(hIdx===-1){ w.error='Couldn\u2019t find a header row. Paste the header line plus rows, tab-separated (straight from Google Sheets works).'; w.parsed=false; render(); return; }
+  if(hIdx===-1){
+    // No header row — treat every non-empty, non-banner row as data and guess columns by content
+    const dataRows=grid.filter(r=> r.some(c=>String(c||'').trim()) && !feGroupBanner(r));
+    if(!dataRows.length){ w.error='Nothing to parse \u2014 paste your sheet rows (tab-separated, straight from Google Sheets).'; w.parsed=false; render(); return; }
+    const ncols=dataRows.reduce((m,r)=>Math.max(m,r.length),0);
+    w.headerless=true;
+    w.headers=Array.from({length:ncols},(_,i)=>'Column '+(i+1));
+    w.mapping=feGuessColumns(dataRows,ncols);
+    w.dataRows=dataRows;
+    w.initialGroup='';
+    for(const r of grid){ const gb=feGroupBanner(r); if(gb){ w.initialGroup=gb; break; } }
+    feWizDetectMode();
+    w.error='No header row found \u2014 I guessed the columns from their contents. Check the matches below before importing.';
+    w.parsed=true; render(); return;
+  }
+  w.headerless=false;
   w.headers=grid[hIdx].map(h=>String(h||'').trim());
   w.mapping=w.headers.map(feAutoField);
   w.dataRows=grid.slice(hIdx+1);
@@ -3876,6 +3891,31 @@ function feWizParse(){
   feWizDetectMode();
   if(w.mapping.indexOf('stateroom')===-1){ w.error='No \u201cstateroom\u201d column detected \u2014 map one below (staterooms can still be blank if your groups aren\u2019t finalized).'; }
   w.parsed=true; render();
+}
+
+// Guess column roles from cell contents when there's no header row
+function feGuessColumns(rows, ncols){
+  const map=new Array(ncols).fill('ignore'); const used={};
+  const colVals=[]; for(let c=0;c<ncols;c++) colVals.push(rows.map(r=>String(r[c]||'').trim()).filter(Boolean));
+  const frac=(vals,fn)=> vals.length? vals.filter(fn).length/vals.length : 0;
+  const pick=(score,min)=>{ let b=-1,bs=min; colVals.forEach((v,c)=>{ if(used[c])return; const s=score(v,c); if(s>bs){bs=s;b=c;} }); if(b>=0){used[b]=1;} return b; };
+  // stateroom: pure 3-5 digit numbers
+  let c=pick(v=>frac(v,x=>/^\d{3,5}$/.test(x)),0.4); if(c>=0) map[c]='stateroom';
+  // ages: only digits, separators, and M/F (excludes things like "2 adultos, 2 kids")
+  c=pick(v=>frac(v,x=>/\d/.test(x)&&/^[\d\s,\/.\-MF]+$/i.test(x)),0.4); if(c>=0) map[c]='age';
+  // first name(s): comma-separated, starts with a letter (names, not numbers)
+  c=pick(v=>frac(v,x=>x.indexOf(',')>=0 && /^[^\d]*[A-Za-z]{2,}/.test(x)),0.4); if(c>=0) map[c]='name';
+  // allergies / food prefs: telltale words
+  c=pick(v=>frac(v,x=>/allerg|none|n\/a|nope|peanut|\bnut\b|gluten|dairy|food/i.test(x)),0.4); if(c>=0) map[c]='allergies';
+  // family last name: leftmost remaining column that's mostly single-token text (no commas)
+  for(let k=0;k<ncols;k++){ if(used[k])continue; const v=colVals[k]; if(v.length && frac(v,x=>x.indexOf(',')<0 && /[A-Za-z]/.test(x))>0.5){ map[k]='familyName'; used[k]=1; break; } }
+  // characters: longest free-text remaining column; notes: next longest
+  const avg=c2=>{ const v=colVals[c2]; return v.length? v.reduce((n,x)=>n+x.length,0)/v.length : 0; };
+  let order=[]; for(let k=0;k<ncols;k++){ if(!used[k] && avg(k)>15) order.push(k); }
+  order.sort((a,b)=>avg(b)-avg(a));
+  if(order[0]!=null){ map[order[0]]='characters'; used[order[0]]=1; }
+  if(order[1]!=null){ map[order[1]]='notes'; used[order[1]]=1; }
+  return map;
 }
 
 function feWizBuild(){
@@ -11917,7 +11957,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-28-FE2";
+var SKIPPER_BUILD="2026-07-28-FE3";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
