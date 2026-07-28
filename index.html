@@ -1071,6 +1071,7 @@ function migrateAllTrips() {
     if (!t.mealDefaults) t.mealDefaults = blankMealDefaults();
     if (!t.cruiseShip) t.cruiseShip = '';
     if (t.cruise && !t.cruiseLine) t.cruiseLine = 'Disney Cruise Line';
+    if (!t.fishExtenders) t.fishExtenders = [];
     // Hotel legs: migrate from old resort object
     if (!t.hotelLegs) {
       const r = t.resort;
@@ -1366,6 +1367,7 @@ function makeDefaultTrip() {
     partyMembers: [],
     mealDefaults: blankMealDefaults(),
     cruise: false, cruiseStartDate:'', cruiseEndDate:'', cruiseLine:'Disney Cruise Line', cruiseShip:'',
+    fishExtenders: [],
     resort: blankResort(),
     hotelLegs: [],
     rosEntries: [],
@@ -1441,8 +1443,9 @@ function buildApp() {
   }
 
   // Ensure tab is valid
-  const VALID_TABS = ['today','itinerary','budget','logistics','packing','map_modal','photos_modal'];
+  const VALID_TABS = ['today','itinerary','budget','logistics','packing','fishext','map_modal','photos_modal'];
   if (!VALID_TABS.includes(S.tab)) S.tab = 'today';
+  if (S.tab === 'fishext' && !t.cruise) S.tab = 'today';
 
   const settingsOverlay = S.ui.settingsOpen ? `
     <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;" onclick="if(event.target===this){S.ui.settingsOpen=false;render()}">
@@ -1458,7 +1461,7 @@ function buildApp() {
   return `
     ${buildHeader(t)}
     <div class="nav-tabs">
-      ${[['today','&#127968;','Today'],['itinerary','&#128197;','Itinerary'],['budget','&#128176;','Budget'],['logistics','&#129523;','Logistics'],['packing','&#128230;','Packing']].map(function(tb){
+      ${[['today','&#127968;','Today'],['itinerary','&#128197;','Itinerary'],['budget','&#128176;','Budget'],['logistics','&#129523;','Logistics'],['packing','&#128230;','Packing']].concat(t.cruise?[['fishext','&#128031;','Fish Ext']]:[]).map(function(tb){
         return '<button class="nav-tab' + (S.tab===tb[0]?' active':'') + '" onclick="setTab(\'' + tb[0] + '\')">' + tb[1] + ' ' + tb[2] + '</button>';
       }).join('')}
     </div>
@@ -3656,6 +3659,281 @@ function buildTodayLive(t,tm,dates,today){
     </div>`;
 }
 
+// ============ Fish Extenders (Disney Cruise gift exchange) ============
+function blankFEPerson(){ return {id:uid(), name:'', gender:'', age:'', characters:'', color:'', allergies:'', dislikes:'', notes:''}; }
+function blankFECabin(){ return {id:uid(), stateroom:'', deck:'', feGroup:'', celebration:'', plannedGift:'', delivered:false, people:[blankFEPerson()]}; }
+
+// DCL room numbers: last 3 digits are the room, leading digit(s) are the deck (7528 -> 7, 12034 -> 12)
+function feDeriveDeck(room){
+  const d = String(room||'').replace(/\D/g,'');
+  return d.length>3 ? d.slice(0, d.length-3) : '';
+}
+
+function feCabins(){ const t=trip(); if(!t.fishExtenders) t.fishExtenders=[]; return t.fishExtenders; }
+function feSave(){ const t=trip(); patchTrip({fishExtenders:t.fishExtenders}); }
+
+function feAddCabin(){ feCabins().push(blankFECabin()); feSave(); }
+function feDelCabin(cid){
+  const t=trip(); const c=t.fishExtenders.find(x=>x.id===cid);
+  const label = c && c.stateroom ? 'stateroom '+c.stateroom : 'this cabin';
+  if(!confirm('Remove '+label+' and everyone in it?')) return;
+  t.fishExtenders = t.fishExtenders.filter(x=>x.id!==cid); feSave();
+}
+function feUpd(cid,field,val){
+  const c=feCabins().find(x=>x.id===cid); if(!c) return;
+  c[field]=val;
+  if(field==='stateroom' && !c.deck) c.deck=feDeriveDeck(val);
+  feSave();
+}
+function feToggleDelivered(cid){ const c=feCabins().find(x=>x.id===cid); if(c){ c.delivered=!c.delivered; feSave(); } }
+function feAddPerson(cid){ const c=feCabins().find(x=>x.id===cid); if(c){ c.people.push(blankFEPerson()); feSave(); } }
+function feDelPerson(cid,pid){ const c=feCabins().find(x=>x.id===cid); if(c){ c.people=c.people.filter(p=>p.id!==pid); feSave(); } }
+function feUpdPerson(cid,pid,field,val){ const c=feCabins().find(x=>x.id===cid); if(!c) return; const p=c.people.find(x=>x.id===pid); if(p){ p[field]=val; feSave(); } }
+
+function buildFishExtenders(t){
+  const cabins = t.fishExtenders || [];
+  const totalPeople = cabins.reduce((n,c)=>n+(c.people?c.people.length:0),0);
+  const delivered = cabins.filter(c=>c.delivered).length;
+
+  const intro = `
+    <div style="background:#eef2ff;border:1px solid #dbe1ff;border-radius:12px;padding:12px 14px;margin-bottom:14px;">
+      <div style="font-size:13px;color:#3730a3;line-height:1.5;">
+        <b>&#128031; Fish Extenders</b> &mdash; the Disney Cruise door-pocket gift swap. Assemble the staterooms you&rsquo;re assigned, the people in each, and what makes them tick (favorite character &amp; color are the big gift hooks), then tick each cabin off as you deliver.
+      </div>
+    </div>`;
+
+  const summary = cabins.length ? `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+      <div style="flex:1;min-width:90px;background:#fff;border:1px solid #eee;border-radius:10px;padding:8px 10px;text-align:center;">
+        <div style="font-size:20px;font-weight:900;color:#0b0b2e;">${cabins.length}</div>
+        <div style="font-size:10px;font-weight:800;color:#9a9ab0;text-transform:uppercase;">Cabins</div></div>
+      <div style="flex:1;min-width:90px;background:#fff;border:1px solid #eee;border-radius:10px;padding:8px 10px;text-align:center;">
+        <div style="font-size:20px;font-weight:900;color:#0b0b2e;">${totalPeople}</div>
+        <div style="font-size:10px;font-weight:800;color:#9a9ab0;text-transform:uppercase;">People</div></div>
+      <div style="flex:1;min-width:90px;background:#fff;border:1px solid #eee;border-radius:10px;padding:8px 10px;text-align:center;">
+        <div style="font-size:20px;font-weight:900;color:${delivered===cabins.length&&cabins.length?'#16a34a':'#0b0b2e'};">${delivered}/${cabins.length}</div>
+        <div style="font-size:10px;font-weight:800;color:#9a9ab0;text-transform:uppercase;">Delivered</div></div>
+    </div>` : '';
+
+  const actions = `
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button onclick="feWizOpen()" style="flex:1;background:#4f46e5;color:#fff;border:none;border-radius:10px;padding:11px;font-weight:800;font-size:13px;cursor:pointer;">&#128203; Import from sheet</button>
+      <button onclick="feAddCabin()" style="flex:1;background:#fff;color:#4f46e5;border:2px solid #c7d2fe;border-radius:10px;padding:11px;font-weight:800;font-size:13px;cursor:pointer;">&#43; Add cabin</button>
+    </div>`;
+
+  const empty = `
+    <div style="text-align:center;padding:34px 16px;color:#999;">
+      <div style="font-size:40px;margin-bottom:6px;">&#128031;</div>
+      <div style="font-size:14px;font-weight:700;color:#666;">No cabins yet</div>
+      <div style="font-size:12px;margin-top:4px;">Import your FE Google Sheet or add a cabin by hand.</div>
+    </div>`;
+
+  const cabinCards = cabins.map(c=>feCabinCard(c)).join('');
+
+  return `<div class="tab-pane">
+    <h2 style="font-size:19px;font-weight:900;color:#0b0b2e;margin:0 0 14px;">&#128031; Fish Extenders</h2>
+    ${intro}${actions}${summary}
+    ${cabins.length ? cabinCards : empty}
+    ${S.feWiz && S.feWiz.open ? feWizModal() : ''}
+  </div>`;
+}
+
+function feCabinCard(c){
+  const people = (c.people||[]).map(p=>fePersonRow(c.id,p)).join('');
+  const deckTxt = c.deck ? 'Deck '+esc(c.deck) : '';
+  return `
+  <div style="background:#fff;border:1px solid #e7e7f0;border-left:4px solid ${c.delivered?'#16a34a':'#4f46e5'};border-radius:12px;padding:12px;margin-bottom:12px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <div style="flex:0 0 auto;">
+        <div style="font-size:9px;font-weight:800;color:#9a9ab0;text-transform:uppercase;letter-spacing:.05em;">Stateroom</div>
+        <input value="${esc(c.stateroom)}" onchange="feUpd('${c.id}','stateroom',this.value)" placeholder="7528"
+          style="width:78px;font-size:18px;font-weight:900;color:#0b0b2e;padding:4px 6px;border:2px solid #e4e4f0;border-radius:7px;">
+      </div>
+      <div style="flex:0 0 auto;">
+        <div style="font-size:9px;font-weight:800;color:#9a9ab0;text-transform:uppercase;letter-spacing:.05em;">Deck</div>
+        <input value="${esc(c.deck)}" onchange="feUpd('${c.id}','deck',this.value)" placeholder="7"
+          style="width:46px;font-size:13px;font-weight:700;padding:6px;border:2px solid #e4e4f0;border-radius:7px;">
+      </div>
+      <label style="flex:1;display:flex;align-items:center;justify-content:flex-end;gap:6px;font-size:12px;font-weight:800;color:${c.delivered?'#16a34a':'#888'};cursor:pointer;">
+        <input type="checkbox" ${c.delivered?'checked':''} onclick="feToggleDelivered('${c.id}')"> Delivered
+      </label>
+      <button onclick="feDelCabin('${c.id}')" style="flex:0 0 auto;background:none;border:none;color:#d33;font-size:18px;cursor:pointer;padding:2px 4px;">&#215;</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+      <div><div style="font-size:9px;font-weight:800;color:#9a9ab0;text-transform:uppercase;margin-bottom:2px;">FE group / list</div>
+        <input value="${esc(c.feGroup)}" onchange="feUpd('${c.id}','feGroup',this.value)" placeholder="e.g. Sept Dream FE" style="font-size:12px;"></div>
+      <div><div style="font-size:9px;font-weight:800;color:#9a9ab0;text-transform:uppercase;margin-bottom:2px;">Celebration</div>
+        <input value="${esc(c.celebration)}" onchange="feUpd('${c.id}','celebration',this.value)" placeholder="Birthday, anniversary..." style="font-size:12px;"></div>
+    </div>
+    <div style="margin-bottom:12px;">
+      <div style="font-size:9px;font-weight:800;color:#9a9ab0;text-transform:uppercase;margin-bottom:2px;">&#127873; Planned gift</div>
+      <input value="${esc(c.plannedGift)}" onchange="feUpd('${c.id}','plannedGift',this.value)" placeholder="What you're giving this cabin" style="font-size:12px;">
+    </div>
+
+    <div style="font-size:10px;font-weight:800;color:#9a9ab0;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;border-top:1px dashed #eee;padding-top:10px;">People</div>
+    ${people}
+    <button onclick="feAddPerson('${c.id}')" style="background:none;border:1px dashed #c7d2fe;color:#4f46e5;border-radius:8px;padding:7px;width:100%;font-weight:700;font-size:12px;cursor:pointer;margin-top:2px;">&#43; Add person</button>
+  </div>`;
+}
+
+function fePersonRow(cid,p){
+  const fld=(field,ph,w)=>`<input value="${esc(p[field])}" onchange="feUpdPerson('${cid}','${p.id}','${field}',this.value)" placeholder="${ph}" style="font-size:12px;${w?'':''}">`;
+  return `
+  <div style="background:#fafaff;border:1px solid #eef;border-radius:9px;padding:9px;margin-bottom:8px;">
+    <div style="display:flex;gap:6px;margin-bottom:6px;">
+      <input value="${esc(p.name)}" onchange="feUpdPerson('${cid}','${p.id}','name',this.value)" placeholder="Name" style="flex:2;font-size:13px;font-weight:700;">
+      <input value="${esc(p.age)}" onchange="feUpdPerson('${cid}','${p.id}','age',this.value)" placeholder="Age" style="flex:1;font-size:12px;">
+      <input value="${esc(p.gender)}" onchange="feUpdPerson('${cid}','${p.id}','gender',this.value)" placeholder="M/F" style="flex:0 0 54px;font-size:12px;">
+      <button onclick="feDelPerson('${cid}','${p.id}')" style="flex:0 0 auto;background:none;border:none;color:#c99;font-size:16px;cursor:pointer;">&#215;</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+      <input value="${esc(p.characters)}" onchange="feUpdPerson('${cid}','${p.id}','characters',this.value)" placeholder="&#11088; Favorite character(s)" style="font-size:12px;">
+      <input value="${esc(p.color)}" onchange="feUpdPerson('${cid}','${p.id}','color',this.value)" placeholder="&#127912; Favorite color(s)" style="font-size:12px;">
+      <input value="${esc(p.dislikes)}" onchange="feUpdPerson('${cid}','${p.id}','dislikes',this.value)" placeholder="&#128683; Dislikes" style="font-size:12px;">
+      <input value="${esc(p.allergies)}" onchange="feUpdPerson('${cid}','${p.id}','allergies',this.value)" placeholder="&#9888;&#65039; Allergies / no-gos" style="font-size:12px;">
+    </div>
+  </div>`;
+}
+
+// ---------- Import wizard ----------
+const FE_FIELDS = [
+  ['ignore','— ignore —'],['stateroom','Stateroom #'],['name','Name'],['gender','Gender'],
+  ['age','Age'],['characters','Favorite character(s)'],['color','Favorite color(s)'],
+  ['celebration','Celebration'],['dislikes','Dislikes'],['allergies','Allergies'],
+  ['feGroup','FE group / list'],['notes','Notes']
+];
+
+function feAutoField(h){
+  const s=String(h||'').toLowerCase().trim();
+  if(/state\s*room|stateroom|cabin|room/.test(s)) return 'stateroom';
+  if(/^name$|guest|first|person/.test(s)) return 'name';
+  if(/gender|sex/.test(s)) return 'gender';
+  if(/\bage\b/.test(s)) return 'age';
+  if(/character|charac|fav.*char/.test(s)) return 'characters';
+  if(/colou?r/.test(s)) return 'color';
+  if(/celebrat|occasion/.test(s)) return 'celebration';
+  if(/allerg/.test(s)) return 'allergies';
+  if(/dislike|no.?go/.test(s)) return 'dislikes';
+  if(/group|list/.test(s)) return 'feGroup';
+  if(/note/.test(s)) return 'notes';
+  return 'ignore';
+}
+
+function feWizOpen(){ S.feWiz={open:true, raw:'', parsed:false, headers:[], mapping:[], dataRows:[], mode:'add', error:''}; render(); }
+function feWizClose(){ if(S.feWiz) S.feWiz.open=false; render(); }
+function feWizSetMode(m){ S.feWiz.mode=m; render(); }
+function feWizSetMap(i,v){ S.feWiz.mapping[i]=v; render(); }
+
+function feWizParse(){
+  const w=S.feWiz; w.error='';
+  const raw=(w.raw||'').replace(/\r/g,'');
+  const lines=raw.split('\n');
+  const grid=lines.map(l=>l.split('\t'));
+  // find header row = first row containing a cell that looks like a known field
+  let hIdx=-1;
+  for(let i=0;i<grid.length;i++){
+    if(grid[i].some(cell=>feAutoField(cell)!=='ignore')){ hIdx=i; break; }
+  }
+  if(hIdx===-1){ w.error='Couldn\u2019t find a header row. Paste the header line plus rows, tab-separated (straight from Google Sheets works).'; w.parsed=false; render(); return; }
+  w.headers=grid[hIdx].map(h=>String(h||'').trim());
+  w.mapping=w.headers.map(h=>feAutoField(h));
+  w.dataRows=grid.slice(hIdx+1);
+  if(w.mapping.indexOf('stateroom')===-1){ w.error='No \u201cstateroom\u201d column detected \u2014 map one below so cabins can be grouped.'; }
+  w.parsed=true; render();
+}
+
+function feWizBuild(){
+  const w=S.feWiz;
+  const map=w.mapping;
+  const col=(field)=>map.indexOf(field);
+  const roomCol=col('stateroom');
+  const personFields=['name','gender','age','characters','color','allergies','dislikes','notes'];
+  const cabins=[]; let cur=null;
+  w.dataRows.forEach(cells=>{
+    if(cells.every(c=>!String(c||'').trim())) return; // blank separator row
+    const room = roomCol>=0 ? String(cells[roomCol]||'').trim() : '';
+    if(room){
+      cur=blankFECabin(); cur.people=[]; cur.stateroom=room; cur.deck=feDeriveDeck(room);
+      const g=col('feGroup'); if(g>=0) cur.feGroup=String(cells[g]||'').trim();
+      const cel=col('celebration'); if(cel>=0) cur.celebration=String(cells[cel]||'').trim();
+      cabins.push(cur);
+    }
+    if(!cur){ cur=blankFECabin(); cur.people=[]; cabins.push(cur); }
+    const p=blankFEPerson(); let hasData=false;
+    personFields.forEach(f=>{ const ci=col(f); if(ci>=0){ const v=String(cells[ci]||'').trim(); if(v){ p[f]=v; hasData=true; } } });
+    if(hasData) cur.people.push(p);
+    if(!cur.celebration){ const cel=col('celebration'); if(cel>=0){ const v=String(cells[cel]||'').trim(); if(v) cur.celebration=v; } }
+  });
+  return cabins.filter(c=>c.stateroom || c.people.length);
+}
+
+function feWizImport(){
+  const w=S.feWiz;
+  const cabins=feWizBuild();
+  if(!cabins.length){ w.error='Nothing to import \u2014 check that a stateroom column is mapped.'; render(); return; }
+  const t=trip(); if(!t.fishExtenders) t.fishExtenders=[];
+  if(w.mode==='replace') t.fishExtenders=cabins;
+  else t.fishExtenders=t.fishExtenders.concat(cabins);
+  S.feWiz.open=false;
+  patchTrip({fishExtenders:t.fishExtenders});
+}
+
+function feWizModal(){
+  const w=S.feWiz;
+  const preview = w.parsed ? feWizBuild() : [];
+  const previewPeople = preview.reduce((n,c)=>n+c.people.length,0);
+
+  const mapUI = w.parsed ? `
+    <div style="font-size:11px;font-weight:800;color:#9a9ab0;text-transform:uppercase;margin:14px 0 6px;">Match your columns</div>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      ${w.headers.map((h,i)=>`
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;font-size:12px;font-weight:700;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(h)||'<i style="color:#bbb">(blank)</i>'}</div>
+          <div style="color:#ccc;">&rarr;</div>
+          <select onchange="feWizSetMap(${i},this.value)" style="flex:1;font-size:12px;padding:6px;">
+            ${FE_FIELDS.map(f=>`<option value="${f[0]}" ${w.mapping[i]===f[0]?'selected':''}>${f[1]}</option>`).join('')}
+          </select>
+        </div>`).join('')}
+    </div>` : '';
+
+  const previewUI = w.parsed ? `
+    <div style="font-size:11px;font-weight:800;color:#9a9ab0;text-transform:uppercase;margin:14px 0 6px;">Preview &mdash; ${preview.length} cabins, ${previewPeople} people</div>
+    <div style="max-height:180px;overflow-y:auto;border:1px solid #eee;border-radius:8px;">
+      ${preview.map(c=>`
+        <div style="padding:8px 10px;border-bottom:1px solid #f4f4f4;">
+          <div style="font-weight:800;color:#0b0b2e;font-size:13px;">&#128031; ${esc(c.stateroom)||'(no #)'}${c.deck?' <span style="font-weight:600;color:#999;font-size:11px">Deck '+esc(c.deck)+'</span>':''}${c.celebration?' <span style="font-weight:600;color:#b45309;font-size:11px">&#127881; '+esc(c.celebration)+'</span>':''}</div>
+          <div style="font-size:11px;color:#666;margin-top:2px;">${c.people.map(p=>esc(p.name)+(p.age?' ('+esc(p.age)+')':'')).join(', ')||'<i>no people parsed</i>'}</div>
+        </div>`).join('')}
+    </div>` : '';
+
+  const importBtns = w.parsed && preview.length ? `
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button onclick="feWizSetMode('add')" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;border:2px solid ${w.mode==='add'?'#4f46e5':'#e4e4f0'};background:${w.mode==='add'?'#eef2ff':'#fff'};color:#4f46e5;">Add to existing</button>
+      <button onclick="feWizSetMode('replace')" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;border:2px solid ${w.mode==='replace'?'#d33':'#e4e4f0'};background:${w.mode==='replace'?'#fef2f2':'#fff'};color:#d33;">Replace all</button>
+    </div>
+    <button onclick="feWizImport()" style="width:100%;margin-top:10px;background:#4f46e5;color:#fff;border:none;border-radius:10px;padding:12px;font-weight:800;font-size:14px;cursor:pointer;">Import ${preview.length} cabins</button>` : '';
+
+  return `
+  <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-end;justify-content:center;" onclick="if(event.target===this)feWizClose()">
+    <div style="background:#fff;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;border-radius:16px 16px 0 0;padding:18px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-size:17px;font-weight:900;color:#0b0b2e;">&#128203; Import from sheet</div>
+        <button onclick="feWizClose()" style="background:none;border:none;font-size:22px;color:#999;cursor:pointer;">&#215;</button>
+      </div>
+      <div style="font-size:12px;color:#777;line-height:1.5;margin-bottom:10px;">
+        Copy the rows from your FE Google Sheet (include the header row) and paste below. Copying from Google Sheets keeps the columns tab-separated, so it imports cleanly. Your sheet lists the stateroom # only on each cabin&rsquo;s first person &mdash; that&rsquo;s handled automatically.
+      </div>
+      <textarea oninput="S.feWiz.raw=this.value" placeholder="State Room&#9;Name&#9;Gender&#9;Age&#9;Character&#9;Color&#9;Celebration&#10;7528&#9;Roger&#9;Male&#9;Adult&#9;Donald&#9;Blue&#9;..." style="width:100%;height:120px;font-family:monospace;font-size:11px;padding:10px;border:2px solid #e4e4f0;border-radius:10px;resize:vertical;">${esc(w.raw)}</textarea>
+      <button onclick="feWizParse()" style="width:100%;margin-top:8px;background:#0b0b2e;color:#fff;border:none;border-radius:10px;padding:10px;font-weight:800;font-size:13px;cursor:pointer;">Parse rows</button>
+      ${w.error?`<div style="margin-top:10px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:8px 10px;font-size:12px;">${esc(w.error)}</div>`:''}
+      ${mapUI}${previewUI}${importBtns}
+    </div>
+  </div>`;
+}
+// ============ end Fish Extenders ============
+
+
 function buildTabContent(t) {
   switch(S.tab) {
     case 'today':       return buildToday(t);
@@ -3663,6 +3941,7 @@ function buildTabContent(t) {
     case 'budget':      return buildBudget(t);
     case 'logistics':   return buildLogistics(t);
     case 'packing':     return buildPackingList(t);
+    case 'fishext':     return buildFishExtenders(t);
     case 'map_modal':   return buildModalTab('&#128506;&#65039; Map',
         t.tripType==='dlp'    ? buildDlpMap(t)    :
         t.tripType==='dlr'    ? buildDlrMap(t)    :
@@ -11569,7 +11848,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-27-UNI";
+var SKIPPER_BUILD="2026-07-28-FE";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
