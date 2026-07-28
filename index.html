@@ -164,6 +164,11 @@ input[type=checkbox]{width:auto;accent-color:#1a1a5e;width:16px;height:16px;curs
 .p-wp{background:#e0f2fe;color:#0c4a6e}
 .p-dp{background:#ede9fe;color:#5b21b6}
 .p-daw{background:#cffafe;color:#0e7490}
+.p-usf{background:#e0e7ff;color:#3730a3}
+.p-ioa{background:#ffedd5;color:#9a3412}
+.p-eu{background:#fae8ff;color:#86198f}
+.p-vb{background:#ccfbf1;color:#115e59}
+.p-ucw{background:#f3e8ff;color:#6b21a8}
 .p-rest{background:#f1f5f9;color:#475569}.p-travel{background:#dbeafe;color:#1d4ed8}
 .p-unassigned{background:#fef9c3;color:#92400e}
 .p-dcl-embark{background:#dbeafe;color:#1e3a8a}
@@ -2116,7 +2121,7 @@ function wxStrip(t,date){
 
 // ═══════════════ LIVE WAIT TIMES (Queue-Times.com) ═══════════════
 var _QT={cache:{},pending:{},fetchedAt:{}};
-var QT_PARK_IDS={mk:6,ep:5,hs:7,ak:8,dp:4,daw:28,dl:16,dca:17};
+var QT_PARK_IDS={mk:6,ep:5,hs:7,ak:8,dp:4,daw:28,dl:16,dca:17,usf:65,ioa:64,eu:334};
 function qtFetch(parkKey){
   const id=QT_PARK_IDS[parkKey];if(!id)return;
   const now=Date.now();
@@ -6183,6 +6188,13 @@ function buildParks(t) {
     {v:'ak',l:'🦁 Animal Kingdom'},
     {v:'ds',l:'🛍️ Disney Springs'},
     {v:'wp',l:'💦 Water Park'},
+    {v:'',l:'──── Universal ────',disabled:true},
+    {v:'usf',l:'🎬 Universal Studios Florida'},
+    {v:'ioa',l:'🦖 Islands of Adventure'},
+    {v:'eu',l:'🌌 Epic Universe'},
+    {v:'vb',l:'🌋 Volcano Bay'},
+    {v:'ucw',l:'🎸 Universal CityWalk'},
+    {v:'',l:'────────────',disabled:true},
     {v:'rest',l:'😴 Rest Day'},
     {v:'travel',l:'✈️ Travel Day'},
   ];
@@ -6456,8 +6468,8 @@ function buildDayRow(day, i, t, parkOpts) {
                            color:${isSwapSelected?'#fff':'#7c3aed'};">
                 ${isSwapSelected ? '✓' : '⇄'}
               </div>`
-            : `<div style="font-size:10px;font-weight:800;color:#aaa;text-transform:uppercase;">Day</div>
-               <div style="font-size:18px;font-weight:900;color:#1a1a5e;">${day.dayNum}</div>
+            : `<div style="font-size:10px;font-weight:800;color:#9a9ab0;text-transform:uppercase;letter-spacing:.05em;">Day</div>
+               <div style="font-size:24px;font-weight:900;color:#0b0b2e;line-height:1;">${day.dayNum}</div>
                <button onclick="toggleDayLock(${i})" title="Lock day to finalize"
                  style="margin-top:4px;width:34px;height:22px;border-radius:5px;border:1px solid #d0d0e0;
                         background:#f8f8fc;cursor:pointer;transition:all .15s;
@@ -6465,11 +6477,11 @@ function buildDayRow(day, i, t, parkOpts) {
                  ${LOCK_OPEN_SVG}
                </button>`}
         </div>
-        <div style="padding-top:6px;font-size:11px;font-weight:700;color:#999;">${fmtDateShort(day.date)}</div>
+        <div style="padding-top:6px;font-size:11px;font-weight:600;color:#a8a8b8;">${fmtDateShort(day.date)}</div>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <select onchange="updPark(${i},'park',this.value)"
                   style="padding:5px 8px;border:1px solid ${cruiseDay?'#93c5fd':'#e4e4f0'};border-radius:7px;font-size:12px;font-family:inherit;background:#fff;">
-            ${dayOpts.map(o=>`<option value="${o.v}" ${day.park===o.v?'selected':''}>${o.l}</option>`).join('')}
+            ${dayOpts.map(o=>o.disabled?`<option disabled style="color:#bbb;">${o.l}</option>`:`<option value="${o.v}" ${day.park===o.v?'selected':''}>${o.l}</option>`).join('')}
           </select>
           ${hoursHtml}
         </div>
@@ -6670,7 +6682,7 @@ function buildLockedDayCard(day, i, t, parkOpts, llCost, mealCost, cruiseDay) {
   const railInner = isSwapMode
     ? '<div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:'+(isSwapSelected?'#7c3aed':'#f5f3ff')+';border:2px solid '+(isSwapSelected?'#7c3aed':'#a78bfa')+';font-size:'+(isSwapSelected?'18px':'13px')+';font-weight:800;color:'+(isSwapSelected?'#fff':'#7c3aed')+';">'+(isSwapSelected?'✓':'⇄')+'</div>'
     : '<div style="font-size:9.5px;font-weight:800;color:#c0c0cf;text-transform:uppercase;letter-spacing:.06em;">Day</div>'
-      + '<div style="font-size:23px;font-weight:900;color:#1a1a5e;line-height:1.05;">'+day.dayNum+'</div>'
+      + '<div style="font-size:24px;font-weight:900;color:#0b0b2e;line-height:1;">'+day.dayNum+'</div>'
       + '<div style="font-size:10.5px;color:#a8a8ba;font-weight:700;margin-top:1px;white-space:nowrap;">'+fmtDateShort(day.date)+'</div>'
       + '<button onclick="toggleDayLock('+i+')" title="Click to unlock" style="margin-top:6px;width:32px;height:21px;border-radius:5px;border:1px solid #1a1a5e;background:#1a1a5e;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#FFD700;">'+LOCK_CLOSED_SVG+'</button>';
 
@@ -7238,7 +7250,8 @@ function parkName(p) {
     'dcl-embark':'Embarkation Day','dcl-sea':'Sea Day','dcl-port':'Port Day','dcl-disembark':'Disembarkation Day',
     'event-mnsshp':'🎃 MNSSHP','event-ep-ah':'🌙 EPCOT After Hours','event-hs-ah':'🌙 HS After Hours',
     dp:'Disneyland Park',daw:'Disney Adventure World',dv:'Disney Village',
-    dl:'Disneyland Park',dca:'Disney California Adventure',dtd:'Downtown Disney'
+    dl:'Disneyland Park',dca:'Disney California Adventure',dtd:'Downtown Disney',
+    usf:'Universal Studios Florida',ioa:'Islands of Adventure',eu:'Epic Universe',vb:'Volcano Bay',ucw:'Universal CityWalk'
   }[p]||p;
 }
 function parkClass(p) {
@@ -7247,7 +7260,8 @@ function parkClass(p) {
     'dcl-embark':'p-dcl-embark','dcl-sea':'p-dcl-sea','dcl-port':'p-dcl-port','dcl-disembark':'p-dcl-disembark',
     'event-mnsshp':'p-mk','event-ep-ah':'p-ep','event-hs-ah':'p-hs',
     dp:'p-dp',daw:'p-daw',dv:'p-ds',
-    dl:'p-mk',dca:'p-hs',dtd:'p-ds'
+    dl:'p-mk',dca:'p-hs',dtd:'p-ds',
+    usf:'p-usf',ioa:'p-ioa',eu:'p-eu',vb:'p-vb',ucw:'p-ucw'
   }[p]||'p-rest';
 }
 function parkColor(p) {
@@ -11555,7 +11569,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-23-AE";
+var SKIPPER_BUILD="2026-07-27-UNI";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
