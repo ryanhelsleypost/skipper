@@ -3676,7 +3676,8 @@ function buildTodayLive(t,tm,dates,today){
 }
 
 // ============ Fish Extenders (Disney Cruise gift exchange) ============
-function blankFEPerson(){ return {id:uid(), name:'', gender:'', age:'', characters:'', color:'', allergies:'', dislikes:'', notes:''}; }
+function blankFEPerson(){ return {id:uid(), name:'', gender:'', age:'', characters:'', color:'', allergies:'', dislikes:'', plannedGift:'', notes:''}; }
+function feNormGender(g){ const c=String(g||'').trim().charAt(0).toUpperCase(); return (c==='M'||c==='F')?c:''; }
 function blankFECabin(){ return {id:uid(), stateroom:'', deck:'', familyName:'', celebration:'', plannedGift:'', favChars:'', allergies:'', notes:'', delivered:false, collapsed:false, people:[blankFEPerson()]}; }
 function blankFEGift(){ return {id:uid(), name:'', qty:1, done:false}; }
 function blankFEGroup(name){ return {id:uid(), name:(name||'Fish Extenders'), icon:'\uD83D\uDC1F', collapsed:false, cabins:[], gifts:[]}; }
@@ -3821,10 +3822,11 @@ function feGiftRow(gid,gift){
 }
 
 function feCabinCard(c){
+  const IN='width:100%;box-sizing:border-box;font-size:12px;padding:7px 9px;border:1px solid #ececf3;background:#fbfbfd;border-radius:8px;color:#1a1a2e;';
+  const lbl=t=>`<div style="font-size:10px;font-weight:600;color:#a2a2b2;margin-bottom:3px;">${t}</div>`;
   const people=(c.people||[]).map(p=>fePersonRow(c.id,p)).join('');
-  const lbl=t=>`<div style="font-size:9px;font-weight:800;color:#9a9ab0;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">${t}</div>`;
   if(c.collapsed){
-    const who=(c.people||[]).map(p=>esc(p.name)+(p.age?' '+esc(p.age)+esc(p.gender||''):'')).filter(Boolean).join(', ');
+    const who=(c.people||[]).map(p=>{const g=feNormGender(p.gender);return esc(p.name)+(p.age?' '+esc(p.age)+esc(g):'');}).filter(Boolean).join(', ');
     return `
     <div onclick="feToggleCabin('${c.id}')" style="background:#fff;border:1px solid #e7e7f0;border-left:4px solid ${c.delivered?'#16a34a':'#4f46e5'};border-radius:12px;padding:9px 11px;margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:pointer;">
       <div style="flex:0 0 auto;font-size:16px;font-weight:900;color:#0b0b2e;min-width:44px;">${esc(c.stateroom)||'&mdash;'}</div>
@@ -3837,45 +3839,45 @@ function feCabinCard(c){
     </div>`;
   }
   return `
-  <div style="background:#fff;border:1px solid #e7e7f0;border-left:4px solid ${c.delivered?'#16a34a':'#4f46e5'};border-radius:12px;padding:12px;margin-bottom:10px;">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+  <div style="background:#fff;border:1px solid #e7e7f0;border-left:4px solid ${c.delivered?'#16a34a':'#4f46e5'};border-radius:12px;padding:13px;margin-bottom:10px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:13px;">
       <button onclick="feToggleCabin('${c.id}')" title="Collapse" style="flex:0 0 auto;background:none;border:none;font-size:13px;color:#4f46e5;cursor:pointer;padding:0 2px;">&#9660;</button>
-      <div style="flex:0 0 auto;">${lbl('Stateroom')}<input value="${esc(c.stateroom)}" onchange="feUpd('${c.id}','stateroom',this.value)" placeholder="7528" style="width:74px;font-size:18px;font-weight:900;color:#0b0b2e;padding:4px 6px;border:2px solid #e4e4f0;border-radius:7px;"></div>
-      <div style="flex:0 0 auto;">${lbl('Deck')}<input value="${esc(c.deck)}" onchange="feUpd('${c.id}','deck',this.value)" placeholder="7" style="width:44px;font-size:13px;font-weight:700;padding:6px;border:2px solid #e4e4f0;border-radius:7px;"></div>
-      <label style="flex:1;display:flex;align-items:center;justify-content:flex-end;gap:6px;font-size:12px;font-weight:800;color:${c.delivered?'#16a34a':'#888'};cursor:pointer;"><input type="checkbox" ${c.delivered?'checked':''} onclick="feToggleDelivered('${c.id}')"> Delivered</label>
-      <button onclick="feDelCabin('${c.id}')" style="flex:0 0 auto;background:none;border:none;color:#d33;font-size:18px;cursor:pointer;padding:2px 4px;">&#215;</button>
+      <div style="flex:0 0 auto;">${lbl('Stateroom')}<input value="${esc(c.stateroom)}" onchange="feUpd('${c.id}','stateroom',this.value)" style="width:76px;font-size:18px;font-weight:900;color:#0b0b2e;padding:5px 7px;border:1px solid #ececf3;background:#fbfbfd;border-radius:8px;box-sizing:border-box;"></div>
+      <div style="flex:0 0 auto;">${lbl('Deck')}<input value="${esc(c.deck)}" onchange="feUpd('${c.id}','deck',this.value)" style="width:48px;font-size:13px;font-weight:700;padding:7px;border:1px solid #ececf3;background:#fbfbfd;border-radius:8px;box-sizing:border-box;"></div>
+      <label style="flex:1;display:flex;align-items:center;justify-content:flex-end;gap:6px;font-size:12px;font-weight:800;color:${c.delivered?'#16a34a':'#999'};cursor:pointer;"><input type="checkbox" ${c.delivered?'checked':''} onclick="feToggleDelivered('${c.id}')"> Delivered</label>
+      <button onclick="feDelCabin('${c.id}')" style="flex:0 0 auto;background:none;border:none;color:#d69;font-size:18px;cursor:pointer;padding:2px 4px;">&#215;</button>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-      <div>${lbl('Family last name')}<input value="${esc(c.familyName||'')}" onchange="feUpd('${c.id}','familyName',this.value)" placeholder="Snyder" style="font-size:12px;"></div>
-      <div>${lbl('Celebration')}<input value="${esc(c.celebration)}" onchange="feUpd('${c.id}','celebration',this.value)" placeholder="Birthday..." style="font-size:12px;"></div>
-      <div>${lbl('\uD83C\uDF81 Planned gift')}<input value="${esc(c.plannedGift)}" onchange="feUpd('${c.id}','plannedGift',this.value)" placeholder="What you're giving" style="font-size:12px;"></div>
-      <div>${lbl('\u2B50 Favorite characters')}<input value="${esc(c.favChars||'')}" onchange="feUpd('${c.id}','favChars',this.value)" placeholder="Marvel, princesses..." style="font-size:12px;"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:9px;">
+      <div>${lbl('Family last name')}<input value="${esc(c.familyName||'')}" onchange="feUpd('${c.id}','familyName',this.value)" style="${IN}"></div>
+      <div>${lbl('Celebration')}<input value="${esc(c.celebration)}" onchange="feUpd('${c.id}','celebration',this.value)" style="${IN}"></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-      <div>${lbl('\u26A0\uFE0F Allergies / food prefs')}<input value="${esc(c.allergies||'')}" onchange="feUpd('${c.id}','allergies',this.value)" placeholder="Peanut allergy..." style="font-size:12px;"></div>
-      <div>${lbl('\uD83D\uDCDD Other notes')}<input value="${esc(c.notes||'')}" onchange="feUpd('${c.id}','notes',this.value)" placeholder="First cruise..." style="font-size:12px;"></div>
-    </div>
-    <div style="font-size:10px;font-weight:800;color:#9a9ab0;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;border-top:1px dashed #eee;padding-top:10px;">People</div>
+    <div style="margin-bottom:15px;">${lbl('Notes for the whole cabin')}<input value="${esc(c.notes||'')}" onchange="feUpd('${c.id}','notes',this.value)" style="${IN}"></div>
+    <div style="font-size:10px;font-weight:700;color:#a2a2b2;margin-bottom:9px;border-top:1px solid #f0f0f6;padding-top:12px;">People</div>
     ${people}
-    <button onclick="feAddPerson('${c.id}')" style="background:none;border:1px dashed #c7d2fe;color:#4f46e5;border-radius:8px;padding:7px;width:100%;font-weight:700;font-size:12px;cursor:pointer;margin-top:2px;">&#43; Add person</button>
+    <button onclick="feAddPerson('${c.id}')" style="background:none;border:1px dashed #c7d2fe;color:#4f46e5;border-radius:8px;padding:8px;width:100%;font-weight:700;font-size:12px;cursor:pointer;margin-top:2px;">&#43; Add person</button>
   </div>`;
 }
 
 function fePersonRow(cid,p){
+  const IN='width:100%;box-sizing:border-box;font-size:12px;padding:7px 9px;border:1px solid #ececf3;background:#fbfbfd;border-radius:8px;color:#1a1a2e;';
+  const g=feNormGender(p.gender); const sel=v=>g===v?' selected':'';
   return `
-  <div style="background:#fafaff;border:1px solid #eef;border-radius:9px;padding:9px;margin-bottom:8px;">
-    <div style="display:flex;gap:6px;margin-bottom:6px;">
-      <input value="${esc(p.name)}" onchange="feUpdPerson('${cid}','${p.id}','name',this.value)" placeholder="Name" style="flex:2;font-size:13px;font-weight:700;">
-      <input value="${esc(p.age)}" onchange="feUpdPerson('${cid}','${p.id}','age',this.value)" placeholder="Age" style="flex:1;font-size:12px;">
-      <input value="${esc(p.gender)}" onchange="feUpdPerson('${cid}','${p.id}','gender',this.value)" placeholder="M/F" style="flex:0 0 54px;font-size:12px;">
-      <button onclick="feDelPerson('${cid}','${p.id}')" style="flex:0 0 auto;background:none;border:none;color:#c99;font-size:16px;cursor:pointer;">&#215;</button>
+  <div style="background:#fafaff;border:1px solid #eef;border-radius:10px;padding:10px;margin-bottom:8px;">
+    <div style="display:flex;gap:6px;margin-bottom:7px;align-items:center;">
+      <input value="${esc(p.name)}" onchange="feUpdPerson('${cid}','${p.id}','name',this.value)" placeholder="Name" style="flex:1;min-width:0;font-size:13px;font-weight:700;padding:7px 9px;border:1px solid #ececf3;background:#fff;border-radius:8px;box-sizing:border-box;">
+      <input value="${esc(p.age)}" onchange="feUpdPerson('${cid}','${p.id}','age',this.value)" placeholder="Age" style="flex:0 0 50px;width:50px;font-size:12px;padding:7px 6px;border:1px solid #ececf3;background:#fff;border-radius:8px;box-sizing:border-box;text-align:center;">
+      <select onchange="feUpdPerson('${cid}','${p.id}','gender',this.value)" style="flex:0 0 54px;width:54px;font-size:12px;padding:7px 4px;border:1px solid #ececf3;background:#fff;border-radius:8px;box-sizing:border-box;">
+        <option value=""${sel('')}>&ndash;</option><option value="M"${sel('M')}>M</option><option value="F"${sel('F')}>F</option>
+      </select>
+      <button onclick="feDelPerson('${cid}','${p.id}')" style="flex:0 0 auto;background:none;border:none;color:#d69;font-size:16px;cursor:pointer;">&#215;</button>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-      <input value="${esc(p.characters)}" onchange="feUpdPerson('${cid}','${p.id}','characters',this.value)" placeholder="&#11088; Character(s)" style="font-size:12px;">
-      <input value="${esc(p.color)}" onchange="feUpdPerson('${cid}','${p.id}','color',this.value)" placeholder="&#127912; Color(s)" style="font-size:12px;">
-      <input value="${esc(p.dislikes)}" onchange="feUpdPerson('${cid}','${p.id}','dislikes',this.value)" placeholder="&#128683; Dislikes" style="font-size:12px;">
-      <input value="${esc(p.allergies)}" onchange="feUpdPerson('${cid}','${p.id}','allergies',this.value)" placeholder="&#9888;&#65039; Allergies" style="font-size:12px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+      <input value="${esc(p.characters)}" onchange="feUpdPerson('${cid}','${p.id}','characters',this.value)" placeholder="&#11088; Characters" style="${IN}">
+      <input value="${esc(p.color)}" onchange="feUpdPerson('${cid}','${p.id}','color',this.value)" placeholder="&#127912; Colors" style="${IN}">
+      <input value="${esc(p.dislikes)}" onchange="feUpdPerson('${cid}','${p.id}','dislikes',this.value)" placeholder="&#128683; Dislikes" style="${IN}">
+      <input value="${esc(p.allergies)}" onchange="feUpdPerson('${cid}','${p.id}','allergies',this.value)" placeholder="&#9888;&#65039; Allergies" style="${IN}">
     </div>
+    <input value="${esc(p.plannedGift||'')}" onchange="feUpdPerson('${cid}','${p.id}','plannedGift',this.value)" placeholder="&#127873; Planned gift" style="${IN}">
   </div>`;
 }
 
@@ -3978,7 +3980,9 @@ function feWizBuildRows(){
       const cb=blankFECabin(); cb.people=[];
       const grp = cell(cells,'feGroup') || group;
       cb.familyName=cell(cells,'familyName'); cb.stateroom=cell(cells,'stateroom'); cb.deck=feDeriveDeck(cb.stateroom);
-      cb.favChars=cell(cells,'characters'); cb.allergies=cell(cells,'allergies'); cb.notes=cell(cells,'notes'); cb.celebration=cell(cells,'celebration');
+      const _ch=cell(cells,'characters'), _al=cell(cells,'allergies'), _nt=cell(cells,'notes');
+      cb.notes=[_nt, _ch?('Characters \u2014 '+_ch):'', _al?('Allergies \u2014 '+_al):''].filter(Boolean).join('  \u2022  ');
+      cb.celebration=cell(cells,'celebration');
       const names=cell(cells,'name').split(',').map(s=>s.trim()).filter(Boolean);
       const ages=cell(cells,'age').split(',').map(s=>s.trim());
       names.forEach((raw,idx)=>{ const gm=(raw.match(/\(([MF])\)/i)||[])[1]; const nm=raw.replace(/\([^)]*\)/g,'').trim(); if(!nm)return; const pa=feParseAge(ages[idx]||''); const p=blankFEPerson(); p.name=nm; p.age=pa.age; p.gender=pa.gender||(gm?gm.toUpperCase():''); cb.people.push(p); });
@@ -6891,7 +6895,7 @@ function buildDayRow(day, i, t, parkOpts) {
 
   return `
     <div class="ll-wrap" style="background:${bg};border-left:4px solid ${parkColor(day.park)};${isSwapSelected?'box-shadow:0 0 0 3px #7c3aed;':''}">
-      <div class="pd-grid" style="display:grid;grid-template-columns:54px 1fr 1fr auto;gap:7px;align-items:start;padding:8px 11px;">
+      <div class="pd-grid" style="display:grid;grid-template-columns:58px 1fr 1fr auto;gap:7px;align-items:start;padding:8px 11px;">
         <div style="text-align:center;padding-top:4px;cursor:${isSwapMode?'pointer':'default'};"
           onclick="${isSwapMode?'selectSwapDay('+i+')':''}">
           ${isSwapMode
@@ -6906,8 +6910,9 @@ function buildDayRow(day, i, t, parkOpts) {
                  <div style="font-size:8.5px;font-weight:800;color:#9a9ab0;text-transform:uppercase;letter-spacing:.04em;line-height:1.1;">Day</div>
                  <div style="font-size:22px;font-weight:900;color:#0b0b2e;line-height:1.05;">${day.dayNum}</div>
                </div>
+               ${dayCalBadge(day.date)}
                <button onclick="toggleDayLock(${i})" title="Lock day to finalize"
-                 style="margin-top:4px;width:34px;height:22px;border-radius:5px;border:1px solid #d0d0e0;
+                 style="margin-top:6px;width:34px;height:22px;border-radius:5px;border:1px solid #d0d0e0;
                         background:#f8f8fc;cursor:pointer;transition:all .15s;
                         display:flex;align-items:center;justify-content:center;color:#bbb;">
                  ${LOCK_OPEN_SVG}
@@ -6920,13 +6925,10 @@ function buildDayRow(day, i, t, parkOpts) {
           </select>
           ${hoursHtml}
         </div>
-        <div style="display:flex;flex-direction:column;gap:3px;margin-top:1px;">
-          <input type="text" value="${esc(day.notes)}"
-                 placeholder="${isDclPort?'Port name (e.g. Nassau, Castaway Cay)…':'Notes / activity…'}"
-                 onchange="updPark(${i},'notes',this.value)"
-                 style="padding:5px 8px;border:1px solid #e4e4f0;border-radius:7px;font-size:12px;font-family:inherit;">
-          <div style="font-size:11px;font-weight:700;color:#5b6472;text-align:right;padding-right:2px;">${fmtDateShort(day.date)}</div>
-        </div>
+        <input type="text" value="${esc(day.notes)}"
+               placeholder="${isDclPort?'Port name (e.g. Nassau, Castaway Cay)…':'Notes / activity…'}"
+               onchange="updPark(${i},'notes',this.value)"
+               style="padding:5px 8px;border:1px solid #e4e4f0;border-radius:7px;font-size:12px;font-family:inherit;margin-top:1px;">
         <div style="display:flex;flex-direction:column;gap:3px;align-items:stretch;">
           <button class="day-plan-pill${(isLLExpanded||isMealExpanded)?' active':''}" onclick="toggleDayFull(${i},${canLL?'true':'false'})" title="Open this day — ${canLL?(PA_DATA.hasOwnProperty(day.park)?'Premier Access':'Lightning Lane')+' + ':''}Dining">${canLL?(PA_DATA.hasOwnProperty(day.park)?'🎫':'⚡'):''}🍽️ Day${(function(){var _c=(canLL?(llCost||0):0)+(mealCost||0);return _c>0?' '+curSym(t)+Math.round(_c):'';})()}</button>
         </div>
@@ -11828,6 +11830,20 @@ function fmtDateShort(d) {
   return new Date(d+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
 }
 
+// Small calendar-page badge (month strip + big day + weekday) for the itinerary rail
+function dayCalBadge(d){
+  if(!d) return '';
+  const dt=new Date(d+'T00:00:00');
+  const mon=dt.toLocaleDateString('en-US',{month:'short'}).toUpperCase();
+  const day=dt.toLocaleDateString('en-US',{day:'numeric'});
+  const wd=dt.toLocaleDateString('en-US',{weekday:'short'});
+  return '<div style="margin:7px auto 0;width:44px;border-radius:6px;overflow:hidden;border:1px solid #e2e2ec;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.07);">'
+    +'<div style="background:#e5484d;color:#fff;font-size:8px;font-weight:800;letter-spacing:.06em;line-height:1;padding:3px 0;">'+mon+'</div>'
+    +'<div style="font-size:16px;font-weight:900;color:#0b0b2e;line-height:1.15;padding:1px 0 0;">'+day+'</div>'
+    +'<div style="font-size:8px;font-weight:700;color:#9a9ab0;line-height:1;padding:0 0 3px;">'+wd+'</div>'
+    +'</div>';
+}
+
 // ===================================================
 // BOOT
 // ===================================================
@@ -12007,7 +12023,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-29-FE5";
+var SKIPPER_BUILD="2026-07-29-FE6";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
