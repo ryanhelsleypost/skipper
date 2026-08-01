@@ -1564,6 +1564,7 @@ function buildTripSelect() {
     + '<div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px;">'
     + (cards || '<div style="text-align:center;color:rgba(255,255,255,.6);padding:30px;font-size:14px;">No trips yet — create your first!</div>')
     + '</div>'
+    + buildHereNow()
     + '<button onclick="openWizard()" style="width:100%;padding:16px;background:#FFD700;color:#1a1a5e;border:none;border-radius:14px;font-size:16px;font-weight:900;cursor:pointer;font-family:inherit;">+ New Trip</button>'
     + '</div>'
     + (S.wizard.open ? buildWizard() : '')
@@ -2173,6 +2174,41 @@ function qtFetch(parkKey){
   fetch(direct).then(function(r){if(!r.ok)throw new Error();return r.json();}).then(handle)
   .catch(function(){tryRelay(0);});
 }
+// ═══════════════ "I'M HERE RIGHT NOW" — ad-hoc park + live waits + optional day logging ═══════════════
+function hereNowPick(k){ S.ui=S.ui||{}; S.ui.hereNowPark=(S.ui.hereNowPark===k?'':k); render(); }
+function hereNowLogDay(parkKey){
+  var today=todayISO();
+  var t=(S.trips||[]).find(function(x){return x.id==='__herenow__';});
+  if(!t){ t=makeDefaultTrip(); t.id='__herenow__'; t.name='📍 Here Now'; S.trips.push(t); }
+  t.startDate=today; t.endDate=today; t.parkDays=1;
+  t.parks=makeParkDays(today,today,1);
+  var d0=(t.parks||[]).find(function(x){return x.date===today;})||(t.parks||[])[0];
+  if(d0){ d0.park=parkKey; d0.dayNum=1; }
+  ensureTripMode(t); t.tripMode.active=true; t.tripMode.journal=t.tripMode.journal||{}; if(!t.tripMode.journal[today])t.tripMode.journal[today]={};
+  S.currentTripId='__herenow__'; S.tab='today';
+  S.ui=S.ui||{}; S.ui.showTripSelect=false; S.ui.todayDate=today;
+  S.ui.parkMode=true; S.ui.parkModeWT=false; S.ui.parkModeLog=false; S.ui.parkModeSpend=false;
+  persist(); render();
+}
+function buildHereNow(){
+  S.ui=S.ui||{};
+  var sel=S.ui.hereNowPark||'';
+  var order=['mk','ep','hs','ak','usf','ioa','eu','dl','dca','dp','daw'];
+  var chips=order.filter(function(k){return QT_PARK_IDS[k];}).map(function(k){
+    var on=sel===k;
+    return '<button onclick="hereNowPick(\''+k+'\')" style="border:1px solid '+(on?'#6366f1':'#e4e4f0')+';background:'+(on?'#eef2ff':'#fff')+';color:'+(on?'#4f46e5':'#666')+';font-size:12px;font-weight:700;border-radius:18px;padding:6px 12px;cursor:pointer;font-family:inherit;">'+esc(parkName(k))+'</button>';
+  }).join('');
+  var body='<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:'+(sel?'12px':'2px')+';">'+chips+'</div>';
+  if(sel){
+    body+=qtSection(sel);
+    body+='<button onclick="hereNowLogDay(\''+sel+'\')" style="width:100%;margin-top:10px;background:linear-gradient(135deg,#1a1a5e,#312e81);color:#FFD700;border:none;border-radius:10px;padding:11px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;">📋 Log a day here — track spending &amp; reports</button>';
+  }
+  return '<div class="card" style="padding:14px;margin-bottom:12px;">'
+    +'<div style="font-size:15px;font-weight:900;color:#1a1a5e;margin-bottom:3px;">📍 I&rsquo;m Here Right Now</div>'
+    +'<div style="font-size:11.5px;color:#999;margin-bottom:10px;">Tap the park you&rsquo;re at for live wait times'+(sel?' &mdash; or log today&rsquo;s spending, no trip planning needed':'')+'.</div>'
+    +body+'</div>';
+}
+
 function qtSection(parkKey,parkLabel){
   parkLabel=parkLabel||parkName(parkKey)||parkKey;
   if(!QT_PARK_IDS[parkKey])return'';
@@ -2924,7 +2960,7 @@ function buildToday(t){
   if(!dates.length){
     return `<div class="empty-rich" style="margin:8px 0;"><div class="er-icon">🎯</div><div class="er-title">Set your trip dates first</div><div class="er-body">The Today tab comes alive once your trip has dates.</div><button class="btn btn-primary" onclick="S.ui.settingsOpen=true;render()">Go to Settings →</button></div>`;
   }
-  if(!tm.active)return buildTodayLauncher(t,tm,dates,today);
+  if(!tm.active)return buildHereNow()+buildTodayLauncher(t,tm,dates,today);
   return buildTodayLive(t,tm,dates,today);
 }
 
@@ -12099,7 +12135,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-29-FE7";
+var SKIPPER_BUILD="2026-07-31-HN";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
