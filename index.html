@@ -2190,22 +2190,34 @@ function hereNowLogDay(parkKey){
   S.ui.parkMode=true; S.ui.parkModeWT=false; S.ui.parkModeLog=false; S.ui.parkModeSpend=false;
   persist(); render();
 }
+function hereNowResort(r){ S.ui=S.ui||{}; S.ui.hereNowResort=r; S.ui.hereNowPark=''; render(); }
 function buildHereNow(){
   S.ui=S.ui||{};
+  var RESORTS={ wdw:{label:'Walt Disney World',emoji:'🏰',parks:['mk','ep','hs','ak']}, dlr:{label:'Disneyland Resort',emoji:'🎢',parks:['dl','dca']} };
+  var resort=S.ui.hereNowResort||'';
   var sel=S.ui.hereNowPark||'';
-  var order=['mk','ep','hs','ak','usf','ioa','eu','dl','dca','dp','daw'];
-  var chips=order.filter(function(k){return QT_PARK_IDS[k];}).map(function(k){
-    var on=sel===k;
-    return '<button onclick="hereNowPick(\''+k+'\')" style="border:1px solid '+(on?'#6366f1':'#e4e4f0')+';background:'+(on?'#eef2ff':'#fff')+';color:'+(on?'#4f46e5':'#666')+';font-size:12px;font-weight:700;border-radius:18px;padding:6px 12px;cursor:pointer;font-family:inherit;">'+esc(parkName(k))+'</button>';
-  }).join('');
-  var body='<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:'+(sel?'12px':'2px')+';">'+chips+'</div>';
-  if(sel){
-    body+=qtSection(sel);
-    body+='<button onclick="hereNowLogDay(\''+sel+'\')" style="width:100%;margin-top:10px;background:linear-gradient(135deg,#1a1a5e,#312e81);color:#FFD700;border:none;border-radius:10px;padding:11px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;">📋 Log a day here — track spending &amp; reports</button>';
+  var sub, body;
+  if(!RESORTS[resort]){
+    sub='Which resort are you at?';
+    body='<div style="display:flex;gap:10px;">'+['wdw','dlr'].map(function(r){ var R=RESORTS[r];
+      return '<button onclick="hereNowResort(\''+r+'\')" style="flex:1;border:1.5px solid #e4e4f0;background:#fff;border-radius:12px;padding:16px 8px;cursor:pointer;font-family:inherit;color:#1a1a5e;font-weight:800;font-size:13px;line-height:1.5;"><span style="font-size:24px;">'+R.emoji+'</span><br>'+esc(R.label)+'</button>';
+    }).join('')+'</div>';
+  } else {
+    var R=RESORTS[resort];
+    sub='<span style="color:#1a1a5e;font-weight:700;">'+R.emoji+' '+esc(R.label)+'</span> &middot; <a onclick="hereNowResort(\'\')" style="color:#6366f1;cursor:pointer;">change resort</a>';
+    var chips=R.parks.filter(function(k){return QT_PARK_IDS[k];}).map(function(k){
+      var on=sel===k;
+      return '<button onclick="hereNowPick(\''+k+'\')" style="border:1px solid '+(on?'#6366f1':'#e4e4f0')+';background:'+(on?'#eef2ff':'#fff')+';color:'+(on?'#4f46e5':'#666')+';font-size:12.5px;font-weight:700;border-radius:18px;padding:7px 14px;cursor:pointer;font-family:inherit;">'+esc(parkName(k))+'</button>';
+    }).join('');
+    body='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:'+(sel?'12px':'2px')+';">'+chips+'</div>';
+    if(sel){
+      body+=qtSection(sel);
+      body+='<button onclick="hereNowLogDay(\''+sel+'\')" style="width:100%;margin-top:10px;background:linear-gradient(135deg,#1a1a5e,#312e81);color:#FFD700;border:none;border-radius:10px;padding:11px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;">📋 Log a day here — track spending &amp; reports</button>';
+    }
   }
   return '<div class="card" style="padding:14px;margin-bottom:12px;">'
     +'<div style="font-size:15px;font-weight:900;color:#1a1a5e;margin-bottom:3px;">📍 I&rsquo;m Here Right Now</div>'
-    +'<div style="font-size:11.5px;color:#999;margin-bottom:10px;">Tap the park you&rsquo;re at for live wait times'+(sel?' &mdash; or log today&rsquo;s spending, no trip planning needed':'')+'.</div>'
+    +'<div style="font-size:11.5px;color:#999;margin-bottom:11px;">'+sub+'</div>'
     +body+'</div>';
 }
 
@@ -12135,7 +12147,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-31-HN";
+var SKIPPER_BUILD="2026-07-31-HN2";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
