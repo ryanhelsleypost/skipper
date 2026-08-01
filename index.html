@@ -1508,7 +1508,7 @@ function buildTripSelectOverlay() {
     const active  = t.id === S.currentTripId;
     const pinned  = localStorage.getItem('skipper_pinned_trip') === t.id;
     return '<div style="background:'+(active?'#f5f3ff':'#fff')+';border:1.5px solid '+(active?'#c4b5fd':'#e4e4f0')+';border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;">'
-      +'<div onclick="S.currentTripId=\''+t.id+'\';S.ui.showTripSelect=false;S.tab=\'today\';render()" style="flex:1;min-width:0;cursor:pointer;">'
+      +'<div onclick="S.ui.tripDelArm=\'\';S.currentTripId=\''+t.id+'\';S.ui.showTripSelect=false;S.tab=\'today\';render()" style="flex:1;min-width:0;cursor:pointer;">'
       +'<div style="display:flex;align-items:center;gap:6px;">'
       +(pinned?'<span title="Pinned — opens by default" style="font-size:13px;">📌</span>':'')
       +'<div style="font-size:15px;font-weight:900;color:#1a1a5e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(t.name||'Unnamed Trip')+'</div>'
@@ -1522,14 +1522,17 @@ function buildTripSelectOverlay() {
       +'style="background:'+(pinned?'#fef9c3':'#f9f9f9')+';border:1px solid '+(pinned?'#fde047':'#e4e4f0')+';border-radius:8px;padding:4px 8px;font-size:13px;cursor:pointer;flex-shrink:0;">'
       +(pinned?'📌':'📍')
       +'</button>'
+      +(S.ui.tripDelArm===t.id
+        ? '<button onclick="event.stopPropagation();deleteTripById(\''+t.id+'\')" title="Tap to permanently delete this trip" style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:4px 9px;font-size:12px;font-weight:800;color:#dc2626;cursor:pointer;flex-shrink:0;white-space:nowrap;">🗑 Delete</button>'
+        : '<button onclick="event.stopPropagation();S.ui.tripDelArm=\''+t.id+'\';render()" title="Unlock delete" style="background:#f9f9f9;border:1px solid #e4e4f0;border-radius:8px;padding:4px 8px;font-size:13px;cursor:pointer;flex-shrink:0;color:#c0c0c0;">🔒</button>')
       +'</div>';
   }).join('');
-  return '<div onclick="if(event.target===this){S.ui.showTripSelect=false;render()}" '
+  return '<div onclick="if(event.target===this){S.ui.tripDelArm=\'\';S.ui.showTripSelect=false;render()}" '
     +'style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-end;">'
     +'<div style="width:100%;max-height:80vh;background:#fff;border-radius:20px 20px 0 0;overflow-y:auto;padding:20px;">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">'
     +'<div style="font-size:17px;font-weight:900;color:#1a1a5e;">Switch Trip</div>'
-    +'<button onclick="S.ui.showTripSelect=false;render()" style="background:none;border:none;font-size:22px;color:#888;cursor:pointer;line-height:1;">×</button>'
+    +'<button onclick="S.ui.tripDelArm=\'\';S.ui.showTripSelect=false;render()" style="background:none;border:none;font-size:22px;color:#888;cursor:pointer;line-height:1;">×</button>'
     +'</div>'
     +'<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">'
     +(cards||'<div style="text-align:center;color:#bbb;padding:20px;font-size:13px;">No trips yet</div>')
@@ -11845,6 +11848,14 @@ function confirmDeleteTrip(tripId) {
   }
   persist(); render();
 }
+function deleteTripById(id){
+  S.trips=(S.trips||[]).filter(function(tr){return tr.id!==id;});
+  if(S.trips.length===0){ var fresh=makeDefaultTrip(); S.trips=[fresh]; S.currentTripId=fresh.id; }
+  else if(S.currentTripId===id){ S.currentTripId=S.trips[0].id; }
+  try{ if(localStorage.getItem('skipper_pinned_trip')===id) localStorage.removeItem('skipper_pinned_trip'); }catch(e){}
+  if(S.ui) S.ui.tripDelArm='';
+  persist(); render();
+}
 function deleteTrip() {
   const t=trip();
   const isLast = S.trips.length<=1;
@@ -12147,7 +12158,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-07-31-HN2";
+var SKIPPER_BUILD="2026-08-01-DEL";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
