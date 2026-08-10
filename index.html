@@ -3005,10 +3005,6 @@ function buildTodayLauncher(t,tm,dates,today){
   });
   const catRows=catInfo.map(function(x){
     const c=x.c, spent=x.spent, bud=x.bud, res=x.res, hasLive=x.hasLive, target=x.target, settled=x.settled, zero=x.zero;
-    const diff=Math.round(target-bud);
-    const deltaNote=(hasLive&&bud>0&&Math.abs(diff)>=1)
-      ? `<div style="font-size:10.5px;color:${diff>0?'#d97706':'#16a34a'};margin-top:1px;">${diff>0?'+':'−'}$${Math.abs(diff).toLocaleString()} vs $${Math.round(bud).toLocaleString()} budget</div>`
-      : '';
     // Due date, lifted from the Budget tab
     let dueChip='';
     if(c.dueDate){
@@ -3028,7 +3024,6 @@ function buildTodayLauncher(t,tm,dates,today){
           ${dueChip}
         </div>
         <div style="font-size:11px;color:#888;">$${Math.round(spent).toLocaleString()} logged of $${Math.round(target).toLocaleString()} ${hasLive?'planned':'budgeted'}${hasLive&&res.label?` <span style="color:#aaa;">· ${esc(res.label)}</span>`:''}</div>
-        ${deltaNote}
       </div>
       <span style="font-size:11px;font-weight:800;color:${settled?'#16a34a':zero?'#bbb':'#d97706'};">${settled?'✓ settled':zero?'—':'open'}</span>
     </div>`;
@@ -4770,11 +4765,11 @@ function buildBudget(t) {
     <div class="card">
       <div class="card-header">💰 Budget Tracker</div>
       <div class="bpills">
-        <div class="bpill bpill-blue">💵 Budget Goal: ${fmtDual(totalB,t)}</div>
-        <div class="bpill" style="background:#f0f4ff;color:#4338ca;">📊 Estimated Total: ${fmtDual(totalEffective,t)}</div>
+        <div class="bpill" style="background:#f0f4ff;color:#4338ca;">📊 Total: ${fmtDual(totalEffective,t)}</div>
         <div class="bpill bpill-red">💸 Spent: ${fmtDual(totalS,t)}</div>
         <div class="bpill ${rem>=0?'bpill-green':'bpill-red'}">${rem>=0?'✅':'🚨'} Still Owed: ${fmtDual(Math.abs(rem),t)}${rem<0?' OVER':''}</div>
       </div>
+      ${(totalB>0 && Math.abs(totalEffective-totalB)>=1) ? `<div style="font-size:11px;color:#9ca3af;margin:6px 0 2px;padding-left:2px;">Originally budgeted ${fmtDual(totalB,t)} · ${totalEffective>totalB?'+':'−'}${fmtDual(Math.abs(totalEffective-totalB),t)} since</div>` : ''}
 
       
       ${(()=>{
@@ -4806,11 +4801,11 @@ function buildBudget(t) {
       })()}
 
       <table class="budget-tbl" ondragover="budgetTableDragOver(event)" ondrop="budgetTableDrop(event)">
-        <thead><tr><th>Category</th><th>Due Date</th><th>Budget Goal</th><th>Actual / Est.</th><th>Spent</th><th>Still Owed</th><th>Progress</th><th style="width:80px;"></th></tr></thead>
+        <thead><tr><th>Category</th><th>Due Date</th><th>Total</th><th>Spent</th><th>Still Owed</th><th>Progress</th><th style="width:80px;"></th></tr></thead>
         <tbody>
           ${resolved.map(({cat,info}) => buildCatRow(cat, info, t)
-            + (S.ui.spendCatId===cat.id && !S.ui.editCatId ? `<tr class="spend-inline"><td colspan="8" style="padding:0 6px 10px;">${buildSpendPanel(t)}</td></tr>` : '')
-            + (S.ui.editCatId===cat.id ? `<tr class="spend-inline"><td colspan="8" style="padding:0 6px 10px;">${buildCatEditPanel(t)}</td></tr>` : '')
+            + (S.ui.spendCatId===cat.id && !S.ui.editCatId ? `<tr class="spend-inline"><td colspan="7" style="padding:0 6px 10px;">${buildSpendPanel(t)}</td></tr>` : '')
+            + (S.ui.editCatId===cat.id ? `<tr class="spend-inline"><td colspan="7" style="padding:0 6px 10px;">${buildCatEditPanel(t)}</td></tr>` : '')
           ).join('')}
           ${!cats.length?`<tr><td colspan="7"><div class="empty-rich" style="margin:8px 0;"><div class="er-icon">💰</div><div class="er-title">No budget categories yet</div><div class="er-body">Add categories like Hotel, Flights, Food, and Park Tickets. You can set how much you've budgeted and track what you've spent.</div></div></td></tr>`:''}
         </tbody>
@@ -4881,12 +4876,9 @@ function buildCatRow(c, info, t) {
         </div>
       </td>
       <td class="${dueDate?'':'mb-empty'}" data-l="Due" style="font-size:12px;color:${dueDate?'#374151':'#ccc'};white-space:nowrap;">${dueFmt}</td>
-      <td data-l="Budget goal" style="color:${isLive?'#aaa':'#374151'};${isLive?'text-decoration:line-through;font-size:11px;':''}" title="${isLive?'Overridden by live data':'Your budget goal'}">
-        ${fmtDual(c.budgeted||0, t)}
-      </td>
-      <td data-l="Actual / est." style="font-weight:800;color:${isLive?'#15803d':'#4338ca'};" title="${isLive?'From your trip data':'Estimated — no live data yet'}">
-        ${isLive?'':'~'}${fmtDual(effective, t)}
-        ${!isLive&&info.source!=='manual'?`<div style="font-size:10px;color:#aaa;font-weight:400;">placeholder</div>`:''}
+      <td data-l="Total" style="font-weight:800;color:${isLive?'#15803d':'#1a1a2e'};" title="${isLive?'Real total from your trip data':'Your budgeted amount — no live data yet'}">
+        ${fmtDual(effective, t)}${!isLive?`<span style="font-size:10px;color:#bbb;font-weight:600;"> est</span>`:''}
+        ${(isLive && (c.budgeted||0)>0 && Math.abs(effective-(c.budgeted||0))>=1) ? `<div style="font-size:10px;color:#aaa;font-weight:500;">budgeted ${fmtDual(c.budgeted||0,t)}</div>` : ''}
       </td>
       <td data-l="Spent" style="color:${spent>0?'#374151':'#ccc'};">
         ${spent>0 ? fmtDual(spent, t) : '<span style="font-size:11px;">tap 💳 Pay</span>'}
@@ -12158,7 +12150,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-01-DEL";
+var SKIPPER_BUILD="2026-08-09-BUD";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
