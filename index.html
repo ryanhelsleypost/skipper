@@ -3023,7 +3023,7 @@ function buildTodayLauncher(t,tm,dates,today){
           <span style="font-size:13px;font-weight:700;color:#333;">${esc(c.name)}</span>
           ${dueChip}
         </div>
-        <div style="font-size:11px;color:#888;">$${Math.round(spent).toLocaleString()} logged of $${Math.round(target).toLocaleString()} ${hasLive?'planned':'budgeted'}${hasLive&&res.label?` <span style="color:#aaa;">· ${esc(res.label)}</span>`:''}</div>
+        <div style="font-size:11px;color:#888;">$${Math.round(spent).toLocaleString()} paid of $${Math.round(target).toLocaleString()} total${hasLive&&res.label?` <span style="color:#aaa;">· ${esc(res.label)}</span>`:''}</div>
       </div>
       <span style="font-size:11px;font-weight:800;color:${settled?'#16a34a':zero?'#bbb':'#d97706'};">${settled?'✓ settled':zero?'—':'open'}</span>
     </div>`;
@@ -4766,7 +4766,7 @@ function buildBudget(t) {
       <div class="card-header">💰 Budget Tracker</div>
       <div class="bpills">
         <div class="bpill" style="background:#f0f4ff;color:#4338ca;">📊 Total: ${fmtDual(totalEffective,t)}</div>
-        <div class="bpill bpill-red">💸 Spent: ${fmtDual(totalS,t)}</div>
+        <div class="bpill bpill-red">💸 Paid: ${fmtDual(totalS,t)}</div>
         <div class="bpill ${rem>=0?'bpill-green':'bpill-red'}">${rem>=0?'✅':'🚨'} Still Owed: ${fmtDual(Math.abs(rem),t)}${rem<0?' OVER':''}</div>
       </div>
       ${(totalB>0 && Math.abs(totalEffective-totalB)>=1) ? `<div style="font-size:11px;color:#9ca3af;margin:6px 0 2px;padding-left:2px;">Originally budgeted ${fmtDual(totalB,t)} · ${totalEffective>totalB?'+':'−'}${fmtDual(Math.abs(totalEffective-totalB),t)} since</div>` : ''}
@@ -4801,7 +4801,7 @@ function buildBudget(t) {
       })()}
 
       <table class="budget-tbl" ondragover="budgetTableDragOver(event)" ondrop="budgetTableDrop(event)">
-        <thead><tr><th>Category</th><th>Due Date</th><th>Total</th><th>Spent</th><th>Still Owed</th><th>Progress</th><th style="width:80px;"></th></tr></thead>
+        <thead><tr><th>Category</th><th>Due Date</th><th>Total</th><th>Paid</th><th>Still Owed</th><th>Progress</th><th style="width:80px;"></th></tr></thead>
         <tbody>
           ${resolved.map(({cat,info}) => buildCatRow(cat, info, t)
             + (S.ui.spendCatId===cat.id && !S.ui.editCatId ? `<tr class="spend-inline"><td colspan="7" style="padding:0 6px 10px;">${buildSpendPanel(t)}</td></tr>` : '')
@@ -4880,7 +4880,7 @@ function buildCatRow(c, info, t) {
         ${fmtDual(effective, t)}${!isLive?`<span style="font-size:10px;color:#bbb;font-weight:600;"> est</span>`:''}
         ${(isLive && (c.budgeted||0)>0 && Math.abs(effective-(c.budgeted||0))>=1) ? `<div style="font-size:10px;color:#aaa;font-weight:500;">budgeted ${fmtDual(c.budgeted||0,t)}</div>` : ''}
       </td>
-      <td data-l="Spent" style="color:${spent>0?'#374151':'#ccc'};">
+      <td data-l="Paid" style="color:${spent>0?'#374151':'#ccc'};">
         ${spent>0 ? fmtDual(spent, t) : '<span style="font-size:11px;">tap 💳 Pay</span>'}
       </td>
       <td data-l="Still owed" style="font-weight:800;color:${owedColor};">${fmtDual(Math.abs(owed), t)}${owed<0?' 🚨':''}</td>
@@ -12150,7 +12150,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-09-BUD";
+var SKIPPER_BUILD="2026-08-09-BUD2";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
