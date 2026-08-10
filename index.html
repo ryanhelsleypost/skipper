@@ -955,6 +955,8 @@ let S = {
   trips: [],
   currentTripId: null,
   tab: 'today',
+  me: null,          // device-local: which party member is on THIS phone
+  guestMode: false,  // device-local: companion (simplified, soft-locked) view on/off
   wizard: { open: false, step: 1, data: {} },
   ui: {
     editName: false,
@@ -990,6 +992,7 @@ let S = {
     rosIconSelected: {},
     swapMode: false,
     swapSelected: [],
+    identityOpen: false,
   },
   dpModal: {
     open: false,
@@ -1052,6 +1055,7 @@ function migrateAllTrips() {
   S.trips = S.trips.map(t => {
     // Add missing top-level fields
     if (!t.resort) t.resort = blankResort();
+    if (!t.guestAccounts || typeof t.guestAccounts !== 'object' || Array.isArray(t.guestAccounts)) t.guestAccounts = {};
     if (!t.diningReservations) t.diningReservations = [];
     if (!t.transportation.groundReturn) {
       t.transportation.groundReturn = { option: 'Uber / Lyft', notes: '', estTime: '' };
@@ -1458,6 +1462,11 @@ function buildApp() {
     return buildTripSelect();
   }
 
+  // Companion (guest) view — device-local, soft-locked simplified layout
+  if (S.guestMode && meMember(t)) {
+    return buildCompanionApp(t);
+  }
+
   // Ensure tab is valid
   const VALID_TABS = ['today','itinerary','budget','logistics','packing','fishext','map_modal','photos_modal'];
   if (!VALID_TABS.includes(S.tab)) S.tab = 'today';
@@ -1488,6 +1497,7 @@ function buildApp() {
     ${S.ui.feedbackOpen ? buildFeedbackModal() : ''}
     ${S.ui.showTripSelect ? buildTripSelectOverlay() : ''}
     ${S.ui.tourActive ? buildTourOverlay() : ''}
+    ${S.ui.identityOpen ? buildIdentityModal(t) : ''}
     ${settingsOverlay}
   `;
 }
@@ -1606,6 +1616,7 @@ function buildHeader(t) {
     // Right: countdown + buttons
     + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
     + countdownHtml
+    + '<button onclick="S.ui.identityOpen=true;render()" title="Who\'s on this phone" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fff;font-size:13px;cursor:pointer;font-family:inherit;font-weight:800;">'+(meMember(t)?(meMember(t).emoji||'🧑'):'👤')+'</button>'
     + '<button onclick="inDemo()?exitDemo():enterDemo()" style="background:'+(inDemo()?'#dc2626':'rgba(255,255,255,.15)')+';border:none;border-radius:8px;padding:5px 9px;color:'+(inDemo()?'#fff':'#a5b4fc')+';font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">'+(inDemo()?'&#10005; Demo':'&#127918; Demo')+'</button>'
     + '<button onclick="openSyncModal()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#FFD700;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">&#9729; Sync</button>'
     + '<button onclick="S.ui.settingsOpen=!S.ui.settingsOpen;render()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fff;font-size:15px;cursor:pointer;font-family:inherit;">&#9881;&#65039;</button>'
@@ -2627,21 +2638,21 @@ function pmLoggedToday(t,sel){
   upl.forEach(function(u){
     var ic={ride:'🎢',food:'🍔',photo:'📸',purchase:'🛍️',moment:'✨'}[u.type]||'📌';
     var right=(u.time?fmt12(u.time):'')+(u.waitActual?' · waited '+u.waitActual+'m':'');
-    items.push({time:u.time||'',icon:ic,text:u.text,right:right});
+    items.push({time:u.time||'',icon:ic,text:u.text,right:right,by:u.by});
   });
   ((t.budget||{}).categories||[]).forEach(function(c){
     (c.transactions||[]).forEach(function(tx){
       if(tx.onTrip&&tx.tripDate===sel){
         var tm=tx.time||'';
         if(!tm&&tx.createdAt){var d=new Date(tx.createdAt);tm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
-        items.push({time:tm,icon:(c.emoji||'💵'),text:(tx.note||c.name||'Spend'),right:(tm?fmt12(tm)+' · ':'')+'$'+(tx.amount||0).toFixed(2)});
+        items.push({time:tm,icon:(c.emoji||'💵'),text:(tx.note||c.name||'Spend'),right:(tm?fmt12(tm)+' · ':'')+'$'+(tx.amount||0).toFixed(2),by:tx.by});
       }
     });
   });
   if(!items.length)return '';
   items.sort(function(a,b){return (a.time||'').localeCompare(b.time||'');});
   var rows=items.map(function(it){
-    return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px dashed #eee;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+it.icon+' '+esc(it.text)+'</span><span style="color:#888;flex-shrink:0;margin-left:8px;">'+esc(it.right)+'</span></div>';
+    return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px dashed #eee;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+it.icon+' '+esc(it.text)+byChip(t,it.by)+'</span><span style="color:#888;flex-shrink:0;margin-left:8px;">'+esc(it.right)+'</span></div>';
   }).join('');
   return '<div style="background:#fff;border:2px solid #e4e4f0;border-radius:14px;padding:14px;margin-bottom:14px;"><div style="font-size:11px;font-weight:900;color:#555;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">📝 Logged Today ('+items.length+')</div>'+rows+'</div>';
 }
@@ -3362,7 +3373,8 @@ function pmSaveWait(date){
     time:S.ui.parkModeTimer.time,
     type:'ride',
     waitActual:S.ui.parkModeTimer.elapsed,
-    createdAt:Date.now()
+    createdAt:Date.now(),
+    by:(S.me||null)
   });
   S.ui.parkModeWT=false;S.ui.parkModeTimer={};pmTimerSave();persist();render();
 }
@@ -3378,7 +3390,7 @@ function pmSaveSpend(date){
   const catObj=cats.find(function(c){return c.id===cat;});
   if(!catObj){alert('Category not found');return;}
   if(!catObj.transactions)catObj.transactions=[];
-  catObj.transactions.push({id:uid(),amount:amt,note:notes,time:stime,date:date,onTrip:true,tripDate:date,createdAt:Date.now()});
+  catObj.transactions.push({id:uid(),amount:amt,note:notes,time:stime,date:date,onTrip:true,tripDate:date,createdAt:Date.now(),by:(S.me||null)});
   S.ui.parkModeSpend=false;persist();render();
 }
 
@@ -4219,7 +4231,7 @@ function buildTabContent(t) {
   switch(S.tab) {
     case 'today':       return buildToday(t);
     case 'itinerary':   return t.tripType==='aulani' ? buildItinerary_aulani(t) : buildItinerary(t);
-    case 'budget':      return buildBudget(t);
+    case 'budget':      return buildBudget(t) + buildGuestMoney(t);
     case 'logistics':   return buildLogistics(t);
     case 'packing':     return buildPackingList(t);
     case 'fishext':     return buildFishExtenders(t);
@@ -4929,7 +4941,7 @@ function buildSpendPanel(t) {
           ${txs.map(tx=>`
             <div class="tx-row">
               <span class="tx-amount">${fmtDual(tx.amount||0,t)}</span>
-              <span class="tx-note">${esc(tx.note||'—')}</span>
+              <span class="tx-note">${esc(tx.note||'—')}${byChip(t,tx.by)}</span>
               <span class="tx-date">${tx.date||''}</span>
               <button class="btn btn-xs btn-danger" onclick="deleteTx('${cat.id}','${tx.id}')">✕</button>
             </div>`).join('')}
@@ -11050,7 +11062,7 @@ function logSpend(catId) {
   const note = document.getElementById('spend-note')?.value?.trim()||'';
   const date = document.getElementById('spend-date')?.value||'';
   if (!amt) { alert('Enter an amount (use a negative number for refunds)'); return; }
-  const tx = {id:uid(), amount:amt, note, date, createdAt:Date.now()};
+  const tx = {id:uid(), amount:amt, note, date, createdAt:Date.now(), by:(S.me||null)};
   const t  = trip();
   patchTrip({budget:{...t.budget,categories:t.budget.categories.map(c=>{
     if (c.id!==catId) return c;
@@ -11976,6 +11988,271 @@ function dayCalBadge(d){
 // ===================================================
 loadStorage();
 
+// ═══ DEVICE IDENTITY · COMPANION VIEW · PERSONAL POTS · ATTRIBUTION ═══
+// Device-local identity ("who's on this phone") — never synced.
+function identityLoad(){
+  try{ S.me = localStorage.getItem('skipper_me') || null; }catch(e){ S.me = null; }
+  try{ S.guestMode = localStorage.getItem('skipper_guest') === '1'; }catch(e){ S.guestMode = false; }
+}
+function identitySave(){
+  try{ if(S.me) localStorage.setItem('skipper_me', S.me); else localStorage.removeItem('skipper_me'); }catch(e){}
+  try{ localStorage.setItem('skipper_guest', S.guestMode ? '1' : '0'); }catch(e){}
+}
+function memberById(t,id){ return ((t&&t.partyMembers)||[]).find(function(m){return m.id===id;}) || null; }
+function meMember(t){ return memberById(t, S.me); }
+function setMe(id){ S.me = id||null; if(!id) S.guestMode=false; identitySave(); render(); }
+function enterGuestAs(id){ S.me = id; S.guestMode = true; identitySave(); S.ui.identityOpen=false; S.tab='today'; render(); }
+function exitGuest(){ S.guestMode = false; identitySave(); render(); }
+// Small avatar chip for attribution ("who logged this")
+function byChip(t, byId, withName){
+  var m = memberById(t, byId); if(!m) return '';
+  return '<span title="'+esc(m.name||'')+'" style="font-size:11px;color:#8a8aa0;font-weight:700;white-space:nowrap;margin-left:6px;">'+(m.emoji||'🧑')+(withName&&m.name?(' '+esc(m.name)):'')+'</span>';
+}
+
+// ── Personal pots data ────────────────────────────
+function guestAccts(t, memberId){
+  if(!t.guestAccounts) t.guestAccounts = {};
+  if(!t.guestAccounts[memberId]) t.guestAccounts[memberId] = [];
+  return t.guestAccounts[memberId];
+}
+function findAcct(t, memberId, acctId){ return guestAccts(t,memberId).find(function(a){return a.id===acctId;}) || null; }
+function potSpent(a){ return (a.transactions||[]).filter(function(x){return x.kind==='spend';}).reduce(function(s,x){return s+(x.amount||0);},0); }
+function potAdded(a){ return (a.transactions||[]).filter(function(x){return x.kind==='add';}).reduce(function(s,x){return s+(x.amount||0);},0); }
+function potLimit(a){ return (a.startBalance||0) + potAdded(a); }        // total available
+function potBalance(a){ return potLimit(a) - potSpent(a); }             // remaining
+
+function potAddAccountPrompt(memberId){
+  var name = prompt('Account name (e.g. Allowance, Gift Card, Cruise Account):', 'Allowance');
+  if(name===null) return;
+  name = (name||'').trim() || 'Allowance';
+  var icon = /gift/i.test(name) ? '🎁' : /cruise|ship|boat/i.test(name) ? '🚢' : /card/i.test(name) ? '💳' : '💵';
+  var bal = prompt('Starting balance for "'+name+'" (the amount they have to spend):', '0');
+  if(bal===null) return;
+  var t = trip(); if(!t) return;
+  guestAccts(t, memberId).push({ id:uid(), name:name, icon:icon, startBalance:(parseFloat(bal)||0), transactions:[] });
+  persist(); render();
+}
+function potLog(memberId, acctId, kind){
+  var t = trip(); if(!t) return;
+  var a = findAcct(t, memberId, acctId); if(!a) return;
+  var amt = parseFloat((document.getElementById('pot-amt-'+acctId)||{}).value)||0;
+  var note = ((document.getElementById('pot-note-'+acctId)||{}).value||'').trim();
+  if(!amt || amt<=0){ alert('Enter an amount'); return; }
+  a.transactions = a.transactions || [];
+  a.transactions.push({ id:uid(), kind:kind, amount:amt, note:note, date:todayISO(), ts:Date.now(), by:(S.me||null) });
+  persist(); render();
+}
+function potDelTx(memberId, acctId, txId){
+  var t = trip(); if(!t) return;
+  var a = findAcct(t, memberId, acctId); if(!a) return;
+  a.transactions = (a.transactions||[]).filter(function(x){return x.id!==txId;});
+  persist(); render();
+}
+function potSetStartPrompt(memberId, acctId){
+  var t = trip(); if(!t) return;
+  var a = findAcct(t, memberId, acctId); if(!a) return;
+  var v = prompt('Starting balance for "'+(a.name||'account')+'":', String(a.startBalance||0));
+  if(v===null) return;
+  a.startBalance = parseFloat(v)||0; persist(); render();
+}
+function potRename(memberId, acctId){
+  var t = trip(); if(!t) return;
+  var a = findAcct(t, memberId, acctId); if(!a) return;
+  var v = prompt('Rename account:', a.name||''); if(v===null) return;
+  a.name = (v||'').trim() || a.name; persist(); render();
+}
+function potDelAccount(memberId, acctId){
+  var t = trip(); if(!t) return;
+  var a = findAcct(t, memberId, acctId);
+  if(a && (a.transactions||[]).length && !confirm('Delete "'+(a.name||'account')+'" and its '+(a.transactions||[]).length+' transaction(s)?')) return;
+  t.guestAccounts[memberId] = guestAccts(t, memberId).filter(function(x){return x.id!==acctId;});
+  persist(); render();
+}
+
+// ── One pot card (used in both companion view and the organizer's god view) ──
+function buildPotCard(t, memberId, a, admin){
+  var sym = curSym(t);
+  var limit = potLimit(a), spent = potSpent(a), bal = potBalance(a);
+  var pct = limit>0 ? Math.min(100, Math.round(spent/limit*100)) : 0;
+  var over = bal < 0;
+  var barCol = over ? '#ef4444' : pct>85 ? '#f59e0b' : '#16a34a';
+  var txs = (a.transactions||[]).slice().reverse();
+  return ''
+  + '<div style="border:1.5px solid #e8e8f2;border-radius:12px;padding:13px 14px;background:#fff;">'
+    + '<div style="display:flex;align-items:center;gap:8px;">'
+      + '<span style="font-size:18px;">'+(a.icon||'💵')+'</span>'
+      + '<div style="font-size:14px;font-weight:800;color:#1a1a2e;flex:1;min-width:0;">'+esc(a.name||'Account')+'</div>'
+      + (admin ? '<button onclick="potRename(\''+memberId+'\',\''+a.id+'\')" title="Rename" style="background:none;border:none;cursor:pointer;font-size:13px;color:#bbb;">✏️</button>'
+               + '<button onclick="potDelAccount(\''+memberId+'\',\''+a.id+'\')" title="Delete account" style="background:none;border:none;cursor:pointer;font-size:13px;color:#bbb;">🗑️</button>' : '')
+    + '</div>'
+    + '<div style="display:flex;align-items:baseline;gap:8px;margin:8px 0 4px;">'
+      + '<span style="font-size:26px;font-weight:900;color:'+(over?'#ef4444':'#1a1a5e')+';">'+sym+Math.round(bal).toLocaleString()+'</span>'
+      + '<span style="font-size:12px;color:#888;">left of '+sym+Math.round(limit).toLocaleString()+'</span>'
+      + (admin ? '<button onclick="potSetStartPrompt(\''+memberId+'\',\''+a.id+'\')" style="margin-left:auto;background:#f0f0f8;border:1px solid #ddd;border-radius:7px;font-size:11px;font-weight:700;padding:3px 8px;cursor:pointer;font-family:inherit;color:#555;">Set balance</button>' : '')
+    + '</div>'
+    + '<div style="height:8px;background:#eef0f6;border-radius:8px;overflow:hidden;margin-bottom:10px;"><div style="height:100%;width:'+pct+'%;background:'+barCol+';border-radius:8px;transition:width .2s;"></div></div>'
+    + (over ? '<div style="font-size:11px;color:#ef4444;font-weight:700;margin:-4px 0 8px;">⚠️ '+sym+Math.round(Math.abs(bal)).toLocaleString()+' over</div>' : '')
+    // spend / add row
+    + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:'+(txs.length?'10px':'0')+';">'
+      + '<span style="font-size:13px;color:#888;">'+sym+'</span>'
+      + '<input id="pot-amt-'+a.id+'" type="number" inputmode="decimal" placeholder="0.00" min="0" step="0.01" style="width:82px;padding:6px 8px;border:1.5px solid #e4e4f0;border-radius:8px;font-size:13px;font-family:inherit;">'
+      + '<input id="pot-note-'+a.id+'" type="text" placeholder="what for? (optional)" style="flex:1;min-width:90px;padding:6px 8px;border:1.5px solid #e4e4f0;border-radius:8px;font-size:13px;font-family:inherit;">'
+      + '<button onclick="potLog(\''+memberId+'\',\''+a.id+'\',\'spend\')" style="background:#fee2e2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;font-size:12px;font-weight:800;padding:6px 10px;cursor:pointer;font-family:inherit;">− Spend</button>'
+      + '<button onclick="potLog(\''+memberId+'\',\''+a.id+'\',\'add\')" style="background:#dcfce7;border:1px solid #bbf7d0;color:#15803d;border-radius:8px;font-size:12px;font-weight:800;padding:6px 10px;cursor:pointer;font-family:inherit;">+ Add</button>'
+    + '</div>'
+    + (txs.length ? '<div style="max-height:190px;overflow-y:auto;border-top:1px dashed #eee;padding-top:6px;">'
+        + txs.map(function(x){
+            var isSpend = x.kind==='spend';
+            return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;">'
+              + '<span style="font-weight:800;color:'+(isSpend?'#b91c1c':'#15803d')+';min-width:64px;">'+(isSpend?'−':'+')+sym+Math.round(x.amount||0).toLocaleString()+'</span>'
+              + '<span style="flex:1;min-width:0;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(x.note||'—')+'</span>'
+              + byChip(t, x.by)
+              + '<span style="font-size:10.5px;color:#bbb;">'+ (x.date? new Date(x.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '') +'</span>'
+              + '<button onclick="potDelTx(\''+memberId+'\',\''+a.id+'\',\''+x.id+'\')" style="background:none;border:none;cursor:pointer;color:#ccc;font-size:12px;">✕</button>'
+            + '</div>';
+          }).join('')
+      + '</div>' : '')
+  + '</div>';
+}
+
+// ── Organizer's god view: manage everyone's money ──
+function buildGuestMoney(t){
+  var members = (t.partyMembers||[]).filter(function(m){return m.name&&m.name.trim();});
+  if(!members.length){
+    return '<div class="card"><div class="card-header">👛 Guest Money</div>'
+      + '<div style="font-size:13px;color:#888;">Add people in <strong>Party Members</strong> first, then you can give each traveler their own spending pots (allowance, gift card, cruise account…) that they track from a simple companion view.</div></div>';
+  }
+  return '<div class="card"><div class="card-header">👛 Guest Money</div>'
+    + '<div style="font-size:12px;color:#888;margin-bottom:14px;">Give each traveler their own pots. They log spending from a pared-down companion view; you have full control here. These are separate from the trip budget above.</div>'
+    + members.map(function(m){
+        var accts = guestAccts(t, m.id);
+        return '<div style="margin-bottom:16px;">'
+          + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+            + '<span style="font-size:18px;">'+(m.emoji||'🧑')+'</span>'
+            + '<span style="font-size:14px;font-weight:800;color:#1a1a5e;flex:1;">'+esc(m.name)+'</span>'
+            + '<button onclick="enterGuestAs(\''+m.id+'\')" title="Preview their view" style="background:#eef2ff;border:1px solid #c7d2fe;color:#4338ca;border-radius:8px;font-size:11px;font-weight:700;padding:4px 9px;cursor:pointer;font-family:inherit;">👀 Their view</button>'
+          + '</div>'
+          + (accts.length ? '<div style="display:flex;flex-direction:column;gap:9px;margin-bottom:8px;">'+accts.map(function(a){return buildPotCard(t,m.id,a,true);}).join('')+'</div>'
+                          : '<div style="font-size:12px;color:#bbb;padding:4px 0 8px;">No pots yet.</div>')
+          + '<button onclick="potAddAccountPrompt(\''+m.id+'\')" class="btn btn-primary btn-sm">＋ Add pot for '+esc(m.name.split(' ')[0])+'</button>'
+        + '</div>';
+      }).join('')
+  + '</div>';
+}
+
+// ── Identity modal ("who's on this phone" + enter companion view) ──
+function buildIdentityModal(t){
+  var members = (t.partyMembers||[]).filter(function(m){return m.name&&m.name.trim();});
+  var rows = members.length ? members.map(function(m){
+    var isMe = S.me===m.id;
+    return '<div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border:1.5px solid '+(isMe?'#c7d2fe':'#eee')+';border-radius:10px;background:'+(isMe?'#eef2ff':'#fff')+';margin-bottom:8px;">'
+      + '<span style="font-size:20px;">'+(m.emoji||'🧑')+'</span>'
+      + '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:800;color:#1a1a2e;">'+esc(m.name)+(isMe?' <span style="font-size:11px;color:#4338ca;">· that\'s me</span>':'')+'</div></div>'
+      + (isMe ? '' : '<button onclick="setMe(\''+m.id+'\')" style="background:#f0f0f8;border:1px solid #ddd;border-radius:8px;font-size:12px;font-weight:700;padding:6px 10px;cursor:pointer;font-family:inherit;color:#333;">This is me</button>')
+      + '<button onclick="enterGuestAs(\''+m.id+'\')" style="background:#1a1a5e;border:none;color:#FFD700;border-radius:8px;font-size:12px;font-weight:800;padding:6px 10px;cursor:pointer;font-family:inherit;">Simple view →</button>'
+    + '</div>';
+  }).join('') : '<div style="font-size:13px;color:#888;padding:6px 0 12px;">No party members yet — add people in the Party Members card (Logistics) first.</div>';
+  return '<div onclick="if(event.target===this){S.ui.identityOpen=false;render()}" style="position:fixed;inset:0;background:rgba(10,10,40,.7);z-index:950;display:flex;align-items:flex-start;justify-content:center;padding:34px 12px;overflow-y:auto;">'
+    + '<div style="background:#fff;border-radius:16px;max-width:460px;width:100%;padding:22px;font-family:inherit;">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+        + '<div style="font-size:18px;font-weight:900;color:#1a1a5e;">👤 Who\'s on this phone?</div>'
+        + '<button onclick="S.ui.identityOpen=false;render()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999;">×</button>'
+      + '</div>'
+      + '<div style="font-size:12.5px;color:#777;line-height:1.6;margin-bottom:14px;">Pick who you are so anything you log (spending, wait times, notes) is tagged with your name. Tap <b>Simple view</b> to hand this phone a pared-down companion layout — just their flights, the plan, and their spending money.</div>'
+      + rows
+      + (S.me ? '<button onclick="setMe(null)" style="width:100%;margin-top:6px;background:#fff;border:1.5px solid #eee;border-radius:10px;font-size:12px;color:#999;padding:8px;cursor:pointer;font-family:inherit;">Clear identity on this device</button>' : '')
+    + '</div>'
+  + '</div>';
+}
+
+// ── Companion (guest) view ────────────────────────
+function companionFlights(t){
+  var tr = t.transportation || {};
+  var legs = [].concat((tr.outbound||{}).legs||[], (tr.return||{}).legs||[]);
+  var mine = legs.filter(function(l){ return (l.travelers||[]).indexOf(S.me)>=0; });
+  var show = mine.length ? mine : legs; // fall back to all if none tagged
+  show = show.filter(function(l){ return l.origin||l.destination||l.airline||l.flightNum||l.departDate; });
+  if(!show.length) return '';
+  var sym = curSym(t);
+  var cards = show.map(function(l){
+    var route = (l.origin||'—')+' → '+(l.destination||'—');
+    var air = [l.airline, l.flightNum].filter(Boolean).join(' ');
+    var dep = l.departDate ? new Date(l.departDate+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) : '';
+    var line2 = [dep, l.departTime, l.arriveTime?('→ '+l.arriveTime):''].filter(Boolean).join(' · ');
+    return '<div style="border:1.5px solid #eee;border-radius:11px;padding:12px 14px;background:#fff;">'
+      + '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">✈️</span>'
+      + '<span style="font-size:15px;font-weight:800;color:#1a1a2e;">'+esc(route)+'</span></div>'
+      + (air?'<div style="font-size:12.5px;color:#555;margin-top:3px;">'+esc(air)+'</div>':'')
+      + (line2?'<div style="font-size:12px;color:#888;margin-top:2px;">'+esc(line2)+'</div>':'')
+      + (l.seat?'<div style="font-size:12px;color:#888;margin-top:2px;">Seat '+esc(l.seat)+'</div>':'')
+    + '</div>';
+  }).join('');
+  return '<div class="card"><div style="font-size:14px;font-weight:900;color:#1a1a5e;margin-bottom:10px;">✈️ Your flights</div>'
+    + '<div style="display:flex;flex-direction:column;gap:9px;">'+cards+'</div>'
+    + (mine.length?'':'<div style="font-size:11px;color:#bbb;margin-top:8px;">Showing all trip flights — the organizer hasn\'t tagged yours yet.</div>')
+  + '</div>';
+}
+function companionHotelFor(t, date){
+  var leg = (t.hotelLegs||[]).find(function(l){ return l.checkInDate && l.checkOutDate && date>=l.checkInDate && date<l.checkOutDate; });
+  return leg ? (leg.name||'Hotel') : '';
+}
+function companionPlan(t){
+  var days = (t.parks||[]).slice().sort(function(a,b){return (a.date||'').localeCompare(b.date||'');});
+  if(!days.length) return '';
+  var cards = days.map(function(d){
+    var dt = d.date ? new Date(d.date+'T00:00:00') : null;
+    var dstr = dt ? dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) : '';
+    var where = d.park && d.park!=='unassigned' ? parkName(d.park) : '';
+    var hotel = companionHotelFor(t, d.date);
+    var meals = ['breakfast','lunch','dinner','snacks'].map(function(k){
+      var m = (d.meals||{})[k]; if(!m || !m.place) return null;
+      var tm = m.adrTime || MEAL_DEF_TIMES[k];
+      var lbl = {breakfast:'🥞',lunch:'🥙',dinner:'🍽️',snacks:'🍦'}[k];
+      return '<div style="font-size:12px;color:#555;display:flex;gap:6px;"><span>'+lbl+'</span><span style="color:#999;min-width:44px;">'+esc(tm||'')+'</span><span>'+esc(m.place)+'</span></div>';
+    }).filter(Boolean).join('');
+    return '<div style="border:1.5px solid #eee;border-radius:11px;padding:12px 14px;background:#fff;">'
+      + '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">'
+        + '<span style="font-size:13px;font-weight:900;color:#1a1a5e;">'+esc(dstr)+'</span>'
+        + (where?'<span style="font-size:13px;font-weight:700;color:#333;">'+esc(where)+'</span>':'<span style="font-size:12px;color:#bbb;">—</span>')
+      + '</div>'
+      + (hotel?'<div style="font-size:12px;color:#888;margin-top:3px;">🏨 '+esc(hotel)+'</div>':'')
+      + (meals?'<div style="margin-top:7px;display:flex;flex-direction:column;gap:3px;">'+meals+'</div>':'')
+    + '</div>';
+  }).join('');
+  return '<div class="card"><div style="font-size:14px;font-weight:900;color:#1a1a5e;margin-bottom:4px;">🗓️ The plan</div>'
+    + '<div style="font-size:12px;color:#888;margin-bottom:10px;">Where you\'ll be, and when to eat. That\'s it — the organizer sweats the rest.</div>'
+    + '<div style="display:flex;flex-direction:column;gap:9px;">'+cards+'</div>'
+  + '</div>';
+}
+function companionMoney(t){
+  var accts = guestAccts(t, S.me);
+  var inner = accts.length
+    ? '<div style="display:flex;flex-direction:column;gap:11px;">'+accts.map(function(a){return buildPotCard(t,S.me,a,false);}).join('')+'</div>'
+    : '<div style="font-size:12.5px;color:#888;">No spending pots yet. Ask the organizer to set you up an allowance, gift card, or cruise account.</div>';
+  return '<div class="card"><div style="font-size:14px;font-weight:900;color:#1a1a5e;margin-bottom:10px;">👛 Your money</div>'+inner+'</div>';
+}
+function buildCompanionApp(t){
+  var m = meMember(t);
+  var name = m ? (m.name||'Traveler').split(' ')[0] : 'Traveler';
+  var start = t.startDate ? new Date(t.startDate+'T00:00:00') : null;
+  var end   = t.endDate   ? new Date(t.endDate+'T00:00:00')   : null;
+  var dateStr = start ? (start.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + (end?(' – '+end.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})):'')) : '';
+  return ''
+  + '<div style="background:linear-gradient(135deg,#1a1a5e,#3730a3);color:#fff;padding:22px 20px 18px;">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">'
+      + '<div><div style="font-size:20px;font-weight:900;">Hi '+esc(name)+' '+(m&&m.emoji?m.emoji:'👋')+'</div>'
+      + '<div style="font-size:12.5px;color:rgba(255,255,255,.7);margin-top:2px;">'+esc(t.name||'Trip')+(dateStr?(' · '+esc(dateStr)):'')+'</div></div>'
+      + '<button onclick="exitGuest()" title="Switch to the full planner" style="background:rgba(255,255,255,.14);border:none;color:rgba(255,255,255,.85);border-radius:9px;font-size:11px;font-weight:700;padding:7px 11px;cursor:pointer;font-family:inherit;white-space:nowrap;">⚙ Full view</button>'
+    + '</div>'
+  + '</div>'
+  + '<div class="main-content" style="padding-top:14px;">'
+    + companionMoney(t)
+    + companionPlan(t)
+    + companionFlights(t)
+    + '<div style="text-align:center;font-size:11px;color:#bbb;padding:6px 0 24px;">You\'re in the simple companion view · tap ⚙ Full view any time</div>'
+  + '</div>';
+}
+
 // ═══ CLOUD SYNC (Firebase Realtime Database) ═══
 var DEFAULT_FB_CONFIG={
   apiKey:"AIzaSyC_qFRRlSCHHfU16I-y5QvcTesSF0b19fo",
@@ -12150,7 +12427,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-09-BUD2";
+var SKIPPER_BUILD="2026-08-09-GUEST";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
@@ -12177,6 +12454,7 @@ if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js');}
 // Boot sync
 syncLoadSettings();
 syncInit();
+identityLoad();
 // Land on Today when a trip is live and we're inside its dates
 try{
   const _bt=trip();
