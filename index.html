@@ -2524,15 +2524,12 @@ function enterCompanionDemo(){
   var td=todayISO();
   d.guestAccounts = d.guestAccounts || {};
   d.guestAccounts[mem.id] = [
-    {id:'demo-pot-1',name:'Allowance',icon:'💵',startBalance:500,transactions:[
+    {id:'demo-pot-1',name:'Souvies',icon:'🎁',startBalance:500,transactions:[
       {id:'dp1a',kind:'spend',amount:45,note:'Mouse ears + snacks',date:td,ts:Date.now(),by:mem.id},
       {id:'dp1b',kind:'spend',amount:28,note:'Quick-service lunch',date:td,ts:Date.now(),by:mem.id}
     ]},
-    {id:'demo-pot-2',name:'Gift Card',icon:'🎁',startBalance:200,transactions:[
-      {id:'dp2a',kind:'spend',amount:62,note:'Spirit jersey',date:td,ts:Date.now(),by:(d.partyMembers[0]||mem).id}
-    ]}
+    {id:'demo-pot-3',name:'Cruise Acct',icon:'🚢',startBalance:500,transactions:[]}
   ];
-  if(d.cruise) d.guestAccounts[mem.id].push({id:'demo-pot-3',name:'Cruise Account',icon:'🚢',startBalance:300,transactions:[]});
   // install (remember what to restore; do NOT touch saved localStorage identity)
   S.trips=_demoFreeTrips();
   if(S.currentTripId && S.currentTripId!=='__demo__') S._prevTripId=S.currentTripId;
@@ -12486,7 +12483,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-09-GDEMO";
+var SKIPPER_BUILD="2026-08-09-GDEMO2";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
