@@ -547,6 +547,88 @@ const AFTER_HOURS_EVENTS = {
   hs: { name:'HS After Hours',    priceFrom:155, note:'Through Sept 12, 9:30 PM–12:30 AM' }
 };
 
+// ===================================================
+// EPCOT INTERNATIONAL FOOD & WINE FESTIVAL 2026 (Aug 27 – Nov 21, 2026)
+// SCAFFOLD: menusReleased=false → full booth menus aren't out yet (expected
+// late Aug 2026). Only Disney-confirmed booths/items are seeded (prices null).
+// WHEN FULL MENUS DROP: set menusReleased:true and fill booths[] with the real
+// list + item prices — the EPCOT-day card + snack-crawl budget already consume it.
+// ===================================================
+const FW_FEST = {
+  year: 2026, start: '2026-08-27', end: '2026-11-21', menusReleased: false,
+  booths: [
+    { id:'alps',   name:'The Alps',             region:'World Showcase',  items:[ {name:'Kirschwasser Torte', price:null} ] },
+    { id:'aus',    name:'Australia',            region:'World Showcase',  items:[ {name:'Grilled Bushberry-spiced Shrimp Skewer', price:null} ] },
+    { id:'gyozas', name:'Gyozas of the Galaxy', region:'World Discovery', items:[ {name:'Street Corn-style Dumplings', price:null} ] }
+  ]
+};
+function fwActive(t, day){
+  return !!(t && t.tripType==='wdw' && day && day.park==='ep' && day.date && day.date>=FW_FEST.start && day.date<=FW_FEST.end);
+}
+function fwToggle(id){
+  const t=trip(); if(!t) return;
+  if(!t.fwCrawl) t.fwCrawl={perPerson:null,checked:{}};
+  t.fwCrawl.checked[id]=!t.fwCrawl.checked[id];
+  persist(); render();
+}
+function fwSaveBudget(){
+  const t=trip(); if(!t) return;
+  if(!t.fwCrawl) t.fwCrawl={perPerson:null,checked:{}};
+  const el=document.getElementById('fw-pp');
+  const pp=parseFloat(el&&el.value)||0;
+  t.fwCrawl.perPerson=pp;
+  const party=Math.max(1, parseInt(t.partySize)||((t.partyMembers||[]).length)||1);
+  const total=Math.round(pp*party);
+  t.budget=t.budget||{categories:[]};
+  const cat=(t.budget.categories||[]).find(function(c){return c.fwCrawl;});
+  if(cat){ cat.budgeted=total; }
+  else if(total>0){ t.budget.categories.push({id:uid(),emoji:'🍴',name:'Food & Wine',budgeted:total,spent:0,transactions:[],fwCrawl:true}); }
+  persist(); render();
+}
+// EPCOT-day Food & Wine card — returns '' unless it's an EPCOT day inside the festival window
+function buildFWFestival(t, day){
+  if(!fwActive(t, day)) return '';
+  if(!t.fwCrawl) t.fwCrawl={perPerson:null,checked:{}};
+  const fw=t.fwCrawl;
+  const sym=curSym(t);
+  const party=Math.max(1, parseInt(t.partySize)||((t.partyMembers||[]).length)||1);
+  const pp=parseFloat(fw.perPerson)||0;
+  const total=Math.round(pp*party);
+  const booths=FW_FEST.booths.map(function(b){
+    const on=!!fw.checked[b.id];
+    const items=(b.items||[]).map(function(it){
+      return '<div style="font-size:11.5px;color:#7a7a8a;padding-left:26px;">• '+esc(it.name)+(it.price!=null?(' — '+sym+it.price):'')+'</div>';
+    }).join('');
+    return '<div style="padding:6px 0;border-bottom:1px dashed #eee;">'
+      + '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;">'
+        + '<input type="checkbox" '+(on?'checked':'')+' onclick="fwToggle(\''+b.id+'\')" style="width:16px;height:16px;accent-color:#7c3aed;">'
+        + '<span style="font-size:13px;font-weight:700;color:#1a1a2e;flex:1;">'+esc(b.name)+'</span>'
+        + '<span style="font-size:10px;color:#aaa;">'+esc(b.region||'')+'</span>'
+      + '</label>'+items
+    + '</div>';
+  }).join('');
+  return '<div style="margin-top:8px;border:2px solid #e9d5ff;border-radius:12px;overflow:hidden;">'
+    + '<div style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;padding:10px 14px;">'
+      + '<div style="font-size:14px;font-weight:900;">🍴 EPCOT Food &amp; Wine Festival</div>'
+      + '<div style="font-size:11px;color:rgba(255,255,255,.85);margin-top:1px;">Aug 27 – Nov 21, 2026 · included with EPCOT admission</div>'
+    + '</div>'
+    + '<div style="padding:12px 14px;background:#faf5ff;">'
+    + (FW_FEST.menusReleased ? '' : '<div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;font-size:11.5px;font-weight:600;padding:7px 10px;border-radius:8px;margin-bottom:10px;line-height:1.5;">Full 2026 booth menus drop in late August — this fills in automatically once they post. Confirmed so far:</div>')
+    + booths
+    + '<div style="margin-top:12px;">'
+      + '<div style="font-size:12px;font-weight:800;color:#6b21a8;margin-bottom:6px;">🥨 Snack-crawl budget</div>'
+      + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+        + '<span style="font-size:12px;color:#777;">'+sym+'</span>'
+        + '<input id="fw-pp" type="number" inputmode="decimal" value="'+(fw.perPerson!=null?fw.perPerson:'')+'" placeholder="0" min="0" step="5" oninput="var v=parseFloat(this.value)||0;var e=document.getElementById(\'fw-total\');if(e)e.textContent=\''+sym+'\'+Math.round(v*'+party+')" style="width:78px;padding:6px 8px;border:1.5px solid #e4d4f0;border-radius:8px;font-size:13px;font-family:inherit;">'
+        + '<span style="font-size:12px;color:#777;">per person × '+party+' = <b id="fw-total" style="color:#6b21a8;">'+sym+total+'</b></span>'
+        + '<button onclick="fwSaveBudget()" style="margin-left:auto;background:#7c3aed;border:none;color:#fff;border-radius:8px;font-size:12px;font-weight:800;padding:7px 12px;cursor:pointer;font-family:inherit;">Save to budget</button>'
+      + '</div>'
+      + (fw.perPerson!=null&&total>0?'<div style="font-size:10.5px;color:#999;margin-top:5px;">Saved as a “🍴 Food &amp; Wine” budget category ('+sym+total+') — flows into your Budget totals.</div>':'')
+    + '</div>'
+    + '</div>'
+  + '</div>';
+}
+
 // Disney Resort list for hotel picker
 const DISNEY_RESORTS = [
   '— Deluxe Resorts —',
@@ -1056,6 +1138,7 @@ function migrateAllTrips() {
     // Add missing top-level fields
     if (!t.resort) t.resort = blankResort();
     if (!t.guestAccounts || typeof t.guestAccounts !== 'object' || Array.isArray(t.guestAccounts)) t.guestAccounts = {};
+    if (!t.fwCrawl || typeof t.fwCrawl !== 'object') t.fwCrawl = { perPerson:null, checked:{} };
     if (!t.diningReservations) t.diningReservations = [];
     if (!t.transportation.groundReturn) {
       t.transportation.groundReturn = { option: 'Uber / Lyft', notes: '', estTime: '' };
@@ -7138,7 +7221,7 @@ function buildDayRow(day, i, t, parkOpts) {
         return '<div onclick="toggleDayFull('+i+','+(canLL?'true':'false')+')" title="Tap to open dining" style="padding:4px 8px 6px 12px;display:flex;flex-wrap:wrap;gap:4px;border-top:1px solid #f0f0f8;cursor:pointer;">'+chips.join('')+'</div>';
       })() : ''}
       ${isLLExpanded && canLL ? buildSkipLineSection(day,i,t) : ''}
-      ${isMealExpanded ? buildMealsSection(day,i,t) : ''}
+      ${isMealExpanded ? (buildMealsSection(day,i,t) + buildFWFestival(t,day)) : ''}
     </div>`;
 }
 
@@ -12483,7 +12566,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-10-DATA";
+var SKIPPER_BUILD="2026-08-10-FWINFRA";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
