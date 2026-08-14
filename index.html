@@ -4984,6 +4984,13 @@ function buildBudget(t) {
   const totalS = cats.reduce((s,c)=>s+(c.spent||0),0);
   const rem    = totalEffective - totalS;
   const hasActuals = resolved.some(({info}) => info.actual !== null && info.isLive);
+  // Sort fully paid-off categories (nothing still owed, real total) to the bottom — stable within each group
+  const isPaidOff = ({cat,info}) => {
+    const eff  = info.actual !== null ? info.actual : (cat.budgeted||0);
+    const owed = eff - (cat.spent||0);
+    return eff > 0.5 && owed <= 0.5;
+  };
+  const orderedRows = [...resolved.filter(r=>!isPaidOff(r)), ...resolved.filter(r=>isPaidOff(r))];
 
   return `
     ${!cats.length ? `<div class="tab-hint"><span class="th-icon">💡</span><div><strong>Welcome to Budget!</strong> Add categories for each expense (Hotel, Flights, Food, etc.), set a budget amount, and track what you've paid. Click <em>Add Category</em> below to get started.</div></div>` : ''}
@@ -5032,7 +5039,7 @@ function buildBudget(t) {
       <table class="budget-tbl" ondragover="budgetTableDragOver(event)" ondrop="budgetTableDrop(event)">
         <thead><tr><th>Category</th><th>Due Date</th><th>Total</th><th>Paid</th><th>Still Owed</th><th>Progress</th><th style="width:80px;"></th></tr></thead>
         <tbody>
-          ${resolved.map(({cat,info}) => buildCatRow(cat, info, t)
+          ${orderedRows.map(({cat,info}) => buildCatRow(cat, info, t)
             + (S.ui.spendCatId===cat.id && !S.ui.editCatId ? `<tr class="spend-inline"><td colspan="7" style="padding:0 6px 10px;">${buildSpendPanel(t)}</td></tr>` : '')
             + (S.ui.editCatId===cat.id ? `<tr class="spend-inline"><td colspan="7" style="padding:0 6px 10px;">${buildCatEditPanel(t)}</td></tr>` : '')
           ).join('')}
@@ -12646,7 +12653,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-10-SNACKS";
+var SKIPPER_BUILD="2026-08-10-BSORT";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
