@@ -565,6 +565,11 @@ const FW_FEST = {
 function fwActive(t, day){
   return !!(t && t.tripType==='wdw' && day && day.park==='ep' && day.date && day.date>=FW_FEST.start && day.date<=FW_FEST.end);
 }
+// True when a day has any Lightning Lane / Premier Access opted-in via the itinerary
+function dayHasLL(d){
+  const ll = (d && d.ll) || {};
+  return !!((ll.passType && ll.passType!=='none') || (ll.tier2Picks||[]).length || (ll.illSelected||[]).length || (ll.oneSelected||[]).length);
+}
 function fwToggle(id){
   const t=trip(); if(!t) return;
   if(!t.fwCrawl) t.fwCrawl={perPerson:null,checked:{}};
@@ -3746,7 +3751,7 @@ function buildTodayLive(t,tm,dates,today){
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <button onclick="tmSetDate('${prevD}')" ${di===0?'disabled style="opacity:.25;width:36px;height:36px;border-radius:9px;border:1.5px solid #e4e4f0;background:#fff;font-size:15px;"':'style="background:#fff;border:1.5px solid #e4e4f0;border-radius:9px;width:36px;height:36px;font-size:15px;cursor:pointer;"'}>‹</button>
         <div style="text-align:center;flex:1;min-width:0;">
-          <div style="font-size:20px;font-weight:900;color:#1a1a5e;">${dayNum}${parkLbl?' · '+parkLbl:''}</div>
+          <div style="font-size:20px;font-weight:900;color:#1a1a5e;">${dayNum}${parkLbl?' · '+parkLbl:''}${dayHasLL(parkDay)?' <span title="Lightning Lane booked">⚡</span>':''}</div>
           <div style="font-size:13px;color:#555;">${dateLbl}${isToday?' · today':''} · ${doneCount} of ${entries.length} done${estToday?' · day est $'+Math.round(estToday):''}</div>
           ${(function(){var _ph=(SEPT_PARK_HOURS[parkDay&&parkDay.park]||DLP_PARK_HOURS[parkDay&&parkDay.park]||DLR_PARK_HOURS[parkDay&&parkDay.park]);return _ph?'<div style="font-size:12.5px;font-weight:700;color:#444;margin-top:3px;">🕘 '+_ph.open+' – '+_ph.close+(_ph.note?' <span style="font-weight:500;color:#aaa;">· '+esc(_ph.note)+'</span>':'')+'</div>':'';})()} 
           <div style="margin-top:2px;">${wxStrip(t,sel)}</div>
@@ -6901,10 +6906,7 @@ function buildCalendarView(t) {
         const hasMeals = Object.values(meals).some(m=>m.place||m.note);
         const hasADR   = Object.values(meals).some(m=>String(m.adrConfNum||'').trim());
         const _ll      = d.ll || {};
-        const hasLL    = !!(_ll.passType && _ll.passType !== 'none')
-                          || (_ll.tier2Picks||[]).length > 0
-                          || (_ll.illSelected||[]).length > 0
-                          || (_ll.oneSelected||[]).length > 0;
+        const hasLL    = dayHasLL(d);
         const notes    = d.notes || '';
 
         // Cruise day check
@@ -7266,6 +7268,7 @@ function buildDayRow(day, i, t, parkOpts) {
                  <div style="font-size:22px;font-weight:900;color:#0b0b2e;line-height:1.05;">${day.dayNum}</div>
                </div>
                ${dayCalBadge(day.date)}
+               ${dayHasLL(day)?'<div title="Lightning Lane booked this day" style="margin-top:4px;text-align:center;font-size:13px;background:#fef9c3;border:1px solid #fde68a;border-radius:6px;padding:1px 0;">⚡</div>':''}
                <button onclick="toggleDayLock(${i})" title="Lock day to finalize"
                  style="margin-top:6px;width:34px;height:22px;border-radius:5px;border:1px solid #d0d0e0;
                         background:#f8f8fc;cursor:pointer;transition:all .15s;
@@ -10251,6 +10254,7 @@ function buildRunOfShow(t) {
           ${dayNum ? `<span style="background:rgba(255,255,255,.15);border-radius:5px;padding:1px 8px;font-size:12px;">${dayNum}</span>` : ''}
           ${dateLabel}
           ${parkBadge}
+          ${dayHasLL(parkDay)?'<span title="Lightning Lane booked" style="font-size:13px;">⚡</span>':''}
           <button class="ros-add-manual" onclick="toggleRosAdd('${date}')" style="margin-left:auto;background:rgba(255,215,0,.15);border:1px solid rgba(255,215,0,.3);color:#FFD700;">＋ Add Entry</button>
         </div>
 
@@ -12439,6 +12443,7 @@ function companionPlan(t){
       + '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">'
         + '<span style="font-size:13px;font-weight:900;color:#1a1a5e;">'+esc(dstr)+'</span>'
         + (where?'<span style="font-size:13px;font-weight:700;color:#333;">'+esc(where)+'</span>':'<span style="font-size:12px;color:#bbb;">—</span>')
+        + (dayHasLL(d)?'<span title="Lightning Lane booked" style="font-size:12px;">⚡</span>':'')
       + '</div>'
       + (hotel?'<div style="font-size:12px;color:#888;margin-top:3px;">🏨 '+esc(hotel)+'</div>':'')
       + (meals?'<div style="margin-top:7px;display:flex;flex-direction:column;gap:3px;">'+meals+'</div>':'')
@@ -12653,7 +12658,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-10-BSORT";
+var SKIPPER_BUILD="2026-08-10-LLBOLT";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
