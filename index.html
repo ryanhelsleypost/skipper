@@ -5021,9 +5021,9 @@ function buildBudget(t) {
         if(t.tripType!=='wdw') return '';
         const elig=(t.parks||[]).filter(d=>PARK_LLMP_EST[d.park]);
         if(!elig.length) return '';
-        if(elig.every(d=>d.ll&&d.ll.passType==='multi')) return '';
+        if(elig.every(d=>d.ll&&d.ll.passType==='multi'&&d.ll.llmpPrice===PARK_LLMP_EST[d.park])) return '';
         return '<div style="background:#f5f3ff;border:1.5px solid #ddd6fe;border-radius:10px;padding:10px 14px;margin:10px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
-          +'<span style="font-size:12.5px;color:#5b21b6;flex:1;min-width:170px;">⚡ Estimate Lightning Lane for your '+elig.length+' park day'+(elig.length>1?'s':'')+' (Sept rates) — flows into your budget.</span>'
+          +'<span style="font-size:12.5px;color:#5b21b6;flex:1;min-width:170px;">⚡ Set Lightning Lane to Sept estimates for your '+elig.length+' park day'+(elig.length>1?'s':'')+' — flows into your budget.</span>'
           +'<button onclick="applyLLEstimates()" style="background:#7c3aed;border:none;color:#fff;border-radius:8px;font-size:12px;font-weight:800;padding:8px 14px;cursor:pointer;font-family:inherit;white-space:nowrap;">Apply LL estimates</button>'
         +'</div>';
       })()}
@@ -11638,7 +11638,7 @@ function applyLLEstimates(){
   const t=trip(); if(!t) return;
   const eligible=(t.parks||[]).filter(function(d){return PARK_LLMP_EST[d.park];});
   if(!eligible.length){ alert('No Magic Kingdom / EPCOT / Hollywood Studios / Animal Kingdom days found to estimate.'); return; }
-  if(!confirm('Turn ON Lightning Lane Multi Pass for all '+eligible.length+' park day(s) at September estimates?\n\nMagic Kingdom $'+PARK_LLMP_EST.mk+' · EPCOT $'+PARK_LLMP_EST.ep+' · Hollywood Studios $'+PARK_LLMP_EST.hs+' · Animal Kingdom $'+PARK_LLMP_EST.ak+' per person.\n\nThis flows into your Lightning Lane budget. You can turn off any day (e.g. the Magic Kingdom party nights) after.')) return;
+  if(!confirm('Set Lightning Lane Multi Pass to September estimates for all '+eligible.length+' park day(s)?\n\nMagic Kingdom $'+PARK_LLMP_EST.mk+' · EPCOT $'+PARK_LLMP_EST.ep+' · Hollywood Studios $'+PARK_LLMP_EST.hs+' · Animal Kingdom $'+PARK_LLMP_EST.ak+' per person.\n\nThis re-prices the Multi Pass base (any individual ride picks stay) and flows into your Lightning Lane budget. You can turn off any day — e.g. the Magic Kingdom party nights — after.')) return;
   const parks=(t.parks||[]).map(function(d){
     if(!PARK_LLMP_EST[d.park]) return d;
     const ll=d.ll||blankLL();
@@ -12692,7 +12692,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-14-LLEST";
+var SKIPPER_BUILD="2026-08-14-LLEST2";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
