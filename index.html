@@ -5018,7 +5018,6 @@ function buildBudget(t) {
       </div>
       ${(totalB>0 && Math.abs(totalEffective-totalB)>=1) ? `<div style="font-size:11px;color:#9ca3af;margin:6px 0 2px;padding-left:2px;">Originally budgeted ${fmtDual(totalB,t)} · ${totalEffective>totalB?'+':'−'}${fmtDual(Math.abs(totalEffective-totalB),t)} since</div>` : ''}
       ${(()=>{
-        if(t.tripType!=='wdw') return '';
         const elig=(t.parks||[]).filter(d=>PARK_LLMP_EST[d.park]);
         if(!elig.length) return '';
         if(elig.every(d=>d.ll&&d.ll.passType==='multi'&&d.ll.llmpPrice===PARK_LLMP_EST[d.park])) return '';
@@ -12692,7 +12691,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-14-LLEST2";
+var SKIPPER_BUILD="2026-08-14-LLEST3";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
