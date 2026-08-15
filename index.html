@@ -576,6 +576,43 @@ function dayHasLL(d){
   const ll = (d && d.ll) || {};
   return !!((ll.passType && ll.passType!=='none') || (ll.tier2Picks||[]).length || (ll.illSelected||[]).length || (ll.oneSelected||[]).length);
 }
+// Selected private-party / after-hours ticketed events on a day (from day.parkHops)
+function dayPartyEvents(day, t){
+  const hops = (day && day.parkHops) || [];
+  const out = [];
+  if(hops.indexOf('event-mnsshp')>=0){
+    const e=(Array.isArray(MNSSHP_DATES)?MNSSHP_DATES:[]).find(function(x){return x.date===day.date;});
+    out.push({icon:'🎃', name:"Mickey's Not-So-Scary Halloween Party", short:'MNSSHP', detail:'Party 7 PM–Midnight · early entry 4 PM · MK closes 6 PM to day guests', price:e?e.price:null, from:false, c1:'#f59e0b', c2:'#7c3aed'});
+  }
+  if(hops.indexOf('event-ep-ah')>=0){
+    const e=AFTER_HOURS_EVENTS.ep;
+    out.push({icon:'🌙', name:'EPCOT After Hours', short:'EPCOT After Hours', detail:e?e.note:'', price:e?e.priceFrom:null, from:true, c1:'#3b82f6', c2:'#1e3a8a'});
+  }
+  if(hops.indexOf('event-hs-ah')>=0){
+    const e=AFTER_HOURS_EVENTS.hs;
+    out.push({icon:'🌙', name:'Hollywood Studios After Hours', short:'HS After Hours', detail:e?e.note:'', price:e?e.priceFrom:null, from:true, c1:'#ec4899', c2:'#831843'});
+  }
+  return out;
+}
+// Prominent banner for a day's ticketed party events (planner day card)
+function dayPartyBanner(day, t){
+  const evs=dayPartyEvents(day,t);
+  if(!evs.length) return '';
+  const sym=curSym(t);
+  return evs.map(function(e){
+    return '<div style="margin:2px 11px 8px;border-radius:10px;padding:9px 12px;color:#fff;background:linear-gradient(135deg,'+e.c1+','+e.c2+');display:flex;align-items:center;gap:11px;box-shadow:0 2px 9px '+e.c1+'55;">'
+      +'<span style="font-size:22px;line-height:1;">'+e.icon+'</span>'
+      +'<div style="flex:1;min-width:0;">'
+        +'<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">'
+          +'<span style="font-size:9px;font-weight:900;letter-spacing:.06em;background:rgba(255,255,255,.25);padding:1px 7px;border-radius:20px;">🎟️ TICKETED PARTY</span>'
+          +'<span style="font-size:13.5px;font-weight:900;">'+esc(e.name)+'</span>'
+        +'</div>'
+        +(e.detail?'<div style="font-size:11px;color:rgba(255,255,255,.92);margin-top:2px;line-height:1.4;">'+esc(e.detail)+'</div>':'')
+      +'</div>'
+      +(e.price!=null?'<div style="text-align:right;flex-shrink:0;"><div style="font-size:16px;font-weight:900;white-space:nowrap;">'+(e.from?'from ':'')+sym+e.price+'</div><div style="font-size:9.5px;color:rgba(255,255,255,.85);">per person</div></div>':'')
+    +'</div>';
+  }).join('');
+}
 function fwToggle(id){
   const t=trip(); if(!t) return;
   if(!t.fwCrawl) t.fwCrawl={perPerson:null,checked:{}};
@@ -3757,7 +3794,8 @@ function buildTodayLive(t,tm,dates,today){
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <button onclick="tmSetDate('${prevD}')" ${di===0?'disabled style="opacity:.25;width:36px;height:36px;border-radius:9px;border:1.5px solid #e4e4f0;background:#fff;font-size:15px;"':'style="background:#fff;border:1.5px solid #e4e4f0;border-radius:9px;width:36px;height:36px;font-size:15px;cursor:pointer;"'}>‹</button>
         <div style="text-align:center;flex:1;min-width:0;">
-          <div style="font-size:20px;font-weight:900;color:#1a1a5e;">${dayNum}${parkLbl?' · '+parkLbl:''}${dayHasLL(parkDay)?' <span title="Lightning Lane booked">⚡</span>':''}</div>
+          <div style="font-size:20px;font-weight:900;color:#1a1a5e;">${dayNum}${parkLbl?' · '+parkLbl:''}${dayHasLL(parkDay)?' <span title="Lightning Lane booked">⚡</span>':''}${(parkDay?dayPartyEvents(parkDay,t):[]).map(e=>`<span title="${esc(e.name)}">${e.icon}</span>`).join('')}</div>
+          ${(()=>{const evs=parkDay?dayPartyEvents(parkDay,t):[];return evs.length?'<div style="font-size:11.5px;font-weight:800;color:#c026d3;margin-top:1px;">🎟️ '+evs.map(e=>esc(e.short)).join(' · ')+' tonight</div>':'';})()}
           <div style="font-size:13px;color:#555;">${dateLbl}${isToday?' · today':''} · ${doneCount} of ${entries.length} done${estToday?' · day est $'+Math.round(estToday):''}</div>
           ${(function(){var _ph=(SEPT_PARK_HOURS[parkDay&&parkDay.park]||DLP_PARK_HOURS[parkDay&&parkDay.park]||DLR_PARK_HOURS[parkDay&&parkDay.park]);return _ph?'<div style="font-size:12.5px;font-weight:700;color:#444;margin-top:3px;">🕘 '+_ph.open+' – '+_ph.close+(_ph.note?' <span style="font-weight:500;color:#aaa;">· '+esc(_ph.note)+'</span>':'')+'</div>':'';})()} 
           <div style="margin-top:2px;">${wxStrip(t,sel)}</div>
@@ -7028,7 +7066,7 @@ function buildCalendarView(t) {
           <div style="display:flex;align-items:flex-start;justify-content:space-between;">
             <div style="font-size:11px;font-weight:700;color:${isCruise?'#1d4ed8':'#999'};">${day}</div>
             <div style="font-size:9px;font-weight:700;color:${cellBorder};text-align:right;">
-              ${isCruise?'🚢':''}${hasADR?'🍽️':''}${hasLL?' ⚡':''}
+              ${dayPartyEvents(d,t).map(e=>e.icon).join('')}${isCruise?'🚢':''}${hasADR?'🍽️':''}${hasLL?' ⚡':''}
             </div>
           </div>
           ${isCruise?`<div style="font-size:16px;margin:2px 0;">🌊</div><div style="font-size:10px;font-weight:800;color:#1d4ed8;line-height:1.2;">At Sea / Port</div>`:`
@@ -7391,6 +7429,7 @@ function buildDayRow(day, i, t, parkOpts) {
           <button class="day-plan-pill${(isLLExpanded||isMealExpanded)?' active':''}" onclick="toggleDayFull(${i},${canLL?'true':'false'})" title="Open this day — ${canLL?(PA_DATA.hasOwnProperty(day.park)?'Premier Access':'Lightning Lane')+' + ':''}Dining">${canLL?(PA_DATA.hasOwnProperty(day.park)?'🎫':'⚡'):''}🍽️ Day${(function(){var _c=(canLL?(llCost||0):0)+(mealCost||0);return _c>0?' '+curSym(t)+Math.round(_c):'';})()}</button>
         </div>
       </div>
+      ${dayPartyBanner(day, t)}
       ${parkHopsHtml}
       ${extrasHtml}
       ${(()=>{
@@ -12776,7 +12815,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-14-COSTS";
+var SKIPPER_BUILD="2026-08-14-PARTY";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
