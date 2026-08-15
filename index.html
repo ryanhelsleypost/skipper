@@ -472,7 +472,7 @@ const LL_DATA = {
     name:'Magic Kingdom', tiered:true,
     tier1:["Jungle Cruise","Peter Pan's Flight","Space Mountain","Tiana's Bayou Adventure"],
     tier2:["The Barnstormer","Buzz Lightyear's Space Ranger Spin","Dumbo the Flying Elephant","The Haunted Mansion","it's a small world","Mad Tea Party","The Many Adventures of Winnie the Pooh","Mickey's PhilharMagic","Monsters Inc. Laugh Floor","Pirates of the Caribbean","Tomorrowland Speedway","Under the Sea ~ Journey of the Little Mermaid"],
-    llmp:[], ill:[{name:"Seven Dwarfs Mine Train",price:18},{name:"TRON Lightcycle / Run",price:20}]
+    llmp:[], ill:[{name:"Seven Dwarfs Mine Train",price:18},{name:"TRON Lightcycle / Run",price:22}]
   },
   ep: {
     name:'EPCOT', tiered:true,
@@ -505,6 +505,12 @@ const LL_DATA = {
     ill:[{name:"Avatar Flight of Passage",price:22}]
   }
 };
+
+// Per-park Lightning Lane Multi Pass per-person estimate — high end of the
+// Sept 2026 low-season range (WDW cut LL pricing resort-wide 9/1/26; Sept
+// weekdays are the cheapest dates). Used as the default llmpPrice when a WDW
+// park day is opted into Multi Pass, and by applyLLEstimates().
+const PARK_LLMP_EST = { mk:30, ep:24, hs:26, ak:18 };
 
 // ===================================================
 // SEPTEMBER 2026 PARK HOURS — verified Aug 2026 against published actuals
@@ -5011,6 +5017,16 @@ function buildBudget(t) {
         <div class="bpill ${rem>=0?'bpill-green':'bpill-red'}">${rem>=0?'✅':'🚨'} Still Owed: ${fmtDual(Math.abs(rem),t)}${rem<0?' OVER':''}</div>
       </div>
       ${(totalB>0 && Math.abs(totalEffective-totalB)>=1) ? `<div style="font-size:11px;color:#9ca3af;margin:6px 0 2px;padding-left:2px;">Originally budgeted ${fmtDual(totalB,t)} · ${totalEffective>totalB?'+':'−'}${fmtDual(Math.abs(totalEffective-totalB),t)} since</div>` : ''}
+      ${(()=>{
+        if(t.tripType!=='wdw') return '';
+        const elig=(t.parks||[]).filter(d=>PARK_LLMP_EST[d.park]);
+        if(!elig.length) return '';
+        if(elig.every(d=>d.ll&&d.ll.passType==='multi')) return '';
+        return '<div style="background:#f5f3ff;border:1.5px solid #ddd6fe;border-radius:10px;padding:10px 14px;margin:10px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+          +'<span style="font-size:12.5px;color:#5b21b6;flex:1;min-width:170px;">⚡ Estimate Lightning Lane for your '+elig.length+' park day'+(elig.length>1?'s':'')+' (Sept rates) — flows into your budget.</span>'
+          +'<button onclick="applyLLEstimates()" style="background:#7c3aed;border:none;color:#fff;border-radius:8px;font-size:12px;font-weight:800;padding:8px 14px;cursor:pointer;font-family:inherit;white-space:nowrap;">Apply LL estimates</button>'
+        +'</div>';
+      })()}
 
       
       ${(()=>{
@@ -11609,7 +11625,25 @@ function setLLPassType(i,passType) {
   // Auto-sync party size to trip size when first enabling LL on a day
   const newPS = (passType !== 'none' && ll.passType === 'none' && ll.partySize == null)
     ? (t.partySize || 4) : ll.partySize;
-  parks[i]={...parks[i], ll:{...ll, passType, partySize:newPS}};
+  // When enabling Multi Pass, default the price to the park's Sept estimate (unless already customized off the blank default)
+  let newPrice = ll.llmpPrice;
+  if (passType === 'multi' && PARK_LLMP_EST[parks[i].park] && (ll.llmpPrice == null || ll.llmpPrice === 20)) {
+    newPrice = PARK_LLMP_EST[parks[i].park];
+  }
+  parks[i]={...parks[i], ll:{...ll, passType, partySize:newPS, llmpPrice:newPrice}};
+  patchTrip({parks}, true); render();
+}
+// One-tap: opt every WDW park day into Multi Pass at the park's Sept high-end estimate → ripples into the Lightning Lane budget line
+function applyLLEstimates(){
+  const t=trip(); if(!t) return;
+  const eligible=(t.parks||[]).filter(function(d){return PARK_LLMP_EST[d.park];});
+  if(!eligible.length){ alert('No Magic Kingdom / EPCOT / Hollywood Studios / Animal Kingdom days found to estimate.'); return; }
+  if(!confirm('Turn ON Lightning Lane Multi Pass for all '+eligible.length+' park day(s) at September estimates?\n\nMagic Kingdom $'+PARK_LLMP_EST.mk+' · EPCOT $'+PARK_LLMP_EST.ep+' · Hollywood Studios $'+PARK_LLMP_EST.hs+' · Animal Kingdom $'+PARK_LLMP_EST.ak+' per person.\n\nThis flows into your Lightning Lane budget. You can turn off any day (e.g. the Magic Kingdom party nights) after.')) return;
+  const parks=(t.parks||[]).map(function(d){
+    if(!PARK_LLMP_EST[d.park]) return d;
+    const ll=d.ll||blankLL();
+    return {...d, ll:{...ll, passType:'multi', partySize:(ll.partySize!=null?ll.partySize:(t.partySize||4)), llmpPrice:PARK_LLMP_EST[d.park]}};
+  });
   patchTrip({parks}, true); render();
 }
 function updLL(i,field,val) {
@@ -12658,7 +12692,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-10-LLBOLT";
+var SKIPPER_BUILD="2026-08-14-LLEST";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
