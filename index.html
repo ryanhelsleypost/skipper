@@ -4365,6 +4365,31 @@ function feGuessColumns(rows,ncols){
   return map;
 }
 
+// Split a "Name - prefs; Name2 - prefs2" cell and match each segment to a person.
+// Returns {assigned:{personId:value}, leftover:'unmatched text'}.
+function feSplitByPerson(text, people){
+  const segs = String(text||'').split(/;|\n/).map(s=>s.trim()).filter(Boolean);
+  const assigned = {}, leftover = [];
+  segs.forEach(seg=>{
+    const m = seg.match(/^([A-Za-z][A-Za-z .'\-]{0,24}?)\s*[-:\u2013]\s*(.+)$/);
+    if(m){
+      const label = m[1].trim().toLowerCase(), val = m[2].trim();
+      const person = people.find(pp=>{
+        const pn = (pp.name||'').toLowerCase(); if(!pn) return false;
+        const first = pn.split(/\s+/)[0];
+        return pn===label || first===label || label.indexOf(first)===0 || pn.indexOf(label)===0;
+      });
+      if(person){ assigned[person.id] = (assigned[person.id]?assigned[person.id]+'; ':'')+val; return; }
+    }
+    leftover.push(seg);
+  });
+  return { assigned, leftover: leftover.join('; ') };
+}
+// True when an allergy cell effectively says "none" — so we can omit it entirely.
+function feIsNoAllergy(v){
+  return /^\s*(no|none|n\/?a|nope|na|-+|no\s+allerg\w*|no\s+food\s*\w*)\s*$/i.test(String(v||'').trim());
+}
+
 // Build a flat list of {cabin, group} from the paste
 function feWizBuildRows(){
   const w=S.feWiz, map=w.mapping, col=f=>map.indexOf(f);
@@ -4378,12 +4403,23 @@ function feWizBuildRows(){
       const cb=blankFECabin(); cb.people=[];
       const grp = cell(cells,'feGroup') || group;
       cb.familyName=cell(cells,'familyName'); cb.stateroom=cell(cells,'stateroom'); cb.deck=feDeriveDeck(cb.stateroom);
-      const _ch=cell(cells,'characters'), _al=cell(cells,'allergies'), _nt=cell(cells,'notes');
-      cb.notes=[_nt, _ch?('Characters \u2014 '+_ch):'', _al?('Allergies \u2014 '+_al):''].filter(Boolean).join('  \u2022  ');
+      const _ch=cell(cells,'characters');
+      let _al=cell(cells,'allergies'); if(feIsNoAllergy(_al)) _al='';
+      const _nt=cell(cells,'notes');
       cb.celebration=cell(cells,'celebration');
       const names=cell(cells,'name').split(',').map(s=>s.trim()).filter(Boolean);
       const ages=cell(cells,'age').split(',').map(s=>s.trim());
       names.forEach((raw,idx)=>{ const gm=(raw.match(/\(([MF])\)/i)||[])[1]; const nm=raw.replace(/\([^)]*\)/g,'').trim(); if(!nm)return; const pa=feParseAge(ages[idx]||''); const p=blankFEPerson(); p.name=nm; p.age=pa.age; p.gender=pa.gender||(gm?gm.toUpperCase():''); cb.people.push(p); });
+      // Assign each person their own favorite characters; anything unmatched stays a cabin note.
+      const chSplit=feSplitByPerson(_ch, cb.people);
+      cb.people.forEach(pp=>{ if(chSplit.assigned[pp.id]) pp.characters=chSplit.assigned[pp.id]; });
+      // Allergies: per-person where named, otherwise a cabin-level flag. Never mention when there's none.
+      const alSplit = _al ? feSplitByPerson(_al, cb.people) : {assigned:{},leftover:''};
+      cb.people.forEach(pp=>{ if(alSplit.assigned[pp.id]){ pp.hasAllergies=true; pp.allergies=alSplit.assigned[pp.id]; } });
+      cb.notes=[_nt,
+                chSplit.leftover?('Favorites \u2014 '+chSplit.leftover):'',
+                alSplit.leftover?('\u26a0\ufe0f Allergy/food \u2014 '+alSplit.leftover):''
+               ].filter(Boolean).join('  \u2022  ');
       if(cb.stateroom||cb.familyName||cb.people.length) out.push({group:grp, cabin:cb});
     });
   } else {
@@ -12815,7 +12851,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-14-PARTY";
+var SKIPPER_BUILD="2026-08-26-FE";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
