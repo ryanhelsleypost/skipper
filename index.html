@@ -4090,7 +4090,7 @@ function feFindCabin(cid){ const gs=feGroups(); for(const g of gs){ const c=(g.c
 function feAddGroup(){ const n=prompt('Name this group / exchange (e.g. Kids, Ornaments, Minnie Group):',''); if(n===null) return; feGroups().push(blankFEGroup(n.trim()||'New group')); feSave(); }
 function feDelGroup(gid){ const g=feGroupById(gid); if(!g) return; if(!confirm('Delete the '+(g.name||'')+' group with its '+(g.cabins||[]).length+' cabins and gift list?')) return; const t=trip(); t.feGroups=t.feGroups.filter(x=>x.id!==gid); feSave(); }
 function feUpdGroup(gid,field,val){ const g=feGroupById(gid); if(g){ g[field]=val; feSave(); } }
-function feToggleGroup(gid){ const g=feGroupById(gid); if(g){ g.collapsed=!g.collapsed; feSave(); } }
+function feToggleGroup(gid){ const g=feGroupById(gid); if(g){ g.collapsed=!g.collapsed; if(!g.collapsed){ (g.cabins||[]).forEach(c=>c.collapsed=false); } feSave(); } }
 
 function feAddCabin(gid){ const g=feGroupById(gid); if(g){ g.cabins.push(blankFECabin()); feSave(); } }
 function feDelCabin(cid){ const {g,c}=feFindCabin(cid); if(!g) return; const label=c.stateroom?'stateroom '+c.stateroom:(c.familyName?'the '+c.familyName+' cabin':'this cabin'); if(!confirm('Remove '+label+' and everyone in it?')) return; g.cabins=g.cabins.filter(x=>x.id!==cid); feSave(); }
@@ -12851,7 +12851,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-26-FE";
+var SKIPPER_BUILD="2026-08-26-FE2";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
