@@ -4096,7 +4096,9 @@ function feAddCabin(gid){ const g=feGroupById(gid); if(g){ g.cabins.push(blankFE
 function feDelCabin(cid){ const {g,c}=feFindCabin(cid); if(!g) return; const label=c.stateroom?'stateroom '+c.stateroom:(c.familyName?'the '+c.familyName+' cabin':'this cabin'); if(!confirm('Remove '+label+' and everyone in it?')) return; g.cabins=g.cabins.filter(x=>x.id!==cid); feSave(); }
 function feUpd(cid,field,val){ const {c}=feFindCabin(cid); if(!c) return; c[field]=val; if(field==='stateroom'&&!c.deck) c.deck=feDeriveDeck(val); feSave(); }
 function feToggleDelivered(cid){ const {c}=feFindCabin(cid); if(c){ c.delivered=!c.delivered; feSave(); } }
-function feAddPerson(cid){ const {c}=feFindCabin(cid); if(c){ c.people.push(blankFEPerson()); feSave(); } }
+function feAddPerson(cid){ const {c}=feFindCabin(cid); if(c){ const np=blankFEPerson(); c.people.push(np); if(!S.ui.fePersonOpen)S.ui.fePersonOpen={}; S.ui.fePersonOpen[np.id]=true; feSave(); } }
+function fePersonToggle(pid){ if(!S.ui.fePersonOpen)S.ui.fePersonOpen={}; S.ui.fePersonOpen[pid]=!S.ui.fePersonOpen[pid]; render(); }
+function fePersonSetAll(cid,val){ const {c}=feFindCabin(cid); if(!c)return; if(!S.ui.fePersonOpen)S.ui.fePersonOpen={}; (c.people||[]).forEach(p=>{ S.ui.fePersonOpen[p.id]=val; }); render(); }
 function feDelPerson(cid,pid){ const {c}=feFindCabin(cid); if(c){ c.people=c.people.filter(p=>p.id!==pid); feSave(); } }
 function feUpdPerson(cid,pid,field,val){ const {c}=feFindCabin(cid); if(!c) return; const p=c.people.find(x=>x.id===pid); if(p){ p[field]=val; feSave(); } }
 
@@ -4244,8 +4246,11 @@ function feCabinCard(c){
       <div>${lbl('Celebration')}<input value="${esc(c.celebration)}" onchange="feUpd('${c.id}','celebration',this.value)" style="${IN}"></div>
     </div>
     <div style="margin-bottom:15px;">${lbl('Notes for the whole cabin')}<input value="${esc(c.notes||'')}" onchange="feUpd('${c.id}','notes',this.value)" style="${IN}"></div>
-    <div style="font-size:10px;font-weight:700;color:#a2a2b2;margin-bottom:9px;border-top:1px solid #f0f0f6;padding-top:12px;">People</div>
-    ${people}
+    <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid #f0f0f6;padding-top:12px;margin-bottom:9px;">
+      <span style="font-size:10px;font-weight:700;color:#a2a2b2;">People</span>
+      ${(c.people||[]).length>1?`<span style="font-size:10.5px;font-weight:700;color:#4f46e5;cursor:pointer;" onclick="fePersonSetAll('${c.id}',true)">Expand all</span> <span style="color:#d0d0dc;">·</span> <span style="font-size:10.5px;font-weight:700;color:#9a9ab0;cursor:pointer;" onclick="fePersonSetAll('${c.id}',false)">Collapse all</span>`:''}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;align-items:start;margin-bottom:2px;">${people}</div>
     <button onclick="feAddPerson('${c.id}')" style="background:none;border:1px dashed #c7d2fe;color:#4f46e5;border-radius:8px;padding:8px;width:100%;font-weight:700;font-size:12px;cursor:pointer;margin-top:2px;">&#43; Add person</button>
   </div>`;
 }
@@ -4254,30 +4259,55 @@ function fePersonRow(cid,p){
   const IN='width:100%;box-sizing:border-box;font-size:12px;padding:7px 9px;border:1px solid #ececf3;background:#fbfbfd;border-radius:8px;color:#1a1a2e;';
   const g=feNormGender(p.gender); const sel=v=>g===v?' selected':'';
   const tags=Array.isArray(p.giftTags)?p.giftTags:[];
+  const open=!!(S.ui.fePersonOpen && S.ui.fePersonOpen[p.id]);
+
+  // ---- COMPACT summary card (default) : tiles in the grid ----
+  if(!open){
+    const fav = p.characters
+      ? '<span style="color:#6b6b7b;">\u2b50 '+esc(p.characters)+'</span>'
+      : '<span style="color:#c4c4d2;">no favorites yet</span>';
+    return `
+    <div onclick="fePersonToggle('${p.id}')" title="Tap to edit"
+      style="background:#fafaff;border:1px solid #eef;border-radius:10px;padding:9px 11px;cursor:pointer;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:13px;font-weight:800;color:#1a1a2e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.name)||'<span style=\'color:#c4c4d2\'>(unnamed)</span>'}</span>
+        ${(p.age||g)?`<span style="font-size:11px;color:#9a9ab0;font-weight:700;flex:0 0 auto;">${esc(p.age||'')}${esc(g)}</span>`:''}
+        ${p.hasAllergies?'<span title="Allergy / food need" style="flex:0 0 auto;">\u26a0\ufe0f</span>':''}
+        <span style="flex:1;"></span>
+        ${tags.length?`<span style="font-size:10px;color:#4f46e5;font-weight:800;flex:0 0 auto;">\uD83C\uDF81 ${tags.length}</span>`:''}
+        <span style="color:#c7c7d6;font-size:11px;flex:0 0 auto;">\u25b8</span>
+      </div>
+      <div style="font-size:11px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${fav}</div>
+    </div>`;
+  }
+
+  // ---- EXPANDED editor : spans the full width of the grid ----
   const chips=FE_GIFT_OPTIONS.map(opt=>{
     const on=tags.indexOf(opt)>=0;
-    return `<button onclick="feTogglePersonGift('${cid}','${p.id}','${esc(opt)}')" style="border:1px solid ${on?'#4f46e5':'#e0e0ea'};background:${on?'#eef2ff':'#fff'};color:${on?'#4f46e5':'#888'};font-size:11px;font-weight:700;border-radius:20px;padding:4px 11px;cursor:pointer;">${on?'&#10003; ':''}${esc(opt)}</button>`;
+    return `<button onclick="feTogglePersonGift('${cid}','${p.id}','${esc(opt)}')" style="border:1px solid ${on?'#4f46e5':'#e0e0ea'};background:${on?'#eef2ff':'#fff'};color:${on?'#4f46e5':'#888'};font-size:11px;font-weight:700;border-radius:20px;padding:4px 11px;cursor:pointer;">${on?'\u2713 ':''}${esc(opt)}</button>`;
   }).join('');
   return `
-  <div style="background:#fafaff;border:1px solid #eef;border-radius:10px;padding:10px;margin-bottom:8px;">
+  <div style="grid-column:1/-1;background:#fff;border:1.5px solid #d9d9ea;border-radius:10px;padding:10px;">
     <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;">
+      <button onclick="fePersonToggle('${p.id}')" title="Collapse" style="flex:0 0 auto;background:none;border:none;font-size:12px;color:#4f46e5;cursor:pointer;padding:0 2px;">\u25be</button>
       <input value="${esc(p.name)}" onchange="feUpdPerson('${cid}','${p.id}','name',this.value)" placeholder="Name" style="flex:1;min-width:0;font-size:13px;font-weight:700;padding:7px 9px;border:1px solid #ececf3;background:#fff;border-radius:8px;box-sizing:border-box;">
       <input value="${esc(p.age)}" onchange="feUpdPerson('${cid}','${p.id}','age',this.value)" placeholder="Age" style="flex:0 0 50px;width:50px;font-size:12px;padding:7px 6px;border:1px solid #ececf3;background:#fff;border-radius:8px;box-sizing:border-box;text-align:center;">
       <select onchange="feUpdPerson('${cid}','${p.id}','gender',this.value)" style="flex:0 0 54px;width:54px;font-size:12px;padding:7px 4px;border:1px solid #ececf3;background:#fff;border-radius:8px;box-sizing:border-box;">
-        <option value=""${sel('')}>&ndash;</option><option value="M"${sel('M')}>M</option><option value="F"${sel('F')}>F</option>
+        <option value=""${sel('')}>\u2013</option><option value="M"${sel('M')}>M</option><option value="F"${sel('F')}>F</option>
       </select>
-      <button onclick="feDelPerson('${cid}','${p.id}')" style="flex:0 0 auto;background:none;border:none;color:#d69;font-size:16px;cursor:pointer;">&#215;</button>
+      <button onclick="feDelPerson('${cid}','${p.id}')" style="flex:0 0 auto;background:none;border:none;color:#d69;font-size:16px;cursor:pointer;">\u00d7</button>
     </div>
-    <input value="${esc(p.characters)}" onchange="feUpdPerson('${cid}','${p.id}','characters',this.value)" placeholder="&#11088; Favorite characters" style="${IN}margin-bottom:8px;">
+    <input value="${esc(p.characters)}" onchange="feUpdPerson('${cid}','${p.id}','characters',this.value)" placeholder="\u2b50 Favorite characters" style="${IN}margin-bottom:8px;">
     <label style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:#666;margin-bottom:${p.hasAllergies?'6px':'8px'};cursor:pointer;">
-      <input type="checkbox" ${p.hasAllergies?'checked':''} onclick="feSetAllergy('${cid}','${p.id}',this.checked)"> &#9888;&#65039; Allergy / food need
+      <input type="checkbox" ${p.hasAllergies?'checked':''} onclick="feSetAllergy('${cid}','${p.id}',this.checked)"> \u26a0\ufe0f Allergy / food need
     </label>
     ${p.hasAllergies?`<input value="${esc(p.allergies)}" onchange="feUpdPerson('${cid}','${p.id}','allergies',this.value)" placeholder="Which allergy / food need?" style="${IN}margin-bottom:8px;">`:''}
-    <div style="font-size:10px;font-weight:600;color:#a2a2b2;margin-bottom:5px;">&#127873; Planned gift</div>
+    <div style="font-size:10px;font-weight:600;color:#a2a2b2;margin-bottom:5px;">\uD83C\uDF81 Planned gift</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">${chips}</div>
-    <input value="${esc(p.plannedGift||'')}" onchange="feUpdPerson('${cid}','${p.id}','plannedGift',this.value)" placeholder="Write in another gift idea…" style="${IN}">
+    <input value="${esc(p.plannedGift||'')}" onchange="feUpdPerson('${cid}','${p.id}','plannedGift',this.value)" placeholder="Write in another gift idea\u2026" style="${IN}">
   </div>`;
 }
+
 
 // ---------- Import wizard ----------
 const FE_FIELDS = [
@@ -12851,7 +12881,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-26-FE2";
+var SKIPPER_BUILD="2026-08-26-FEGRID";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
