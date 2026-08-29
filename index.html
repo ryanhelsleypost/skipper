@@ -1653,6 +1653,143 @@ function makeParkDays(startDate, endDate, parkDaysCount, tripType) {
 // RENDER ENGINE
 // ===================================================
 
+// ═══════════════ EPCOT FOOD & WINE 2026 ═══════════════
+// Seed data from the 2026 festival (Aug 27–Nov 21). Prices/booths shift mid-festival,
+// so this is a starting point — items are check-off + heart-to-favorite.
+const FW_BOOTHS = [
+  { n:'Gyozas of the Galaxy', loc:'World Discovery · near Guardians of the Galaxy', items:[
+    {n:'Basil Pesto Chicken Dumplings', p:5.99}, {n:'Street Corn-style Dumplings', p:5.99},
+    {n:'Edamame Dumplings (plant-based)', p:5.29} ] },
+  { n:'Flavors From Fire', loc:'World Discovery · near Green Landing Play Zone', items:[
+    {n:'Rodizio-style Grilled Beef Skewer', p:6.99}, {n:'Smoked Corned Beef', p:6.49},
+    {n:'Smoked Chocolate Bread Pudding', p:4.99}, {n:'Swine Brine (cocktail)', p:13} ] },
+  { n:'The Fry Basket', loc:'World Discovery · near Test Track', items:[
+    {n:'Adobo Yuca Fries (plant-based)', p:5.79}, {n:'Fry Flight', p:7.99} ] },
+  { n:'Australia', loc:'World Showcase · Mexico ↔ Port of Entry', items:[
+    {n:'Grilled Bushberry-Spiced Shrimp Skewer', p:6.99}, {n:'Roasted Lamb Chop', p:8.79},
+    {n:'Mixed Berry Pavlova', p:4.79} ] },
+  { n:'Shimmering Sips', loc:'World Showcase · Canada ↔ Port of Entry', items:[
+    {n:'Strawberry Champagne Trifle (plant-based)', p:5.79}, {n:'Tropical Mimosa', p:7.75},
+    {n:'Mimosa Flight', p:15} ] },
+  { n:'Forest & Field', loc:'World Showcase · Refreshment Port ↔ Port of Entry', items:[
+    {n:'Spicy Black Bean-Mushroom Chili (plant-based)', p:5.99}, {n:'Pumpkin-Mascarpone Ravioli', p:5.49},
+    {n:'Schiacciata Sandwich', p:6.29} ] },
+  { n:'Bramblewood Bites', loc:'World Showcase · Refreshment Port ↔ Port of Entry', items:[
+    {n:'Grilled Cider-Brined Pork Tenderloin', p:7.19}, {n:'Cast Iron-Seared River Trout', p:7.29},
+    {n:'Bruleed Sweet Potatoes', p:4.99} ] },
+  { n:'Canada', loc:'World Showcase · Canada Pavilion', items:[
+    {n:'Cheddar and Bacon Soup w/ pretzel roll', p:6.29}, {n:'Filet Mignon', p:10.49} ] },
+  { n:'Brazil', loc:'World Showcase · France ↔ Morocco', items:[
+    {n:'Pao de Queijo (cheese bread)', p:5.19}, {n:'Moqueca de Camarao', p:6.99},
+    {n:'Frozen Caipirinha', p:12.50} ] },
+  { n:'Belgium', loc:'World Showcase · France ↔ Morocco', items:[
+    {n:'Beer-braised Beef w/ gouda mash', p:6.79}, {n:'Belgian Waffle w/ cookie butter', p:5.49},
+    {n:'Beer Flight', p:12.75} ] },
+  { n:'Greece', loc:'World Showcase · Japan ↔ Morocco', items:[
+    {n:'Spanakopita', p:5.19}, {n:'Griddled Cheese w/ pistachios & honey', p:5.49},
+    {n:'Chicken Souvlaki Gyro', p:6.99} ] },
+  { n:'Hops & Barley', loc:'World Showcase · The American Adventure', items:[
+    {n:'Gulf Coast-style Seafood Roll', p:8.99}, {n:'Smoked Brisket & Cheddar Melt', p:6.49},
+    {n:'Freshly Baked Chocolate Pudding Cake', p:4.99} ] },
+  { n:'Spain', loc:'World Showcase · Germany ↔ Italy', items:[
+    {n:'Croquetas de Jamon', p:6.99}, {n:'Paella Caldoso', p:7.99}, {n:'Basque Cheesecake', p:5.29} ] },
+  { n:'Germany', loc:'World Showcase · Germany Pavilion', items:[
+    {n:'Schinkennudeln (pasta gratin)', p:5.29}, {n:'Wiener Schnitzel', p:7.29},
+    {n:'Apple Strudel w/ vanilla sauce', p:4.99} ] },
+  { n:'Refreshment Outpost (Coca-Cola)', loc:'World Showcase · China ↔ Germany', items:[
+    {n:'Berbere-spiced Beef Stew', p:6.79}, {n:'Sweet Potato Mealie Pap (plant-based)', p:5.79},
+    {n:'South African Cream Liqueur Chocolate Mousse', p:6.29} ] },
+];
+function fwKey(bn,inm){ return (bn+'::'+inm).toLowerCase().replace(/[^a-z0-9]+/g,'-'); }
+function fwState(){ const t=trip()||{}; if(!t.fw) t.fw={checked:{},hearts:{}}; return t.fw; }
+function fwToggleCheck(k){ const t=trip(); if(!t)return; const fw=t.fw||{checked:{},hearts:{}}; fw.checked=fw.checked||{}; fw.checked[k]=!fw.checked[k]; if(!fw.checked[k])delete fw.checked[k]; patchTrip({fw:fw},true); render(); }
+function fwToggleHeart(k){ const t=trip(); if(!t)return; const fw=t.fw||{checked:{},hearts:{}}; fw.hearts=fw.hearts||{}; fw.hearts[k]=!fw.hearts[k]; if(!fw.hearts[k])delete fw.hearts[k]; patchTrip({fw:fw},true); render(); }
+function fwOpen(){ S.ui.fwOpen=true; render(); }
+function fwClose(){ S.ui.fwOpen=false; render(); }
+function fwAllItems(){ const out=[]; FW_BOOTHS.forEach(b=>b.items.forEach(it=>out.push({booth:b.n,loc:b.loc,n:it.n,p:it.p,key:fwKey(b.n,it.n)}))); return out; }
+
+function instaOpen(){ S.ui=S.ui||{}; S.ui.instaOpen=true; S.ui.hereNowResort=S.ui.hereNowResort||''; S.ui.hereNowPark=''; render(); }
+function instaClose(){ S.ui.instaOpen=false; render(); }
+function buildInstaModal(){
+  return `
+  <div class="modal-overlay" onclick="if(event.target===this)instaClose()" style="z-index:2600;align-items:flex-start;padding:26px 12px;overflow-y:auto;">
+    <div class="modal" style="max-width:460px;width:100%;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <div class="modal-h" style="margin:0;">\u26a1 Insta-Trip</div>
+        <button onclick="instaClose()" style="background:none;border:1px solid #e4e4f0;border-radius:8px;padding:4px 10px;font-size:12px;color:#999;cursor:pointer;font-family:inherit;">\u2715 Close</button>
+      </div>
+      <div class="modal-sub" style="margin-bottom:12px;">Jump straight into live in-park mode \u2014 no trip setup. Pick where you are and go.</div>
+      ${buildHereNow()}
+    </div>
+  </div>`;
+}
+
+function buildFWModal(t){
+  const fw=(t&&t.fw)||{checked:{},hearts:{}};
+  const checked=fw.checked||{}, hearts=fw.hearts||{};
+  const sym=curSym(t);
+  const all=fwAllItems();
+  const wantList=all.filter(x=>hearts[x.key]);
+  const triedCount=all.filter(x=>checked[x.key]).length;
+  const wantTotal=wantList.reduce((s,x)=>s+(x.p||0),0);
+
+  // ❤️ Want to Try (top list)
+  const wantSection = wantList.length ? `
+    <div style="background:#fff5f7;border:1.5px solid #fecdd3;border-radius:12px;padding:12px 14px;margin-bottom:16px;">
+      <div style="font-size:13px;font-weight:900;color:#be123c;margin-bottom:8px;">\u2764\ufe0f Want to Try (${wantList.length}) \u00b7 <span style="font-weight:700;color:#9f1239;">~${sym}${wantTotal.toFixed(2)}</span></div>
+      ${wantList.map(x=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12.5px;">
+          <button onclick="fwToggleCheck('${x.key}')" title="Mark tried" style="flex:0 0 auto;width:22px;height:22px;border-radius:6px;border:2px solid ${checked[x.key]?'#16a34a':'#e4c4cc'};background:${checked[x.key]?'#16a34a':'#fff'};color:#fff;font-size:13px;cursor:pointer;line-height:1;">${checked[x.key]?'\u2713':''}</button>
+          <span style="flex:1;min-width:0;${checked[x.key]?'text-decoration:line-through;color:#c88;':'color:#1a1a2e;'}"><b>${esc(x.n)}</b> <span style="color:#a8788a;font-size:11px;">\u00b7 ${esc(x.booth)}</span></span>
+          <span style="flex:0 0 auto;color:#9f1239;font-weight:700;">${sym}${(x.p||0).toFixed(2)}</span>
+          <button onclick="fwToggleHeart('${x.key}')" title="Remove" style="flex:0 0 auto;background:none;border:none;font-size:15px;cursor:pointer;">\u2764\ufe0f</button>
+        </div>`).join('')}
+    </div>` : `<div style="background:#fafafc;border:1px dashed #e0e0ea;border-radius:12px;padding:14px;text-align:center;color:#9a9ab0;font-size:12.5px;margin-bottom:16px;">Tap the \u2661 on anything below to build your must-try list.</div>`;
+
+  // Booth list
+  const booths = FW_BOOTHS.map((b,bi)=>{
+    const bkey='fwb-'+bi;
+    const col = S.ui.fwCollapsed && S.ui.fwCollapsed[bkey];
+    const bChecked=b.items.filter(it=>checked[fwKey(b.n,it.n)]).length;
+    const rows = b.items.map(it=>{
+      const k=fwKey(b.n,it.n);
+      return `<div style="display:flex;align-items:center;gap:9px;padding:6px 0;border-top:1px solid #f4f4f8;">
+        <button onclick="fwToggleCheck('${k}')" title="Tried it" style="flex:0 0 auto;width:24px;height:24px;border-radius:6px;border:2px solid ${checked[k]?'#16a34a':'#dcdce6'};background:${checked[k]?'#16a34a':'#fff'};color:#fff;font-size:14px;cursor:pointer;line-height:1;">${checked[k]?'\u2713':''}</button>
+        <span style="flex:1;min-width:0;font-size:12.5px;${checked[k]?'text-decoration:line-through;color:#b0b0be;':'color:#1a1a2e;'}">${esc(it.n)}</span>
+        <span style="flex:0 0 auto;font-size:12px;font-weight:700;color:#6b6b7b;">${sym}${(it.p||0).toFixed(2)}</span>
+        <button onclick="fwToggleHeart('${k}')" title="Want to try" style="flex:0 0 auto;background:none;border:none;font-size:16px;cursor:pointer;line-height:1;">${hearts[k]?'\u2764\ufe0f':'\u2661'}</button>
+      </div>`;
+    }).join('');
+    return `<div style="border:1px solid #ececf3;border-radius:12px;padding:10px 12px;margin-bottom:9px;">
+      <div onclick="fwToggleBooth('${bkey}')" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <span style="flex:1;min-width:0;">
+          <span style="font-size:13.5px;font-weight:900;color:#1a1a5e;">${esc(b.n)}</span>
+          <span style="display:block;font-size:10.5px;color:#9a9ab0;margin-top:1px;">${esc(b.loc)}</span>
+        </span>
+        ${bChecked?`<span style="flex:0 0 auto;font-size:10px;font-weight:800;color:#16a34a;">${bChecked}/${b.items.length}</span>`:''}
+        <span style="flex:0 0 auto;color:#c7c7d6;font-size:12px;">${col?'\u25b8':'\u25be'}</span>
+      </div>
+      ${col?'':rows}
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="modal-overlay" onclick="if(event.target===this)fwClose()" style="z-index:2600;align-items:flex-start;padding:22px 10px;overflow-y:auto;">
+    <div class="modal" style="max-width:560px;width:100%;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
+        <div class="modal-h" style="margin:0;">\uD83C\uDF74 EPCOT Food &amp; Wine 2026</div>
+        <button onclick="fwClose()" style="background:none;border:1px solid #e4e4f0;border-radius:8px;padding:4px 10px;font-size:12px;color:#999;cursor:pointer;font-family:inherit;">\u2715 Close</button>
+      </div>
+      <div class="modal-sub" style="margin-bottom:14px;">Aug 27 – Nov 21 \u00b7 ${triedCount} tried \u00b7 ${wantList.length} to try. Prices shift mid-festival — treat as a guide.</div>
+      ${wantSection}
+      <div style="font-size:10px;font-weight:800;color:#a2a2b2;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Booths</div>
+      ${booths}
+    </div>
+  </div>`;
+}
+function fwToggleBooth(bkey){ S.ui.fwCollapsed=S.ui.fwCollapsed||{}; S.ui.fwCollapsed[bkey]=!S.ui.fwCollapsed[bkey]; render(); }
+
+
 function render() {
   if (window._countdownInterval) { clearInterval(window._countdownInterval); window._countdownInterval = null; }
   document.getElementById('app').innerHTML = buildApp();
@@ -1707,6 +1844,8 @@ function buildApp() {
     ${S.ui.showTripSelect ? buildTripSelectOverlay() : ''}
     ${S.ui.tourActive ? buildTourOverlay() : ''}
     ${S.ui.identityOpen ? buildIdentityModal(t) : ''}
+    ${S.ui.fwOpen ? buildFWModal(t) : ''}
+    ${S.ui.instaOpen ? buildInstaModal() : ''}
     ${settingsOverlay}
   `;
 }
@@ -1826,7 +1965,9 @@ function buildHeader(t) {
     + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
     + countdownHtml
     + '<button onclick="S.ui.identityOpen=true;render()" title="Who\'s on this phone" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fff;font-size:13px;cursor:pointer;font-family:inherit;font-weight:800;">'+(meMember(t)?(meMember(t).emoji||'🧑'):'👤')+'</button>'
+    + '<button onclick="instaOpen()" title="Insta-Trip: live in-park mode now" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fde68a;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">&#9889; Insta</button>'
     + '<button onclick="inDemo()?exitDemo():enterDemo()" style="background:'+(inDemo()?'#dc2626':'rgba(255,255,255,.15)')+';border:none;border-radius:8px;padding:5px 9px;color:'+(inDemo()?'#fff':'#a5b4fc')+';font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">'+(inDemo()?'&#10005; Demo':'&#127918; Demo')+'</button>'
+    + '<button onclick="fwOpen()" title="EPCOT Food & Wine 2026" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">&#127860; F&amp;W</button>'
     + '<button onclick="openSyncModal()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#FFD700;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">&#9729; Sync</button>'
     + '<button onclick="S.ui.settingsOpen=!S.ui.settingsOpen;render()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fff;font-size:15px;cursor:pointer;font-family:inherit;">&#9881;&#65039;</button>'
     + '</div>'
@@ -2401,6 +2542,7 @@ function qtFetch(parkKey){
 function hereNowPick(k){ S.ui=S.ui||{}; S.ui.hereNowPark=(S.ui.hereNowPark===k?'':k); render(); }
 function hereNowLogDay(parkKey){
   var today=todayISO();
+  if(S.ui)S.ui.instaOpen=false;
   var t=(S.trips||[]).find(function(x){return x.id==='__herenow__';});
   if(!t){ t=makeDefaultTrip(); t.id='__herenow__'; t.name='📍 Here Now'; S.trips.push(t); }
   t.startDate=today; t.endDate=today; t.parkDays=1;
@@ -12881,7 +13023,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-26-FEGRID";
+var SKIPPER_BUILD="2026-08-29-FW";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
