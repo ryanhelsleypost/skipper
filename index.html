@@ -1861,6 +1861,7 @@ function buildApp() {
     ${S.ui.fwOpen ? buildFWModal(t) : ''}
     ${S.ui.instaOpen ? buildInstaModal() : ''}
     ${settingsOverlay}
+    ${buildSyncRecoverBanner()}
   `;
 }
 
@@ -12891,6 +12892,138 @@ function syncSetStatus(s,msg){
   var el=document.getElementById('sync-dot');
   if(el){el.style.background=syncDotColor();el.title=syncDotTitle();}
 }
+// ═══════════════ BACKUP & RECOVERY ═══════════════
+// Rolling cloud snapshots + manual export/import + an empty-push guard.
+const SNAP_KEEP = 12;           // how many cloud snapshots to retain
+const SNAP_MIN_GAP_MS = 15*60*1000; // don't snapshot more than ~once / 15 min
+
+// Does a trip contain real, worth-keeping content?
+function _tripLooksReal(t){
+  if(!t) return false;
+  if((t.parks||[]).some(function(d){return d.park&&d.park!=='unassigned'&&d.park!=='rest'&&d.park!=='travel';})) return true;
+  if((t.parkHops||[]).length) return true;
+  if((t.hotelLegs||[]).length) return true;
+  if((t.feGroups||[]).length || (t.fishExtenders||[]).length) return true;
+  if((t.partyMembers||[]).filter(function(m){return m&&m.name&&m.name.trim();}).length>1) return true;
+  if(t.budget&&(t.budget.categories||[]).some(function(c){return (c.budgeted||0)>0;})) return true;
+  if((t.rosEntries||[]).length) return true;
+  return false;
+}
+function _tripsAreTrivial(trips){
+  if(!trips||!trips.length) return true;
+  return !trips.some(_tripLooksReal);
+}
+function _tripsSummary(trips){
+  if(!trips||!trips.length) return 'empty';
+  var parts=[];
+  parts.push(trips.length+' trip'+(trips.length>1?'s':''));
+  var pd=0, fe=0;
+  trips.forEach(function(t){
+    pd += (t.parks||[]).filter(function(d){return d.park&&d.park!=='unassigned'&&d.park!=='rest';}).length;
+    fe += (t.feGroups||[]).reduce(function(s,g){return s+(g.cabins||[]).length;},0);
+  });
+  if(pd) parts.push(pd+' park days');
+  if(fe) parts.push(fe+' FE cabins');
+  return parts.join(' · ');
+}
+
+// Write a rolling snapshot after a successful push (throttled).
+function syncWriteSnapshot(force){
+  try{
+    if(!SYNC.ref||!SYNC.code||typeof firebase==='undefined') return;
+    var now=Date.now();
+    if(!force && SYNC.lastSnapAt && (now-SYNC.lastSnapAt)<SNAP_MIN_GAP_MS) return;
+    var trips=_demoFreeTrips();
+    if(_tripsAreTrivial(trips)) return; // never snapshot an empty state
+    SYNC.lastSnapAt=now;
+    var snapRef=firebase.database().ref('snapshots/'+SYNC.code);
+    var payload={at:now, updatedAt:SYNC.localStamp||now, summary:_tripsSummary(trips),
+                 trips:JSON.parse(JSON.stringify(trips)),
+                 currentTripId:(S.currentTripId==='__demo__'?(S._prevTripId||null):S.currentTripId)};
+    snapRef.push(payload).then(function(){
+      // trim to the most recent SNAP_KEEP
+      snapRef.orderByChild('at').once('value',function(snap){
+        var keys=[]; snap.forEach(function(ch){ keys.push({k:ch.key,at:(ch.val()||{}).at||0}); });
+        keys.sort(function(a,b){return a.at-b.at;});
+        var extra=keys.length-SNAP_KEEP;
+        for(var i=0;i<extra;i++){ snapRef.child(keys[i].k).remove(); }
+      });
+    }).catch(function(){});
+  }catch(e){}
+}
+
+function syncLoadSnapshots(cb){
+  try{
+    if(!SYNC.code||typeof firebase==='undefined'){cb&&cb([]);return;}
+    firebase.database().ref('snapshots/'+SYNC.code).orderByChild('at').once('value',function(snap){
+      var out=[]; snap.forEach(function(ch){ var v=ch.val()||{}; out.push({key:ch.key,at:v.at||0,summary:v.summary||'',trips:v.trips||[],currentTripId:v.currentTripId||null}); });
+      out.sort(function(a,b){return b.at-a.at;}); // newest first
+      cb&&cb(out);
+    },function(){cb&&cb([]);});
+  }catch(e){cb&&cb([]);}
+}
+
+// Restore a snapshot: back up current first, then apply + push so all devices get it.
+function syncRestoreSnapshot(key){
+  var snaps=SYNC.snaps||[];
+  var snap=snaps.find(function(s){return s.key===key;});
+  if(!snap){alert('That backup could not be found — reopen the panel to refresh.');return;}
+  if(!confirm('Restore this backup?\n\n'+snap.summary+'\nfrom '+new Date(snap.at).toLocaleString()+'\n\nYour current data will be snapshotted first so this is undoable.'))return;
+  syncWriteSnapshot(true); // preserve the current state before overwriting
+  setTimeout(function(){
+    S.trips=JSON.parse(JSON.stringify(snap.trips||[]));
+    S.currentTripId=snap.currentTripId||(S.trips[0]&&S.trips[0].id)||null;
+    migrateAllTrips();
+    if(!S.trips.length){var t=makeDefaultTrip();S.trips=[t];S.currentTripId=t.id;}
+    persist();
+    SYNC.localStamp=Date.now();
+    localStorage.setItem('skipper_sync_stamp',String(SYNC.localStamp));
+    syncPushNow(true); // force past the guard — this is an intentional restore
+    S.ui.syncRecover=false;
+    alert('Restored ✓  Your other devices will update on their next sync.');
+    render();
+  }, 600);
+}
+
+// ---- Manual (off-cloud) backup ----
+function backupExport(){
+  try{
+    var data={app:'skipper', kind:'backup', exportedAt:new Date().toISOString(),
+      build:(typeof SKIPPER_BUILD!=='undefined'?SKIPPER_BUILD:''),
+      trips:_demoFreeTrips(), currentTripId:(S.currentTripId==='__demo__'?(S._prevTripId||null):S.currentTripId)};
+    var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url; a.download='skipper-backup-'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url);},1000);
+  }catch(e){ alert('Export failed: '+e.message); }
+}
+function backupImportPick(){ var el=document.getElementById('backup-import-file'); if(el)el.click(); }
+function backupImportFile(input){
+  var file=input.files&&input.files[0]; if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(){
+    try{
+      var data=JSON.parse(reader.result);
+      var trips=data.trips||(Array.isArray(data)?data:null);
+      if(!trips||!trips.length){alert('That file has no trips in it.');return;}
+      if(!confirm('Import '+_tripsSummary(trips)+'?\n\nThis replaces what\'s on this device (your current data is snapshotted to the cloud first if connected).'))return;
+      syncWriteSnapshot(true);
+      S.trips=JSON.parse(JSON.stringify(trips));
+      S.currentTripId=data.currentTripId||(S.trips[0]&&S.trips[0].id)||null;
+      migrateAllTrips();
+      persist();
+      SYNC.localStamp=Date.now(); localStorage.setItem('skipper_sync_stamp',String(SYNC.localStamp));
+      if(SYNC.ref) syncPushNow(true);
+      alert('Imported ✓');
+      render();
+    }catch(e){ alert('Could not read that file: '+e.message); }
+    input.value='';
+  };
+  reader.readAsText(file);
+}
+
 function syncApplyRemote(v){
   SYNC.applying=true;
   try{
@@ -12905,12 +13038,22 @@ function syncApplyRemote(v){
     render();
   }finally{SYNC.applying=false;}
 }
-function syncPushNow(){
+function syncPushNow(force){
   if(!SYNC.ref)return;
+  var localTrips=_demoFreeTrips();
+  // EMPTY-PUSH GUARD: never let a blank/fresh device overwrite a cloud copy that
+  // still holds real trips. Surface a recovery prompt instead.
+  if(!force && _tripsAreTrivial(localTrips) && (SYNC.remoteTripCount||0)>0){
+    SYNC.applying=false;
+    S.ui=S.ui||{}; S.ui.syncRecover=true;
+    syncSetStatus('error','This device looks empty but your cloud backup has data — recover instead of overwriting.');
+    render();
+    return;
+  }
   SYNC.localStamp=Date.now();
   localStorage.setItem('skipper_sync_stamp',String(SYNC.localStamp));
-  var payload=JSON.parse(JSON.stringify({updatedAt:SYNC.localStamp,clientId:SYNC.clientId,app:'skipper',trips:_demoFreeTrips(),currentTripId:(S.currentTripId==='__demo__'?(S._prevTripId||null):S.currentTripId)}));
-  SYNC.ref.set(payload).then(function(){syncSetStatus('synced');}).catch(function(e){syncSetStatus('error',e.message);});
+  var payload=JSON.parse(JSON.stringify({updatedAt:SYNC.localStamp,clientId:SYNC.clientId,app:'skipper',trips:localTrips,currentTripId:(S.currentTripId==='__demo__'?(S._prevTripId||null):S.currentTripId)}));
+  SYNC.ref.set(payload).then(function(){syncSetStatus('synced'); syncWriteSnapshot();}).catch(function(e){syncSetStatus('error',e.message);});
 }
 function syncQueuePush(){
   if(!SYNC.ref||SYNC.applying)return;
@@ -12942,6 +13085,7 @@ function syncInit(){
         syncSetStatus('error','This sync code is already used by a different app — pick a different code for Skipper Tripper.');
         SYNC.ref.off();SYNC.ref=null;return;
       }
+      SYNC.remoteTripCount=(v.trips||[]).length; // for the empty-push guard
       SYNC.resumeHold=null; // fresh snapshot received — safe to push again
       if(v.clientId===SYNC.clientId&&(v.updatedAt||0)<=SYNC.localStamp){syncSetStatus('synced');return;} // our own echo
       if((v.updatedAt||0)>SYNC.localStamp){syncApplyRemote(v);}
@@ -12966,6 +13110,66 @@ function parseFbConfig(txt){
   });
   return cfg;
 }
+function buildSyncBackupSection(){
+  var connected=!!SYNC.ref;
+  var snapHtml='';
+  if(S.ui && S.ui.syncShowSnaps){
+    var snaps=SYNC.snaps||[];
+    if(SYNC.snapsLoading){ snapHtml='<div style="font-size:12px;color:#999;padding:8px 0;">Loading backups…</div>'; }
+    else if(!snaps.length){ snapHtml='<div style="font-size:12px;color:#999;padding:8px 0;">No cloud backups yet — they\'re saved automatically as you make changes.</div>'; }
+    else {
+      snapHtml=snaps.map(function(sn){
+        return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #f0f0f6;">'+
+          '<div style="flex:1;min-width:0;"><div style="font-size:12.5px;font-weight:700;color:#1a1a2e;">'+esc(sn.summary||'backup')+'</div>'+
+          '<div style="font-size:11px;color:#999;">'+new Date(sn.at).toLocaleString()+'</div></div>'+
+          '<button onclick="syncRestoreSnapshot(\''+sn.key+'\')" style="flex:0 0 auto;padding:6px 12px;background:#1a1a5e;border:none;color:#FFD700;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;">Restore</button>'+
+        '</div>';
+      }).join('');
+    }
+  }
+  return '<div style="background:#f8f8ff;border:1.5px solid #e4e4f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;">'+
+    '<div style="font-size:12.5px;font-weight:900;color:#1a1a5e;margin-bottom:8px;">🛟 Backups &amp; Recovery</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:'+(S.ui&&S.ui.syncShowSnaps?'8px':'0')+';">'+
+      (connected?'<button onclick="syncOpenRestore()" style="flex:1;min-width:120px;padding:8px;background:#fff;border:1.5px solid #c7d2fe;color:#4f46e5;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;">'+(S.ui&&S.ui.syncShowSnaps?'↻ Refresh list':'☁ Restore from cloud')+'</button>':'')+
+      '<button onclick="backupExport()" style="flex:1;min-width:110px;padding:8px;background:#fff;border:1.5px solid #ddd;color:#555;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;">⬇ Export file</button>'+
+      '<button onclick="backupImportPick()" style="flex:1;min-width:110px;padding:8px;background:#fff;border:1.5px solid #ddd;color:#555;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;">⬆ Import file</button>'+
+      '<input id="backup-import-file" type="file" accept="application/json,.json" onchange="backupImportFile(this)" style="display:none;">'+
+    '</div>'+ snapHtml +
+    '<div style="font-size:10.5px;color:#aaa;margin-top:8px;line-height:1.5;">Cloud keeps your last '+SNAP_KEEP+' auto-backups. Export a file before the cruise as an offline copy.</div>'+
+  '</div>';
+}
+function syncOpenRestore(){
+  S.ui=S.ui||{}; S.ui.syncShowSnaps=true; SYNC.snapsLoading=true; openSyncModal();
+  syncLoadSnapshots(function(list){ SYNC.snaps=list; SYNC.snapsLoading=false; if(document.getElementById('sync-modal-root').innerHTML) openSyncModal(); });
+}
+// Pull the live cloud copy down immediately (used by the recovery banner)
+function syncRecoverFromCloud(){
+  try{
+    if(!SYNC.code||typeof firebase==='undefined'){alert('Not connected to sync.');return;}
+    firebase.database().ref('ledgers/'+SYNC.code).once('value',function(snap){
+      var v=snap.val();
+      if(!v||!v.trips||!v.trips.length){ alert('No trips found in the cloud for this code. Try Restore from a backup instead.'); return; }
+      syncApplyRemote(v);
+      S.ui.syncRecover=false;
+      syncSetStatus('synced');
+      alert('Recovered '+_tripsSummary(v.trips)+' from the cloud ✓');
+      render();
+    });
+  }catch(e){ alert('Recover failed: '+e.message); }
+}
+function syncDismissRecover(){ S.ui.syncRecover=false; render(); }
+function buildSyncRecoverBanner(){
+  if(!(S.ui&&S.ui.syncRecover)) return '';
+  return '<div style="position:fixed;left:10px;right:10px;bottom:14px;z-index:3000;background:#7f1d1d;border-radius:14px;padding:14px 16px;box-shadow:0 8px 30px rgba(0,0,0,.4);font-family:inherit;">'+
+    '<div style="font-size:14px;font-weight:900;color:#fff;margin-bottom:3px;">⚠️ This device looks empty</div>'+
+    '<div style="font-size:12px;color:rgba(255,255,255,.85);margin-bottom:10px;">Your cloud backup still has your trips — we blocked this device from overwriting them.</div>'+
+    '<div style="display:flex;gap:8px;">'+
+      '<button onclick="syncRecoverFromCloud()" style="flex:1;padding:10px;background:#FFD700;color:#1a1a5e;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:900;cursor:pointer;">Recover my trips</button>'+
+      '<button onclick="syncDismissRecover()" style="flex:0 0 auto;padding:10px 14px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">Dismiss</button>'+
+    '</div>'+
+  '</div>';
+}
+
 function openSyncModal(){
   var cfgTxt=SYNC.cfg?JSON.stringify(SYNC.cfg,null,2):'';
   var statusColor=SYNC.status==='synced'?'#16a34a':SYNC.status==='error'?'#dc2626':'#888';
@@ -12984,6 +13188,7 @@ function openSyncModal(){
           '<button onclick="syncGenCode()" style="padding:8px 12px;background:#f0f0f8;border:1.5px solid #ddd;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">🎲 Generate</button>'+
         '</div>'+
         '<div style="font-size:12px;color:#888;margin-bottom:12px;">Status: <span style="color:'+statusColor+';font-weight:700;">'+(SYNC.status==='off'?'not configured':SYNC.status)+'</span>'+(SYNC.errMsg?' — '+esc(SYNC.errMsg):'')+'</div>'+
+        buildSyncBackupSection()+
         '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
           (SYNC.cfg?'<button onclick="syncDisconnect()" style="padding:9px 14px;background:#fee;border:1.5px solid #fbb;color:#c22;border-radius:8px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">Disconnect</button>':'')+
           '<div style="flex:1;"></div>'+
@@ -12993,7 +13198,7 @@ function openSyncModal(){
       '</div>'+
     '</div>';
 }
-function closeSyncModal(){document.getElementById('sync-modal-root').innerHTML='';}
+function closeSyncModal(){ if(S.ui)S.ui.syncShowSnaps=false; document.getElementById('sync-modal-root').innerHTML=''; }
 function syncSaveAndConnect(){
   var txt=document.getElementById('sy-cfg')?.value||'';
   var cfg=parseFbConfig(txt);
@@ -13037,7 +13242,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-29-PWA";
+var SKIPPER_BUILD="2026-08-29-BACKUP";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
