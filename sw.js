@@ -1,8 +1,8 @@
 // Skipper/Heath offline shell — cache-first with background refresh.
 // Upload this file to each repo alongside index.html.
-const CACHE = 'app-shell-v2';
+const CACHE = 'app-shell-v3';
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./'])).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./','icon-180.png','icon-192.png','icon-512.png','manifest.webmanifest'])).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(
@@ -26,6 +26,13 @@ self.addEventListener('fetch', e => {
       caches.open(CACHE).then(c => c.put('./', copy));
       return r;
     }).catch(() => caches.match('./')));
+    return;
+  }
+  // Static icons/manifest: cache-first so the installed app + splash work offline
+  if (/(icon-\d+\.png|manifest\.webmanifest)$/.test(url.pathname)) {
+    e.respondWith(caches.match(e.request).then(c => c || fetch(e.request).then(r => {
+      const cp = r.clone(); caches.open(CACHE).then(cc => cc.put(e.request, cp)); return r;
+    })));
     return;
   }
   // App shell: serve cached instantly, refresh in the background
