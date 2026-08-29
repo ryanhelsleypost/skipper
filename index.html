@@ -1702,9 +1702,10 @@ const FW_BOOTHS = [
 ];
 function fwKey(bn,inm){ return (bn+'::'+inm).toLowerCase().replace(/[^a-z0-9]+/g,'-'); }
 function fwState(){ const t=trip()||{}; if(!t.fw) t.fw={checked:{},hearts:{}}; return t.fw; }
-function fwToggleCheck(k){ const t=trip(); if(!t)return; const fw=t.fw||{checked:{},hearts:{}}; fw.checked=fw.checked||{}; fw.checked[k]=!fw.checked[k]; if(!fw.checked[k])delete fw.checked[k]; patchTrip({fw:fw},true); render(); }
-function fwToggleHeart(k){ const t=trip(); if(!t)return; const fw=t.fw||{checked:{},hearts:{}}; fw.hearts=fw.hearts||{}; fw.hearts[k]=!fw.hearts[k]; if(!fw.hearts[k])delete fw.hearts[k]; patchTrip({fw:fw},true); render(); }
+function fwToggleCheck(k){ const t=trip(); if(!t)return; const fw=t.fw||{checked:{},hearts:{}}; fw.checked=fw.checked||{}; fw.checked[k]=!fw.checked[k]; if(!fw.checked[k])delete fw.checked[k]; patchTrip({fw:fw},true); fwRerender(); }
+function fwToggleHeart(k){ const t=trip(); if(!t)return; const fw=t.fw||{checked:{},hearts:{}}; fw.hearts=fw.hearts||{}; fw.hearts[k]=!fw.hearts[k]; if(!fw.hearts[k])delete fw.hearts[k]; patchTrip({fw:fw},true); fwRerender(); }
 function fwOpen(){ S.ui.fwOpen=true; render(); }
+function fwRerender(){ var ov=document.getElementById('fw-overlay'); var sc=ov?ov.scrollTop:0; render(); requestAnimationFrame(function(){ var o=document.getElementById('fw-overlay'); if(o)o.scrollTop=sc; }); }
 function fwClose(){ S.ui.fwOpen=false; render(); }
 function fwAllItems(){ const out=[]; FW_BOOTHS.forEach(b=>b.items.forEach(it=>out.push({booth:b.n,loc:b.loc,n:it.n,p:it.p,key:fwKey(b.n,it.n)}))); return out; }
 
@@ -1774,7 +1775,7 @@ function buildFWModal(t){
   }).join('');
 
   return `
-  <div class="modal-overlay" onclick="if(event.target===this)fwClose()" style="z-index:2600;align-items:flex-start;padding:22px 10px;overflow-y:auto;">
+  <div id="fw-overlay" class="modal-overlay" onclick="if(event.target===this)fwClose()" style="z-index:2600;align-items:flex-start;padding:22px 10px;overflow-y:auto;">
     <div class="modal" style="max-width:560px;width:100%;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
         <div class="modal-h" style="margin:0;">\uD83C\uDF74 EPCOT Food &amp; Wine 2026</div>
@@ -1787,7 +1788,7 @@ function buildFWModal(t){
     </div>
   </div>`;
 }
-function fwToggleBooth(bkey){ S.ui.fwCollapsed=S.ui.fwCollapsed||{}; S.ui.fwCollapsed[bkey]=!S.ui.fwCollapsed[bkey]; render(); }
+function fwToggleBooth(bkey){ S.ui.fwCollapsed=S.ui.fwCollapsed||{}; S.ui.fwCollapsed[bkey]=!S.ui.fwCollapsed[bkey]; fwRerender(); }
 
 
 function render() {
@@ -3391,7 +3392,7 @@ function buildToday(t){
   if(!dates.length){
     return `<div class="empty-rich" style="margin:8px 0;"><div class="er-icon">🎯</div><div class="er-title">Set your trip dates first</div><div class="er-body">The Today tab comes alive once your trip has dates.</div><button class="btn btn-primary" onclick="S.ui.settingsOpen=true;render()">Go to Settings →</button></div>`;
   }
-  if(!tm.active)return buildHereNow()+buildTodayLauncher(t,tm,dates,today);
+  if(!tm.active)return buildTodayLauncher(t,tm,dates,today);
   return buildTodayLive(t,tm,dates,today);
 }
 
@@ -13023,7 +13024,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-29-FW";
+var SKIPPER_BUILD="2026-08-29-FW2";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
