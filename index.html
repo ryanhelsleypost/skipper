@@ -2225,13 +2225,14 @@ function buildImportModal(t){
 function buildLogistics(t) {
   if (!S.ui.logOpen) S.ui.logOpen = {transport:true, hotel:true};
 
-  function section(key, icon, title, contentFn) {
+  function section(key, icon, title, contentFn, stampHtml) {
     const open = S.ui.logOpen[key];
     return '<div style="margin-bottom:10px;">'
-      + '<button onclick="S.ui.logOpen[\''+key+'\']=!S.ui.logOpen[\''+key+'\'];render()" style="width:100%;background:#fff;border:1.5px solid #e4e4f0;border-radius:12px;padding:13px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-family:inherit;'+(open?'border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom-color:transparent;':'')+'">'
+      + '<button onclick="S.ui.logOpen[\''+key+'\']=!S.ui.logOpen[\''+key+'\'];render()" style="width:100%;background:#fff;border:1.5px solid #e4e4f0;border-radius:12px;padding:13px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-family:inherit;'+(open||stampHtml?'border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom-color:transparent;':'')+'">'
       + '<span style="font-size:15px;font-weight:900;color:#1a1a5e;">'+icon+' '+title+'</span>'
       + '<span style="font-size:14px;color:#7c3aed;font-weight:700;">'+(open?'&#9650;':'&#9660;')+'</span>'
       + '</button>'
+      + (stampHtml ? '<div style="background:#fbfbfe;border:1.5px solid #e4e4f0;border-top:none;'+(open?'':'border-bottom-left-radius:12px;border-bottom-right-radius:12px;')+'padding:9px 16px 4px;">'+stampHtml+'</div>' : '')
       + (open ? '<div style="background:#fff;border:1.5px solid #e4e4f0;border-top:none;border-bottom-left-radius:12px;border-bottom-right-radius:12px;padding:14px;">'+contentFn()+'</div>' : '')
       + '</div>';
   }
@@ -2241,8 +2242,8 @@ function buildLogistics(t) {
     +   '<button onclick="openImport(\'flight\',\'outbound\')" style="background:#fff;border:1.5px solid #c7d2fe;border-radius:9px;padding:8px 13px;font-family:inherit;font-size:12.5px;font-weight:800;color:#4f46e5;cursor:pointer;">📋 Import from confirmation</button>'
     +   '<span style="font-size:11.5px;color:#aaa;">Optional — or just fill the fields in below.</span>'
     + '</div>'
-    + section('transport','&#9992;&#65039;','Transportation', function(){ return typeof buildTransportation === 'function' ? buildTransportation(t) : '<div style="color:#999;font-size:13px;">Loading...</div>'; })
-    + section('hotel','&#127968;','Hotel', function(){ return typeof buildHotel === 'function' ? buildHotel(t) : ''; })
+    + section('transport','&#9992;&#65039;','Transportation', function(){ return typeof buildTransportation === 'function' ? buildTransportation(t) : '<div style="color:#999;font-size:13px;">Loading...</div>'; }, logStampHTML(logTransTs(t), 'logConfirmTransport()'))
+    + section('hotel','&#127968;','Hotel', function(){ return typeof buildHotel === 'function' ? buildHotel(t) : ''; }, logStampHTML(logHotelsTs(t), 'logConfirmHotels()'))
     + buildImportModal(t)
     + '</div>';
 }
@@ -6271,7 +6272,6 @@ function buildTransSection(t, dir, title) {
         ${buildTransTitle(t,dir,title)}
         ${buildDpClockBtn(t, dir, label)}
       </div>
-      ${logStampHTML((t.logisticsTouched||{})[dir], `logConfirm('${dir}')`)}
       <div class="fg">
         <label class="lbl">Travel Mode</label>
         <div class="toggle-group">
@@ -10859,7 +10859,6 @@ function buildHotel(t) {
               ${!leg.locked?`<button class="leg-remove" onclick="removeHotelLeg(${li})" title="Remove this stay">✕</button>`:''}
             </span>
           </div>
-          ${logStampHTML(leg.updatedAt, `logConfirmHotel(${li})`)}
 
           ${leg.locked ? `<div style="background:#f0f4ff;border:1px solid #c7d2fe;border-radius:8px;padding:12px 14px;margin-top:8px;font-size:13px;color:#3730a3;display:flex;align-items:center;gap:10px;">
             ${LOCK_CLOSED_SVG} <span><strong>${esc(leg.name||'Unnamed stay')}</strong> is locked — ${buildLockBtn(false,'toggleHotelLegLock('+li+')','unlock')} to edit</span>
@@ -11801,6 +11800,10 @@ function removeExtraLegItem(dir, groupIdx, legIdx) {
   tr[key][groupIdx].legs.splice(legIdx, 1);
   patchTrip({ transportation: tr }, true); render();
 }
+function logConfirmTransport(){ const t=trip(); const lt={...(t.logisticsTouched||{})}; const now=Date.now(); lt.outbound=now; lt.return=now; patchTrip({logisticsTouched:lt},true); render(); }
+function logConfirmHotels(){ const t=trip(); const legs=(t.hotelLegs||[]).map(l=>({...l,updatedAt:Date.now()})); patchTrip({hotelLegs:legs},true); render(); }
+function logTransTs(t){ const tt=t.logisticsTouched||{}; if(tt.outbound&&tt.return) return Math.min(tt.outbound,tt.return); return tt.outbound||tt.return||0; }
+function logHotelsTs(t){ const legs=t.hotelLegs||[]; if(!legs.length) return 0; return Math.min.apply(null, legs.map(l=>l.updatedAt||0)); }
 function touchLog(key){ const t=trip(); const lt={...(t.logisticsTouched||{})}; lt[key]=Date.now(); return lt; }
 function logConfirm(key){ patchTrip({logisticsTouched:touchLog(key)},true); render(); }
 function logConfirmHotel(li){ const t=trip(); const legs=[...(t.hotelLegs||[])]; if(!legs[li])return; legs[li]={...legs[li],updatedAt:Date.now()}; patchTrip({hotelLegs:legs},true); render(); }
@@ -13274,7 +13277,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-29-STAMP";
+var SKIPPER_BUILD="2026-08-29-STAMP2";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
