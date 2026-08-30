@@ -6170,28 +6170,49 @@ function lockedGroupCol(t, g){
       ${legs.map((leg,i)=>lockedLegHTML(t,leg,i,legs.length>1)).join('')}
     </div>`;
 }
+function lockedTransportCard(o){
+  const conf = o.confirmedAt
+    ? `<span style="flex:0 0 auto;font-size:9.5px;font-weight:800;color:#16a34a;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:20px;padding:2px 9px;white-space:nowrap;">\u2713 ${logRel(o.confirmedAt)}</span>`
+    : (o.showUnconfirmed?`<span style="flex:0 0 auto;font-size:9.5px;font-weight:800;color:#c9a227;background:#fffbeb;border:1px solid #fde68a;border-radius:20px;padding:2px 9px;white-space:nowrap;">\u25f7 to confirm</span>`:'');
+  const sub=[o.option,o.company].filter(Boolean).map(esc).join(' \u00b7 ');
+  const meta=[];
+  if(o.estTime) meta.push(`\u23f1\ufe0f ${esc(o.estTime)}`);
+  if(o.cost) meta.push(`<span style="font-weight:800;color:#1a1a2e;">\uD83D\uDCB0 ${o.cost}</span>`);
+  return `
+    <div style="border:1.5px solid #e4e4f0;border-radius:12px;background:#fff;margin-bottom:9px;position:relative;overflow:hidden;">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:${o.accent||'#10b981'};"></div>
+      <div style="padding:11px 13px 11px 15px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+          <div style="font-size:13.5px;font-weight:900;color:#1a1a5e;">${o.icon||''} ${esc(o.title||'')}</div>
+          ${conf}
+        </div>
+        ${sub?`<div style="font-size:12px;font-weight:700;color:#4f46e5;margin-top:2px;">${sub}</div>`:''}
+        ${o.dates?`<div style="font-size:11.5px;color:#555;margin-top:5px;">\uD83D\uDDD3\ufe0f ${o.dates}</div>`:''}
+        ${o.locs?`<div style="font-size:11.5px;color:#555;margin-top:2px;">\uD83D\uDCCD ${o.locs}</div>`:''}
+        ${meta.length?`<div style="font-size:11.5px;color:#555;margin-top:4px;display:flex;gap:14px;flex-wrap:wrap;">${meta.join('')}</div>`:''}
+        ${o.notes?`<div style="font-size:11px;color:#999;font-style:italic;margin-top:5px;word-break:break-word;overflow-wrap:anywhere;">\uD83D\uDCDD ${esc(o.notes)}</div>`:''}
+        ${o.link?lockedLinkHTML(o.link):''}
+      </div>
+    </div>`;
+}
 function lockedGroundHTML(t, key){
   if(((t.transportation||{}).groundHidden||{})[key]) return '';
   const g=t.transportation[key]; if(!g) return '';
-  if(!g.option && !g.notes && !g.cost) return '';
-  const title=(t.transportation[key+'Title'])||(key==='ground'?'🏨 Airport → Resort':'🚗 Resort → Airport');
-  const bits=[];
-  if(g.rentalCompany) bits.push(esc(g.rentalCompany));
-  if(g.estTime) bits.push('~'+esc(String(g.estTime))+(String(g.estTime).match(/[a-z]/i)?'':' min'));
-  if(g.cost!=null&&g.cost!=='') bits.push(curSym(t)+g.cost);
-  const gdates=[g.pickupDate?fmtDateShort(g.pickupDate):'', g.dropoffDate?fmtDateShort(g.dropoffDate):''].filter(Boolean).join(' → ');
-  const glocs=[g.pickupLocation?esc(g.pickupLocation):'', g.dropoffLocation?esc(g.dropoffLocation):''].filter(Boolean).join(' → ');
-  return `
-    <div style="border:1px solid #ececf3;border-radius:10px;padding:9px 12px;background:#fafafe;margin-bottom:10px;">
-      <div style="font-size:11.5px;font-weight:800;color:#1a1a5e;">${esc(title)}</div>
-      <div style="font-size:12.5px;font-weight:700;color:#333;margin-top:1px;">${g.option?esc(g.option):'—'}${bits.length?` <span style="color:#999;font-weight:600;">· ${bits.join(' · ')}</span>`:''}</div>
-      ${gdates?`<div style="font-size:11.5px;color:#555;margin-top:2px;">🗓️ ${gdates}</div>`:''}
-      ${glocs?`<div style="font-size:11.5px;color:#555;margin-top:1px;">📍 ${glocs}</div>`:''}
-      ${g.notes?`<div style="font-size:11px;color:#999;font-style:italic;margin-top:2px;word-break:break-word;overflow-wrap:anywhere;">📝 ${esc(g.notes)}</div>`:''}
-      ${lockedLinkHTML(g.link)}
-      ${g.confirmedAt?`<div style="font-size:10.5px;font-weight:800;color:#16a34a;margin-top:3px;">✓ Confirmed ${logRel(g.confirmedAt)}</div>`:''}
-    </div>`;
+  if(!g.option && !g.notes && !g.cost && !g.pickupLocation && !g.dropoffLocation) return '';
+  const title=(t.transportation[key+'Title'])||(key==='ground'?'Airport \u2192 Resort':'Resort \u2192 Airport');
+  const icon=key==='ground'?'\uD83C\uDFE8':'\uD83D\uDE97';
+  const gdates=[g.pickupDate?fmtDateShort(g.pickupDate):'', g.dropoffDate?fmtDateShort(g.dropoffDate):''].filter(Boolean).join(' \u2192 ');
+  const glocs=[g.pickupLocation?esc(g.pickupLocation):'', g.dropoffLocation?esc(g.dropoffLocation):''].filter(Boolean).join(' \u2192 ');
+  const estTime = g.estTime ? ('~'+String(g.estTime)+(String(g.estTime).match(/[a-z]/i)?'':' min')) : '';
+  return lockedTransportCard({
+    icon, title, accent:'#6366f1',
+    option:g.option||'', company:g.rentalCompany||'',
+    dates:gdates, locs:glocs, estTime,
+    cost:(g.cost!=null&&g.cost!=='')?(curSym(t)+g.cost):'',
+    notes:g.notes||'', link:g.link||'', confirmedAt:g.confirmedAt, showUnconfirmed:false
+  });
 }
+
 function buildLockedTransport(t){
   let html='';
   [['outbound','🛫 Outbound'],['return','🛬 Return']].forEach(([dir,label])=>{
@@ -6286,25 +6307,20 @@ function sumExtraSegments(t){ return ((t.transportation||{}).extraSegments||[]).
 
 // Locked read-only render of the extra segments
 function lockedSegmentsHTML(t){
-  const segs=((t.transportation||{}).extraSegments||[]).filter(s=>s.title||s.option||s.notes||s.cost||s.startDate);
+  const segs=((t.transportation||{}).extraSegments||[]).filter(s=>s.title||s.option||s.notes||s.cost||s.startDate||s.pickupLocation);
   if(!segs.length) return '';
   const cards=segs.map(seg=>{
-    const dates=[seg.startDate?fmtDateShort(seg.startDate):'', seg.endDate?fmtDateShort(seg.endDate):''].filter(Boolean).join(' → ');
-    const locs=[seg.pickupLocation?esc(seg.pickupLocation):'', seg.dropoffLocation?esc(seg.dropoffLocation):''].filter(Boolean).join(' → ');
-    const bits=[];
-    if(seg.rentalCompany) bits.push(esc(seg.rentalCompany));
-    if(dates) bits.push(dates);
-    if(seg.cost!=null&&seg.cost!=='') bits.push(curSym(t)+seg.cost);
-    return `<div style="border:1px solid #ececf3;border-radius:10px;padding:9px 12px;background:#fafffb;margin-bottom:8px;">
-      <div style="font-size:12.5px;font-weight:900;color:#1a1a5e;">${segTypeIcon(seg.option)} ${esc(seg.title||seg.option||'Transportation')}</div>
-      <div style="font-size:12px;font-weight:700;color:#333;margin-top:1px;">${seg.option&&seg.option!==(seg.title||'')?esc(seg.option):''}${bits.length?` <span style="color:#999;font-weight:600;">${seg.option?'· ':''}${bits.join(' · ')}</span>`:''}</div>
-      ${locs?`<div style="font-size:11.5px;color:#555;margin-top:2px;">📍 ${locs}</div>`:''}
-      ${seg.notes?`<div style="font-size:11px;color:#999;font-style:italic;margin-top:2px;word-break:break-word;overflow-wrap:anywhere;">📝 ${esc(seg.notes)}</div>`:''}
-      ${lockedLinkHTML(seg.link)}
-      ${seg.confirmedAt?`<div style="font-size:10.5px;font-weight:800;color:#16a34a;margin-top:3px;">✓ Confirmed ${logRel(seg.confirmedAt)}</div>`:`<div style="font-size:10.5px;font-weight:700;color:#c9a227;margin-top:3px;">◷ Not yet confirmed</div>`}
-    </div>`;
+    const dates=[seg.startDate?fmtDateShort(seg.startDate):'', seg.endDate?fmtDateShort(seg.endDate):''].filter(Boolean).join(' \u2192 ');
+    const locs=[seg.pickupLocation?esc(seg.pickupLocation):'', seg.dropoffLocation?esc(seg.dropoffLocation):''].filter(Boolean).join(' \u2192 ');
+    return lockedTransportCard({
+      icon:segTypeIcon(seg.option), title:seg.title||seg.option||'Transportation', accent:'#10b981',
+      option:(seg.option&&seg.option!==(seg.title||''))?seg.option:'',
+      company:seg.rentalCompany||'', dates, locs,
+      cost:(seg.cost!=null&&seg.cost!=='')?(curSym(t)+seg.cost):'',
+      notes:seg.notes||'', link:seg.link||'', confirmedAt:seg.confirmedAt, showUnconfirmed:true
+    });
   }).join('');
-  return `<div style="font-size:13px;font-weight:900;color:#1a1a5e;margin:2px 0 8px;">🚗 Other Transportation</div>${cards}`;
+  return `<div style="font-size:13px;font-weight:900;color:#1a1a5e;margin:6px 0 8px;">\uD83D\uDE97 Other Transportation</div>${cards}`;
 }
 
 function buildTransportation(t) {
@@ -13536,7 +13552,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-29-DROPOFF2";
+var SKIPPER_BUILD="2026-08-29-LOCKPRETTY";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
