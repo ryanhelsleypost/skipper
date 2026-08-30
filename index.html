@@ -1439,7 +1439,7 @@ function patchTrip(updates, skipRender) {
 // --- Blank objects ---------------------------------
 
 function blankLeg() {
-  return { id: uid(), origin:'', destination:'', airline:'', flightNum:'', departDate:'', departTime:'', arriveDate:'', arriveTime:'', seat:'', confirmationNum:'', notes:'', cost:null, travelers:[] };
+  return { id: uid(), origin:'', destination:'', airline:'', flightNum:'', departDate:'', departTime:'', arriveDate:'', arriveTime:'', seat:'', confirmationNum:'', notes:'', link:'', cost:null, travelers:[] };
 }
 
 function blankResort() {
@@ -6121,6 +6121,8 @@ function buildDpClockBtn(t, dir, label) {
 }
 
 // ═══════════ LOCKED (read-only) TRANSPORTATION SUMMARY ═══════════
+function normUrl(u){ u=String(u||'').trim(); if(!u)return''; if(!/^https?:\/\//i.test(u)) u='https://'+u; return u; }
+function lockedLinkHTML(url){ const u=normUrl(url); if(!u)return''; return `<div style="margin-top:4px;"><a href="${esc(u)}" target="_blank" rel="noopener" style="font-size:11px;font-weight:800;color:#4f46e5;text-decoration:none;">\uD83D\uDD17 Open link</a></div>`; }
 function _legTravelerEmojis(t, leg){
   return (leg.travelers||[]).map(id=>{const m=(t.partyMembers||[]).find(m=>m.id===id);return m?`<span title="${esc(m.name)}">${m.emoji||'🧑'}</span>`:'';}).join('');
 }
@@ -6150,7 +6152,8 @@ function lockedLegHTML(t, leg, i, showN){
       ${dep?`<div style="font-size:11.5px;color:#555;">🛫 ${dep}</div>`:''}
       ${arr?`<div style="font-size:11.5px;color:#555;">🛬 ${arr}</div>`:''}
       ${bits.length?`<div style="font-size:11px;color:#888;margin-top:2px;">${bits.join(' · ')}</div>`:''}
-      ${leg.notes?`<div style="font-size:11px;color:#999;font-style:italic;margin-top:2px;">📝 ${esc(leg.notes)}</div>`:''}
+      ${leg.notes?`<div style="font-size:11px;color:#999;font-style:italic;margin-top:2px;word-break:break-word;overflow-wrap:anywhere;">📝 ${esc(leg.notes)}</div>`:''}
+      ${lockedLinkHTML(leg.link)}
       ${leg.confirmedAt?`<div style="font-size:10.5px;font-weight:800;color:#16a34a;margin-top:4px;">✓ Confirmed ${logRel(leg.confirmedAt)}</div>`:`<div style="font-size:10.5px;font-weight:700;color:#c9a227;margin-top:4px;">◷ Not yet confirmed</div>`}
     </div>`;
 }
@@ -6179,7 +6182,8 @@ function lockedGroundHTML(t, key){
     <div style="border:1px solid #ececf3;border-radius:10px;padding:9px 12px;background:#fafafe;margin-bottom:10px;">
       <div style="font-size:11.5px;font-weight:800;color:#1a1a5e;">${esc(title)}</div>
       <div style="font-size:12.5px;font-weight:700;color:#333;margin-top:1px;">${g.option?esc(g.option):'—'}${bits.length?` <span style="color:#999;font-weight:600;">· ${bits.join(' · ')}</span>`:''}</div>
-      ${g.notes?`<div style="font-size:11px;color:#999;font-style:italic;margin-top:2px;">📝 ${esc(g.notes)}</div>`:''}
+      ${g.notes?`<div style="font-size:11px;color:#999;font-style:italic;margin-top:2px;word-break:break-word;overflow-wrap:anywhere;">📝 ${esc(g.notes)}</div>`:''}
+      ${lockedLinkHTML(g.link)}
       ${g.confirmedAt?`<div style="font-size:10.5px;font-weight:800;color:#16a34a;margin-top:3px;">✓ Confirmed ${logRel(g.confirmedAt)}</div>`:''}
     </div>`;
 }
@@ -6206,7 +6210,7 @@ function buildLockedTransport(t){
 
 // ═══════════ ADDITIONAL TRANSPORTATION SEGMENTS (rental car, transfers, parking…) ═══════════
 const SEG_TYPES = ['Rental Car','Shuttle / Transfer','Taxi / Uber','Parking','Train','Other'];
-function blankTransSeg(){ return { id:uid(), title:'', option:'Rental Car', rentalCompany:'', startDate:'', endDate:'', notes:'', cost:null, confirmedAt:null }; }
+function blankTransSeg(){ return { id:uid(), title:'', option:'Rental Car', rentalCompany:'', startDate:'', endDate:'', notes:'', link:'', cost:null, confirmedAt:null }; }
 function addTransSegment(){ const t=trip(); const tr={...t.transportation}; tr.extraSegments=[...(tr.extraSegments||[]), blankTransSeg()]; patchTrip({transportation:tr, logisticsTouched:touchLog('segments')}); render(); }
 function removeTransSegment(idx){ const t=trip(); const tr={...t.transportation}; const segs=[...(tr.extraSegments||[])]; segs.splice(idx,1); tr.extraSegments=segs; patchTrip({transportation:tr, logisticsTouched:touchLog('segments')}); render(); }
 function updTransSeg(idx, field, val){ const t=trip(); const tr={...t.transportation}; const segs=[...(tr.extraSegments||[])]; if(!segs[idx])return; segs[idx]={...segs[idx],[field]:val}; tr.extraSegments=segs; patchTrip({transportation:tr, logisticsTouched:touchLog('segments')}); }
@@ -6248,6 +6252,8 @@ function buildTransSegments(t){
       </div>
       <div class="fg"><label class="lbl">Misc / Confirmation # / Notes</label>
         <input type="text" value="${esc(seg.notes||'')}" placeholder="e.g. conf #, pickup location, drop at MCO…" onchange="updTransSeg(${idx},'notes',this.value)"></div>
+      <div class="fg"><label class="lbl">🔗 Link (optional)</label>
+        <input type="url" value="${esc(seg.link||'')}" placeholder="e.g. rental / booking URL" onchange="updTransSeg(${idx},'link',this.value)"></div>
       <div class="fg"><label class="lbl">💰 Cost <span style="font-size:10px;color:#22c55e;font-weight:700;">→ feeds Budget</span></label>
         <div style="display:flex;align-items:center;gap:5px;max-width:220px;">
           <span style="font-size:13px;color:#aaa;">${sym}</span>
@@ -6280,7 +6286,8 @@ function lockedSegmentsHTML(t){
     return `<div style="border:1px solid #ececf3;border-radius:10px;padding:9px 12px;background:#fafffb;margin-bottom:8px;">
       <div style="font-size:12.5px;font-weight:900;color:#1a1a5e;">${segTypeIcon(seg.option)} ${esc(seg.title||seg.option||'Transportation')}</div>
       <div style="font-size:12px;font-weight:700;color:#333;margin-top:1px;">${seg.option&&seg.option!==(seg.title||'')?esc(seg.option):''}${bits.length?` <span style="color:#999;font-weight:600;">${seg.option?'· ':''}${bits.join(' · ')}</span>`:''}</div>
-      ${seg.notes?`<div style="font-size:11px;color:#999;font-style:italic;margin-top:2px;">📝 ${esc(seg.notes)}</div>`:''}
+      ${seg.notes?`<div style="font-size:11px;color:#999;font-style:italic;margin-top:2px;word-break:break-word;overflow-wrap:anywhere;">📝 ${esc(seg.notes)}</div>`:''}
+      ${lockedLinkHTML(seg.link)}
       ${seg.confirmedAt?`<div style="font-size:10.5px;font-weight:800;color:#16a34a;margin-top:3px;">✓ Confirmed ${logRel(seg.confirmedAt)}</div>`:`<div style="font-size:10.5px;font-weight:700;color:#c9a227;margin-top:3px;">◷ Not yet confirmed</div>`}
     </div>`;
   }).join('');
@@ -6386,6 +6393,9 @@ function buildExtraAirLegs(t, dir, idx, sec, members) {
             <input type="text" value="${esc(leg.notes||'')}" placeholder="e.g. gate, terminal"
               onchange="updExtraLeg('${dir}',${idx},${i},'notes',this.value)"></div>
         </div>
+        <div class="fg"><label class="lbl">🔗 Link (optional)</label>
+          <input type="url" value="${esc(leg.link||'')}" placeholder="e.g. manage-booking URL"
+            onchange="updExtraLeg('${dir}',${idx},${i},'link',this.value)"></div>
       </div>`).join('')}
     <button class="btn-dashed" style="margin-top:4px;margin-bottom:8px;" onclick="addExtraLegItem('${dir}',${idx})">
       ＋ Add Connecting Flight Leg
@@ -6616,6 +6626,9 @@ function buildAirLegs(t, dir, sec) {
             <input type="text" value="${esc(leg.notes||'')}" placeholder="e.g. TSA PreCheck, gate B12"
               onchange="updLeg('${dir}',${i},'notes',this.value)"></div>
         </div>
+        <div class="fg"><label class="lbl">🔗 Link (optional)</label>
+          <input type="url" value="${esc(leg.link||'')}" placeholder="e.g. airline manage-booking / check-in URL"
+            onchange="updLeg('${dir}',${i},'link',this.value)"></div>
       </div>`).join('')}
     <button class="btn-dashed" style="margin-top:10px;" onclick="addLeg('${dir}')">＋ Add Connection / Layover</button>`;
 }
@@ -6716,6 +6729,8 @@ function buildGroundSection(t, key, title) {
         <div class="fg"><label class="lbl">Misc / Confirmation # / Notes</label>
           <input type="text" value="${esc(g.notes)}" placeholder="e.g. booking ref, pickup instructions…" onchange="updGround('${key}','notes',this.value)"></div>
       </div>
+      <div class="fg"><label class="lbl">🔗 Link (optional)</label>
+        <input type="url" value="${esc(g.link||'')}" placeholder="e.g. rental / booking URL" onchange="updGround('${key}','link',this.value)"></div>
       <div class="fg"><label class="lbl">💰 Total Cost <span style="font-size:10px;color:#22c55e;font-weight:700;">→ feeds Budget</span></label>
         <div style="display:flex;align-items:center;gap:5px;max-width:220px;">
           <span style="font-size:13px;color:#aaa;">${sym}</span>
@@ -13465,7 +13480,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-29-SEG";
+var SKIPPER_BUILD="2026-08-29-LINK";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
