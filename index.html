@@ -6118,6 +6118,88 @@ function buildDpClockBtn(t, dir, label) {
   </button>`;
 }
 
+// ═══════════ LOCKED (read-only) TRANSPORTATION SUMMARY ═══════════
+function _legTravelerEmojis(t, leg){
+  return (leg.travelers||[]).map(id=>{const m=(t.partyMembers||[]).find(m=>m.id===id);return m?`<span title="${esc(m.name)}">${m.emoji||'🧑'}</span>`:'';}).join('');
+}
+function lockedFlightGroups(t, dir){
+  const out=[];
+  const main=t.transportation[dir];
+  if(main && (main.legs||[]).some(l=>l.origin||l.flightNum||l.departDate)) out.push({title:'Main party', mode:main.mode||'air', legs:main.legs||[]});
+  const extraKey='extra'+dir.charAt(0).toUpperCase()+dir.slice(1);
+  (t.transportation[extraKey]||[]).forEach((sec,i)=>{
+    if((sec.legs||[]).some(l=>l.origin||l.flightNum||l.departDate)) out.push({title:'Group '+(i+2), mode:sec.mode||'air', legs:sec.legs||[]});
+  });
+  return out;
+}
+function lockedLegHTML(t, leg, i, showN){
+  const conf=String(leg.confirmedAt?'':'');
+  const route = (leg.origin||'—')+' <span style="color:#c7c7d6;">\u2192</span> '+(leg.destination||'—');
+  const dep = [fmtDateShort(leg.departDate), fmt12(leg.departTime)].filter(Boolean).join(' · ');
+  const arr = [fmtDateShort(leg.arriveDate), fmt12(leg.arriveTime)].filter(Boolean).join(' · ');
+  const bits=[];
+  if(leg.seat) bits.push('Seat '+esc(leg.seat));
+  if(leg.confirmationNum) bits.push('Conf '+esc(leg.confirmationNum));
+  return `
+    <div style="border-top:${showN&&i>0?'1px dashed #ececf3':'none'};padding-top:${showN&&i>0?'9px':'0'};margin-top:${showN&&i>0?'9px':'0'};">
+      ${showN?`<div style="font-size:9.5px;font-weight:800;color:#b0b0be;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">Leg ${i+1}</div>`:''}
+      <div style="font-size:14px;font-weight:900;color:#1a1a2e;">${route}</div>
+      <div style="font-size:11.5px;font-weight:700;color:#4f46e5;margin:1px 0 3px;">${leg.airline?esc(leg.airline):''}${leg.flightNum?` <span style="color:#9a9ab0;">#${esc(leg.flightNum)}</span>`:''}</div>
+      ${dep?`<div style="font-size:11.5px;color:#555;">🛫 ${dep}</div>`:''}
+      ${arr?`<div style="font-size:11.5px;color:#555;">🛬 ${arr}</div>`:''}
+      ${bits.length?`<div style="font-size:11px;color:#888;margin-top:2px;">${bits.join(' · ')}</div>`:''}
+      ${leg.notes?`<div style="font-size:11px;color:#999;font-style:italic;margin-top:2px;">📝 ${esc(leg.notes)}</div>`:''}
+      ${leg.confirmedAt?`<div style="font-size:10.5px;font-weight:800;color:#16a34a;margin-top:4px;">✓ Confirmed ${logRel(leg.confirmedAt)}</div>`:`<div style="font-size:10.5px;font-weight:700;color:#c9a227;margin-top:4px;">◷ Not yet confirmed</div>`}
+    </div>`;
+}
+function lockedGroupCol(t, g){
+  const legs=g.legs||[];
+  const travelers=[...new Set(legs.flatMap(l=>l.travelers||[]))];
+  const emojis=travelers.map(id=>{const m=(t.partyMembers||[]).find(m=>m.id===id);return m?`<span title="${esc(m.name)}">${m.emoji||'🧑'}</span>`:'';}).join('');
+  return `
+    <div style="border:1.5px solid #e4e4f0;border-radius:12px;padding:12px 13px;background:#fff;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px;">
+        <span style="font-size:11px;font-weight:900;color:#7c3aed;text-transform:uppercase;letter-spacing:.05em;">${esc(g.title)}</span>
+        <span style="font-size:15px;">${emojis}</span>
+      </div>
+      ${legs.map((leg,i)=>lockedLegHTML(t,leg,i,legs.length>1)).join('')}
+    </div>`;
+}
+function lockedGroundHTML(t, key){
+  const g=t.transportation[key]; if(!g) return '';
+  if(!g.option && !g.notes && !g.cost) return '';
+  const title=(t.transportation[key+'Title'])||(key==='ground'?'🏨 Airport → Resort':'🚗 Resort → Airport');
+  const bits=[];
+  if(g.rentalCompany) bits.push(esc(g.rentalCompany));
+  if(g.estTime) bits.push('~'+esc(String(g.estTime))+(String(g.estTime).match(/[a-z]/i)?'':' min'));
+  if(g.cost!=null&&g.cost!=='') bits.push(curSym(t)+g.cost);
+  return `
+    <div style="border:1px solid #ececf3;border-radius:10px;padding:9px 12px;background:#fafafe;margin-bottom:10px;">
+      <div style="font-size:11.5px;font-weight:800;color:#1a1a5e;">${esc(title)}</div>
+      <div style="font-size:12.5px;font-weight:700;color:#333;margin-top:1px;">${g.option?esc(g.option):'—'}${bits.length?` <span style="color:#999;font-weight:600;">· ${bits.join(' · ')}</span>`:''}</div>
+      ${g.notes?`<div style="font-size:11px;color:#999;font-style:italic;margin-top:2px;">📝 ${esc(g.notes)}</div>`:''}
+      ${g.confirmedAt?`<div style="font-size:10.5px;font-weight:800;color:#16a34a;margin-top:3px;">✓ Confirmed ${logRel(g.confirmedAt)}</div>`:''}
+    </div>`;
+}
+function buildLockedTransport(t){
+  let html='';
+  [['outbound','🛫 Outbound'],['return','🛬 Return']].forEach(([dir,label])=>{
+    const groups=lockedFlightGroups(t,dir);
+    const gkey = dir==='outbound'?'ground':'groundReturn';
+    const groundHtml=lockedGroundHTML(t,gkey);
+    if(!groups.length && !groundHtml) return;
+    html+=`<div style="font-size:13px;font-weight:900;color:#1a1a5e;margin:2px 0 8px;">${label}</div>`;
+    if(groups.length){
+      html+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:10px;margin-bottom:10px;align-items:start;">`;
+      groups.forEach(g=>{ html+=lockedGroupCol(t,g); });
+      html+=`</div>`;
+    }
+    html+=groundHtml;
+  });
+  if(!html) html='<div style="color:#999;font-size:13px;padding:8px 0;">No flights entered yet — unlock to add them.</div>';
+  return html;
+}
+
 function buildTransportation(t) {
   const hasAny = !!(t.transportation?.outbound?.legs?.[0]?.origin || t.transportation?.outbound?.legs?.[0]?.departDate);
   const extraOutbound = t.transportation.extraOutbound || [];
@@ -6128,9 +6210,9 @@ function buildTransportation(t) {
       ${buildLockBtn(transLocked, 'toggleTransportLock', 'Transportation')}
     </div>
     ${transLocked ? `<div style="background:#f0f0ff;border:1px solid #c7d2fe;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;font-size:13px;color:#3730a3;font-weight:700;">
-      🔒 Transportation locked — <button onclick="toggleTransportLock()" style="background:none;border:none;cursor:pointer;color:#1a1a5e;font-weight:800;font-size:13px;text-decoration:underline;font-family:inherit;">click to unlock</button> to make changes
-    </div>` : ''}
-    <fieldset ${transLocked?'disabled':''} style="border:none;margin:0;padding:0;min-width:0;${transLocked?'opacity:.72;':''}">
+      🔒 Locked for the trip — <button onclick="toggleTransportLock()" style="background:none;border:none;cursor:pointer;color:#1a1a5e;font-weight:800;font-size:13px;text-decoration:underline;font-family:inherit;">unlock</button> to edit
+    </div>${buildLockedTransport(t)}` : `
+    <fieldset style="border:none;margin:0;padding:0;min-width:0;">
     ${!hasAny ? `<div class="tab-hint"><span class="th-icon">💡</span><div><strong>Transportation</strong> — Enter your flights for each group. If part of your party is on a different flight, use <em>＋ Add Separate Flight</em> to add a second booking.</div></div>` : ''}
     ${buildTransSection(t,'outbound','🛫 Outbound Trip')}
     ${extraOutbound.map((sec,i)=>buildExtraTransSection(t,'outbound',i,sec,'🛫 Outbound Trip (Group '+(i+2)+')')).join('')}
@@ -6144,7 +6226,7 @@ function buildTransportation(t) {
       ＋ Add Separate Return Flight (different travelers / booking)
     </button>
     ${buildGroundSection(t,'groundReturn','🚗 Getting to the Airport (Resort → Airport)')}
-    </fieldset>
+    </fieldset>`}
   `;
 }
 
@@ -6520,7 +6602,10 @@ function buildGroundSection(t, key, title) {
     : `<span>${esc(displayTitle)}</span> <button onclick="S.ui.editingKey='${editKey}';render()" style="background:none;border:none;font-size:12px;color:#999;cursor:pointer;">✎</button>`;
   return `
     <div class="card">
-      <div class="card-header">${titleHtml}</div>
+      <div class="card-header" style="justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <span>${titleHtml}</span>
+        ${legConfirmChip(g, `groundSetConfirmed('${key}',this.checked)`)}
+      </div>
       <div class="fg">
         <label class="lbl">Transport Option</label>
         <div class="toggle-group">
@@ -6540,7 +6625,7 @@ function buildGroundSection(t, key, title) {
         <div class="fg"><label class="lbl">Est. Travel Time</label>
           ${buildDurationSelect(estMins||g.estTime, 4, `updGround('${key}','estTime',this.value)`)}
         </div>
-        <div class="fg"><label class="lbl">Notes / Confirmation #</label>
+        <div class="fg"><label class="lbl">Misc / Confirmation # / Notes</label>
           <input type="text" value="${esc(g.notes)}" placeholder="e.g. booking ref, pickup instructions…" onchange="updGround('${key}','notes',this.value)"></div>
       </div>
       <div class="fg"><label class="lbl">💰 Total Cost <span style="font-size:10px;color:#22c55e;font-weight:700;">→ feeds Budget</span></label>
@@ -11810,6 +11895,7 @@ function logConfirmTransport(){ const t=trip(); const lt={...(t.logisticsTouched
 function logConfirmHotels(){ const t=trip(); const legs=(t.hotelLegs||[]).map(l=>({...l,updatedAt:Date.now()})); patchTrip({hotelLegs:legs},true); render(); }
 function logTransTs(t){ const tt=t.logisticsTouched||{}; if(tt.outbound&&tt.return) return Math.min(tt.outbound,tt.return); return tt.outbound||tt.return||0; }
 function logHotelsTs(t){ const legs=t.hotelLegs||[]; if(!legs.length) return 0; return Math.min.apply(null, legs.map(l=>l.updatedAt||0)); }
+function groundSetConfirmed(key,checked){ const t=trip(); const g={...t.transportation[key],confirmedAt:checked?Date.now():null}; patchTrip({transportation:{...t.transportation,[key]:g}, logisticsTouched:touchLog(key.indexOf('Return')>=0?'return':'outbound')}); render(); }
 function legSetConfirmed(dir,i,checked){ const t=trip(); const sec={...t.transportation[dir]}; const legs=[...sec.legs]; legs[i]={...legs[i],confirmedAt:checked?Date.now():null}; sec.legs=legs; patchTrip({transportation:{...t.transportation,[dir]:sec}, logisticsTouched:touchLog(dir)}); render(); }
 function extraLegSetConfirmed(dir,groupIdx,legIdx,checked){ const t=trip(); const tr=JSON.parse(JSON.stringify(t.transportation)); const key='extra'+dir.charAt(0).toUpperCase()+dir.slice(1); if(!tr[key]||!tr[key][groupIdx]||!tr[key][groupIdx].legs||!tr[key][groupIdx].legs[legIdx])return; tr[key][groupIdx].legs[legIdx].confirmedAt=checked?Date.now():null; patchTrip({transportation:tr, logisticsTouched:touchLog(dir)}); render(); }
 function legConfirmChip(leg, onchangeCall){
@@ -13291,7 +13377,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-29-STAMP3";
+var SKIPPER_BUILD="2026-08-29-LOCKVIEW";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
