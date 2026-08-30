@@ -5168,8 +5168,10 @@ function resolveTransportActual(t, dir) {
   const groundCost = ground.cost !== null && ground.cost !== undefined && ground.cost !== '' ? parseFloat(ground.cost)||0 : null;
   const flightCost = flightLegs.filter(l => l.cost).reduce((s,l) => s+(parseFloat(l.cost)||0), 0);
 
-  if (groundCost !== null || flightCost > 0) {
-    const total = (groundCost||0) + flightCost;
+  const segCost = dir==='return' ? sumExtraSegments(t) : 0;
+  if (segCost>0) parts.push('+ other transport');
+  if (groundCost !== null || flightCost > 0 || segCost>0) {
+    const total = (groundCost||0) + flightCost + segCost;
     return { actual: total, label: parts.join(' · ') || (dir==='outbound'?'Outbound':'Return'), source:'transport', isLive:true, breakdown:`${curSym(t)}${total.toLocaleString()}` };
   }
 
@@ -6196,8 +6198,93 @@ function buildLockedTransport(t){
     }
     html+=groundHtml;
   });
-  if(!html) html='<div style="color:#999;font-size:13px;padding:8px 0;">No flights entered yet — unlock to add them.</div>';
+  const segHtml=lockedSegmentsHTML(t);
+  if(segHtml) html+=segHtml;
+  if(!html) html='<div style="color:#999;font-size:13px;padding:8px 0;">Nothing entered yet — unlock to add it.</div>';
   return html;
+}
+
+// ═══════════ ADDITIONAL TRANSPORTATION SEGMENTS (rental car, transfers, parking…) ═══════════
+const SEG_TYPES = ['Rental Car','Shuttle / Transfer','Taxi / Uber','Parking','Train','Other'];
+function blankTransSeg(){ return { id:uid(), title:'', option:'Rental Car', rentalCompany:'', startDate:'', endDate:'', notes:'', cost:null, confirmedAt:null }; }
+function addTransSegment(){ const t=trip(); const tr={...t.transportation}; tr.extraSegments=[...(tr.extraSegments||[]), blankTransSeg()]; patchTrip({transportation:tr, logisticsTouched:touchLog('segments')}); render(); }
+function removeTransSegment(idx){ const t=trip(); const tr={...t.transportation}; const segs=[...(tr.extraSegments||[])]; segs.splice(idx,1); tr.extraSegments=segs; patchTrip({transportation:tr, logisticsTouched:touchLog('segments')}); render(); }
+function updTransSeg(idx, field, val){ const t=trip(); const tr={...t.transportation}; const segs=[...(tr.extraSegments||[])]; if(!segs[idx])return; segs[idx]={...segs[idx],[field]:val}; tr.extraSegments=segs; patchTrip({transportation:tr, logisticsTouched:touchLog('segments')}); }
+function transSegSetConfirmed(idx, checked){ const t=trip(); const tr={...t.transportation}; const segs=[...(tr.extraSegments||[])]; if(!segs[idx])return; segs[idx]={...segs[idx],confirmedAt:checked?Date.now():null}; tr.extraSegments=segs; patchTrip({transportation:tr, logisticsTouched:touchLog('segments')}); render(); }
+function segTypeIcon(o){ return {'Rental Car':'🚗','Shuttle / Transfer':'🚐','Taxi / Uber':'🚕','Parking':'🅿️','Train':'🚂','Other':'🧭'}[o]||'🧭'; }
+
+function buildTransSegments(t){
+  const segs = (t.transportation.extraSegments)||[];
+  const sym = curSym(t);
+  const cards = segs.map((seg,idx)=>{
+    const isRental = seg.option==='Rental Car';
+    return `
+    <div class="card" style="border-left:3px solid #10b981;">
+      <div class="card-header" style="justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <span style="display:flex;align-items:center;gap:7px;">
+          <span style="font-size:16px;">${segTypeIcon(seg.option)}</span>
+          <input value="${esc(seg.title||'')}" placeholder="e.g. Post-cruise rental" onchange="updTransSeg(${idx},'title',this.value)"
+            style="font-size:14px;font-weight:800;color:#1a1a5e;border:none;border-bottom:1.5px dashed #d0d0dc;background:transparent;font-family:inherit;padding:2px 2px;max-width:190px;">
+        </span>
+        <span style="display:flex;align-items:center;gap:8px;">
+          ${legConfirmChip(seg, `transSegSetConfirmed(${idx},this.checked)`)}
+          <button class="btn btn-danger btn-sm" onclick="removeTransSegment(${idx})">✕</button>
+        </span>
+      </div>
+      <div class="fg"><label class="lbl">Type</label>
+        <div class="toggle-group">
+          ${SEG_TYPES.map(o=>`<button class="tog-btn${seg.option===o?' active':''}" onclick="updTransSeg(${idx},'option','${o}');render()">${o}</button>`).join('')}
+        </div>
+      </div>
+      ${isRental?`<div class="fg"><label class="lbl">Rental Company</label>
+        <select onchange="updTransSeg(${idx},'rentalCompany',this.value)">
+          ${RENTAL_COMPANIES.map(c=>{ if(c.startsWith('—')) return `<option value="" disabled${!seg.rentalCompany?' selected':''}>${c}</option>`; return `<option value="${esc(c)}"${seg.rentalCompany===c?' selected':''}>${c}</option>`; }).join('')}
+        </select></div>`:''}
+      <div class="form-row">
+        <div class="fg"><label class="lbl">${isRental?'Pick-up Date':'Start Date'}</label>
+          ${buildDP(`dp-seg-${idx}-start`, esc(seg.startDate), `updTransSeg(${idx},'startDate',this.value)`)}</div>
+        <div class="fg"><label class="lbl">${isRental?'Drop-off Date':'End Date'}</label>
+          ${buildDP(`dp-seg-${idx}-end`, esc(seg.endDate), `updTransSeg(${idx},'endDate',this.value)`)}</div>
+      </div>
+      <div class="fg"><label class="lbl">Misc / Confirmation # / Notes</label>
+        <input type="text" value="${esc(seg.notes||'')}" placeholder="e.g. conf #, pickup location, drop at MCO…" onchange="updTransSeg(${idx},'notes',this.value)"></div>
+      <div class="fg"><label class="lbl">💰 Cost <span style="font-size:10px;color:#22c55e;font-weight:700;">→ feeds Budget</span></label>
+        <div style="display:flex;align-items:center;gap:5px;max-width:220px;">
+          <span style="font-size:13px;color:#aaa;">${sym}</span>
+          <input type="number" value="${seg.cost!==null&&seg.cost!==undefined?seg.cost:''}" placeholder="e.g. 240" min="0"
+            onchange="updTransSeg(${idx},'cost',this.value===''?null:parseFloat(this.value))">
+          ${eurHint(seg.cost,t)}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  return `
+    ${segs.length?`<div style="font-size:11px;font-weight:800;color:#10b981;text-transform:uppercase;letter-spacing:.05em;margin:6px 0 8px;">🚗 Other Transportation</div>`:''}
+    ${cards}
+    <button class="btn-dashed" style="margin-bottom:16px;" onclick="addTransSegment()">
+      ＋ Add Other Transportation (rental car, transfer, parking…)
+    </button>`;
+}
+function sumExtraSegments(t){ return ((t.transportation||{}).extraSegments||[]).reduce((s,seg)=>s+(parseFloat(seg.cost)||0),0); }
+
+// Locked read-only render of the extra segments
+function lockedSegmentsHTML(t){
+  const segs=((t.transportation||{}).extraSegments||[]).filter(s=>s.title||s.option||s.notes||s.cost||s.startDate);
+  if(!segs.length) return '';
+  const cards=segs.map(seg=>{
+    const dates=[seg.startDate?fmtDateShort(seg.startDate):'', seg.endDate?fmtDateShort(seg.endDate):''].filter(Boolean).join(' → ');
+    const bits=[];
+    if(seg.rentalCompany) bits.push(esc(seg.rentalCompany));
+    if(dates) bits.push(dates);
+    if(seg.cost!=null&&seg.cost!=='') bits.push(curSym(t)+seg.cost);
+    return `<div style="border:1px solid #ececf3;border-radius:10px;padding:9px 12px;background:#fafffb;margin-bottom:8px;">
+      <div style="font-size:12.5px;font-weight:900;color:#1a1a5e;">${segTypeIcon(seg.option)} ${esc(seg.title||seg.option||'Transportation')}</div>
+      <div style="font-size:12px;font-weight:700;color:#333;margin-top:1px;">${seg.option&&seg.option!==(seg.title||'')?esc(seg.option):''}${bits.length?` <span style="color:#999;font-weight:600;">${seg.option?'· ':''}${bits.join(' · ')}</span>`:''}</div>
+      ${seg.notes?`<div style="font-size:11px;color:#999;font-style:italic;margin-top:2px;">📝 ${esc(seg.notes)}</div>`:''}
+      ${seg.confirmedAt?`<div style="font-size:10.5px;font-weight:800;color:#16a34a;margin-top:3px;">✓ Confirmed ${logRel(seg.confirmedAt)}</div>`:`<div style="font-size:10.5px;font-weight:700;color:#c9a227;margin-top:3px;">◷ Not yet confirmed</div>`}
+    </div>`;
+  }).join('');
+  return `<div style="font-size:13px;font-weight:900;color:#1a1a5e;margin:2px 0 8px;">🚗 Other Transportation</div>${cards}`;
 }
 
 function buildTransportation(t) {
@@ -6226,6 +6313,7 @@ function buildTransportation(t) {
       ＋ Add Separate Return Flight (different travelers / booking)
     </button>
     ${buildGroundSection(t,'groundReturn','🚗 Getting to the Airport (Resort → Airport)')}
+    ${buildTransSegments(t)}
     </fieldset>`}
   `;
 }
@@ -13377,7 +13465,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-29-LOCKVIEW";
+var SKIPPER_BUILD="2026-08-29-SEG";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
