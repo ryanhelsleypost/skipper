@@ -6179,10 +6179,14 @@ function lockedGroundHTML(t, key){
   if(g.rentalCompany) bits.push(esc(g.rentalCompany));
   if(g.estTime) bits.push('~'+esc(String(g.estTime))+(String(g.estTime).match(/[a-z]/i)?'':' min'));
   if(g.cost!=null&&g.cost!=='') bits.push(curSym(t)+g.cost);
+  const gdates=[g.pickupDate?fmtDateShort(g.pickupDate):'', g.dropoffDate?fmtDateShort(g.dropoffDate):''].filter(Boolean).join(' → ');
+  const glocs=[g.pickupLocation?esc(g.pickupLocation):'', g.dropoffLocation?esc(g.dropoffLocation):''].filter(Boolean).join(' → ');
   return `
     <div style="border:1px solid #ececf3;border-radius:10px;padding:9px 12px;background:#fafafe;margin-bottom:10px;">
       <div style="font-size:11.5px;font-weight:800;color:#1a1a5e;">${esc(title)}</div>
       <div style="font-size:12.5px;font-weight:700;color:#333;margin-top:1px;">${g.option?esc(g.option):'—'}${bits.length?` <span style="color:#999;font-weight:600;">· ${bits.join(' · ')}</span>`:''}</div>
+      ${gdates?`<div style="font-size:11.5px;color:#555;margin-top:2px;">🗓️ ${gdates}</div>`:''}
+      ${glocs?`<div style="font-size:11.5px;color:#555;margin-top:1px;">📍 ${glocs}</div>`:''}
       ${g.notes?`<div style="font-size:11px;color:#999;font-style:italic;margin-top:2px;word-break:break-word;overflow-wrap:anywhere;">📝 ${esc(g.notes)}</div>`:''}
       ${lockedLinkHTML(g.link)}
       ${g.confirmedAt?`<div style="font-size:10.5px;font-weight:800;color:#16a34a;margin-top:3px;">✓ Confirmed ${logRel(g.confirmedAt)}</div>`:''}
@@ -6733,6 +6737,18 @@ function buildGroundSection(t, key, title) {
             return `<option value="${esc(c)}"${g.rentalCompany===c?' selected':''}>${c}</option>`;
           }).join('')}
         </select>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label class="lbl">Pick-up Date</label>
+          ${buildDP(`dp-gr-${key}-pu`, esc(g.pickupDate||''), `updGround('${key}','pickupDate',this.value)`)}</div>
+        <div class="fg"><label class="lbl">Pick-up Location</label>
+          <input type="text" value="${esc(g.pickupLocation||'')}" placeholder="e.g. MCO Airport" onchange="updGround('${key}','pickupLocation',this.value)"></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label class="lbl">Drop-off Date</label>
+          ${buildDP(`dp-gr-${key}-do`, esc(g.dropoffDate||''), `updGround('${key}','dropoffDate',this.value)`)}</div>
+        <div class="fg"><label class="lbl">Drop-off Location</label>
+          <input type="text" value="${esc(g.dropoffLocation||'')}" placeholder="e.g. Resort / Port" onchange="updGround('${key}','dropoffLocation',this.value)"></div>
       </div>` : ''}
       <div class="form-row">
         <div class="fg"><label class="lbl">Est. Travel Time</label>
@@ -13520,7 +13536,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-29-DROPOFF";
+var SKIPPER_BUILD="2026-08-29-DROPOFF2";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
