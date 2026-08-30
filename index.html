@@ -11032,8 +11032,9 @@ function buildHotel(t) {
 
   return `
     <div class="card">
-      <div class="card-header" style="justify-content:space-between;align-items:center;">
+      <div class="card-header" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
         <span>🏨 Hotel / Resort Stays</span>
+        ${legs.length>1?`<button onclick="sortHotelLegsByDate()" title="Reorder stays by check-in date" style="font-size:11.5px;font-weight:800;border-radius:20px;padding:5px 12px;cursor:pointer;font-family:inherit;border:1.5px solid ${hotelLegsOutOfOrder(t)?'#f59e0b':'#c7d2fe'};background:${hotelLegsOutOfOrder(t)?'#fffbeb':'#eef2ff'};color:${hotelLegsOutOfOrder(t)?'#b45309':'#4f46e5'};">⇅ Sort by date${hotelLegsOutOfOrder(t)?' ⚠️':''}</button>`:''}
       </div>
       ${!legs.length ? `<div class="tab-hint"><span class="th-icon">💡</span><div><strong>Hotel / Resort</strong> — Add each place you're staying as a separate "leg." Perfect for split stays (e.g., Disney resort + cruise ship). Check-in times automatically flow into your Day Schedule.</div></div>` : ''}
       <p style="font-size:13px;color:#777;margin-bottom:16px;">Add each hotel stay as a separate leg — perfect for split stays or pre/post-cruise hotels. Check-in times feed into your Day Schedule.</p>
@@ -11053,6 +11054,10 @@ function buildHotel(t) {
               ${(leg.travelers||[]).length ? `<span style="display:flex;gap:3px;">${(leg.travelers||[]).map(id=>{const m=(t.partyMembers||[]).find(m=>m.id===id);return m?`<span style="font-size:16px;" title="${esc(m.name)}">${m.emoji||'🧑'}</span>`:''}).join('')}</span>` : ''}
             </span>
             <span style="display:flex;gap:6px;align-items:center;">
+              ${legs.length>1?`<span style="display:flex;flex-direction:column;gap:1px;margin-right:2px;">
+                <button onclick="moveHotelLeg(${li},-1)" ${li===0?'disabled':''} title="Move up" style="border:1px solid #e0e0ea;background:${li===0?'#f6f6fa':'#fff'};color:${li===0?'#d0d0dc':'#4f46e5'};border-radius:5px;width:24px;height:17px;line-height:1;font-size:10px;cursor:${li===0?'default':'pointer'};padding:0;">▲</button>
+                <button onclick="moveHotelLeg(${li},1)" ${li===legs.length-1?'disabled':''} title="Move down" style="border:1px solid #e0e0ea;background:${li===legs.length-1?'#f6f6fa':'#fff'};color:${li===legs.length-1?'#d0d0dc':'#4f46e5'};border-radius:5px;width:24px;height:17px;line-height:1;font-size:10px;cursor:${li===legs.length-1?'default':'pointer'};padding:0;">▼</button>
+              </span>`:''}
               ${buildLockBtn(leg.locked||false,'toggleHotelLegLock('+li+')','Leg '+(li+1))}
               ${!leg.locked?`<button class="leg-remove" onclick="removeHotelLeg(${li})" title="Remove this stay">✕</button>`:''}
             </span>
@@ -12511,6 +12516,25 @@ function buildHotelTravelerPicker(leg, li, members) {
   html += '</div>';
   return html;
 }
+function sortHotelLegsByDate(){
+  const t=trip(); const legs=[...(t.hotelLegs||[])];
+  legs.sort(function(a,b){
+    const ka=(a.checkInDate||'')||'9999-99-99'; const kb=(b.checkInDate||'')||'9999-99-99';
+    return ka<kb?-1:ka>kb?1:0;
+  });
+  patchTrip({hotelLegs:legs}, true); render();
+}
+function moveHotelLeg(li, delta){
+  const t=trip(); const legs=[...(t.hotelLegs||[])]; const j=li+delta;
+  if(j<0||j>=legs.length) return;
+  const tmp=legs[li]; legs[li]=legs[j]; legs[j]=tmp;
+  patchTrip({hotelLegs:legs}, true); render();
+}
+function hotelLegsOutOfOrder(t){
+  const legs=(t.hotelLegs||[]).filter(l=>l.checkInDate);
+  for(let i=1;i<legs.length;i++){ if(legs[i].checkInDate < legs[i-1].checkInDate) return true; }
+  return false;
+}
 function toggleHotelLegLock(li) {
   const t=trip(); const legs=[...(t.hotelLegs||[])];
   legs[li]={...legs[li], locked: !legs[li].locked};
@@ -13488,7 +13512,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-29-GRM";
+var SKIPPER_BUILD="2026-08-29-HSORT";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
