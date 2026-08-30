@@ -5153,7 +5153,7 @@ function resolveTransportActual(t, dir) {
   // Check the ground sections
   const groundKey = dir === 'outbound' ? 'ground' : 'groundReturn';
   const flightDir = dir === 'outbound' ? 'outbound' : 'return';
-  const ground = tr[groundKey] || {};
+  const ground = ((tr.groundHidden||{})[groundKey]) ? {} : (tr[groundKey] || {});
   const flightLegs = ((tr[flightDir]||{}).legs||[]);
   const firstLeg = flightLegs[0] || {};
 
@@ -6171,6 +6171,7 @@ function lockedGroupCol(t, g){
     </div>`;
 }
 function lockedGroundHTML(t, key){
+  if(((t.transportation||{}).groundHidden||{})[key]) return '';
   const g=t.transportation[key]; if(!g) return '';
   if(!g.option && !g.notes && !g.cost) return '';
   const title=(t.transportation[key+'Title'])||(key==='ground'?'🏨 Airport → Resort':'🚗 Resort → Airport');
@@ -6313,13 +6314,13 @@ function buildTransportation(t) {
     <button class="btn-dashed" style="margin-bottom:16px;" onclick="addExtraFlight('outbound')">
       ＋ Add Separate Outbound Flight (different travelers / booking)
     </button>
-    ${buildGroundSection(t,'ground','🏨 Getting to the Resort (Airport → Resort)')}
+    ${groundSlot(t,'ground','🏨 Getting to the Resort (Airport → Resort)')}
     ${buildTransSection(t,'return','🛬 Return Trip')}
     ${extraReturn.map((sec,i)=>buildExtraTransSection(t,'return',i,sec,'🛬 Return Trip (Group '+(i+2)+')')).join('')}
     <button class="btn-dashed" style="margin-bottom:16px;" onclick="addExtraFlight('return')">
       ＋ Add Separate Return Flight (different travelers / booking)
     </button>
-    ${buildGroundSection(t,'groundReturn','🚗 Getting to the Airport (Resort → Airport)')}
+    ${groundSlot(t,'groundReturn','🚗 Getting to the Airport (Resort → Airport)')}
     ${buildTransSegments(t)}
     </fieldset>`}
   `;
@@ -6705,7 +6706,10 @@ function buildGroundSection(t, key, title) {
     <div class="card">
       <div class="card-header" style="justify-content:space-between;flex-wrap:wrap;gap:8px;">
         <span>${titleHtml}</span>
-        ${legConfirmChip(g, `groundSetConfirmed('${key}',this.checked)`)}
+        <span style="display:flex;align-items:center;gap:8px;">
+          ${legConfirmChip(g, `groundSetConfirmed('${key}',this.checked)`)}
+          <button class="btn btn-danger btn-sm" onclick="removeGroundSection('${key}')" title="Remove this section">✕</button>
+        </span>
       </div>
       <div class="fg">
         <label class="lbl">Transport Option</label>
@@ -11998,6 +12002,10 @@ function logConfirmTransport(){ const t=trip(); const lt={...(t.logisticsTouched
 function logConfirmHotels(){ const t=trip(); const legs=(t.hotelLegs||[]).map(l=>({...l,updatedAt:Date.now()})); patchTrip({hotelLegs:legs},true); render(); }
 function logTransTs(t){ const tt=t.logisticsTouched||{}; if(tt.outbound&&tt.return) return Math.min(tt.outbound,tt.return); return tt.outbound||tt.return||0; }
 function logHotelsTs(t){ const legs=t.hotelLegs||[]; if(!legs.length) return 0; return Math.min.apply(null, legs.map(l=>l.updatedAt||0)); }
+function groundHiddenMap(t){ return (t.transportation&&t.transportation.groundHidden)||{}; }
+function removeGroundSection(key){ if(!confirm('Remove this transportation section? Its details are kept — you can add it back anytime.'))return; const t=trip(); const tr={...t.transportation}; tr.groundHidden={...(tr.groundHidden||{}),[key]:true}; patchTrip({transportation:tr, logisticsTouched:touchLog(key.indexOf('Return')>=0?'return':'outbound')}); render(); }
+function restoreGroundSection(key){ const t=trip(); const tr={...t.transportation}; tr.groundHidden={...(tr.groundHidden||{})}; delete tr.groundHidden[key]; patchTrip({transportation:tr}); render(); }
+function groundSlot(t, key, title){ if(groundHiddenMap(t)[key]) return `<button class="btn-dashed" style="margin-bottom:16px;" onclick="restoreGroundSection('${key}')">＋ Add: ${esc(title)}</button>`; return buildGroundSection(t,key,title); }
 function groundSetConfirmed(key,checked){ const t=trip(); const g={...t.transportation[key],confirmedAt:checked?Date.now():null}; patchTrip({transportation:{...t.transportation,[key]:g}, logisticsTouched:touchLog(key.indexOf('Return')>=0?'return':'outbound')}); render(); }
 function legSetConfirmed(dir,i,checked){ const t=trip(); const sec={...t.transportation[dir]}; const legs=[...sec.legs]; legs[i]={...legs[i],confirmedAt:checked?Date.now():null}; sec.legs=legs; patchTrip({transportation:{...t.transportation,[dir]:sec}, logisticsTouched:touchLog(dir)}); render(); }
 function extraLegSetConfirmed(dir,groupIdx,legIdx,checked){ const t=trip(); const tr=JSON.parse(JSON.stringify(t.transportation)); const key='extra'+dir.charAt(0).toUpperCase()+dir.slice(1); if(!tr[key]||!tr[key][groupIdx]||!tr[key][groupIdx].legs||!tr[key][groupIdx].legs[legIdx])return; tr[key][groupIdx].legs[legIdx].confirmedAt=checked?Date.now():null; patchTrip({transportation:tr, logisticsTouched:touchLog(dir)}); render(); }
@@ -13480,7 +13488,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-29-LINK";
+var SKIPPER_BUILD="2026-08-29-GRM";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
