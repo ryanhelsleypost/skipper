@@ -6211,7 +6211,7 @@ function buildLockedTransport(t){
 
 // ═══════════ ADDITIONAL TRANSPORTATION SEGMENTS (rental car, transfers, parking…) ═══════════
 const SEG_TYPES = ['Rental Car','Shuttle / Transfer','Taxi / Uber','Parking','Train','Other'];
-function blankTransSeg(){ return { id:uid(), title:'', option:'Rental Car', rentalCompany:'', startDate:'', endDate:'', notes:'', link:'', cost:null, confirmedAt:null }; }
+function blankTransSeg(){ return { id:uid(), title:'', option:'Rental Car', rentalCompany:'', startDate:'', endDate:'', pickupLocation:'', dropoffLocation:'', notes:'', link:'', cost:null, confirmedAt:null }; }
 function addTransSegment(){ const t=trip(); const tr={...t.transportation}; tr.extraSegments=[...(tr.extraSegments||[]), blankTransSeg()]; patchTrip({transportation:tr, logisticsTouched:touchLog('segments')}); render(); }
 function removeTransSegment(idx){ const t=trip(); const tr={...t.transportation}; const segs=[...(tr.extraSegments||[])]; segs.splice(idx,1); tr.extraSegments=segs; patchTrip({transportation:tr, logisticsTouched:touchLog('segments')}); render(); }
 function updTransSeg(idx, field, val){ const t=trip(); const tr={...t.transportation}; const segs=[...(tr.extraSegments||[])]; if(!segs[idx])return; segs[idx]={...segs[idx],[field]:val}; tr.extraSegments=segs; patchTrip({transportation:tr, logisticsTouched:touchLog('segments')}); }
@@ -6248,8 +6248,14 @@ function buildTransSegments(t){
       <div class="form-row">
         <div class="fg"><label class="lbl">${isRental?'Pick-up Date':'Start Date'}</label>
           ${buildDP(`dp-seg-${idx}-start`, esc(seg.startDate), `updTransSeg(${idx},'startDate',this.value)`)}</div>
+        <div class="fg"><label class="lbl">${isRental?'Pick-up Location':'From'}</label>
+          <input type="text" value="${esc(seg.pickupLocation||'')}" placeholder="e.g. MCO Airport" onchange="updTransSeg(${idx},'pickupLocation',this.value)"></div>
+      </div>
+      <div class="form-row">
         <div class="fg"><label class="lbl">${isRental?'Drop-off Date':'End Date'}</label>
           ${buildDP(`dp-seg-${idx}-end`, esc(seg.endDate), `updTransSeg(${idx},'endDate',this.value)`)}</div>
+        <div class="fg"><label class="lbl">${isRental?'Drop-off Location':'To'}</label>
+          <input type="text" value="${esc(seg.dropoffLocation||'')}" placeholder="e.g. Port Canaveral" onchange="updTransSeg(${idx},'dropoffLocation',this.value)"></div>
       </div>
       <div class="fg"><label class="lbl">Misc / Confirmation # / Notes</label>
         <input type="text" value="${esc(seg.notes||'')}" placeholder="e.g. conf #, pickup location, drop at MCO…" onchange="updTransSeg(${idx},'notes',this.value)"></div>
@@ -6280,6 +6286,7 @@ function lockedSegmentsHTML(t){
   if(!segs.length) return '';
   const cards=segs.map(seg=>{
     const dates=[seg.startDate?fmtDateShort(seg.startDate):'', seg.endDate?fmtDateShort(seg.endDate):''].filter(Boolean).join(' → ');
+    const locs=[seg.pickupLocation?esc(seg.pickupLocation):'', seg.dropoffLocation?esc(seg.dropoffLocation):''].filter(Boolean).join(' → ');
     const bits=[];
     if(seg.rentalCompany) bits.push(esc(seg.rentalCompany));
     if(dates) bits.push(dates);
@@ -6287,6 +6294,7 @@ function lockedSegmentsHTML(t){
     return `<div style="border:1px solid #ececf3;border-radius:10px;padding:9px 12px;background:#fafffb;margin-bottom:8px;">
       <div style="font-size:12.5px;font-weight:900;color:#1a1a5e;">${segTypeIcon(seg.option)} ${esc(seg.title||seg.option||'Transportation')}</div>
       <div style="font-size:12px;font-weight:700;color:#333;margin-top:1px;">${seg.option&&seg.option!==(seg.title||'')?esc(seg.option):''}${bits.length?` <span style="color:#999;font-weight:600;">${seg.option?'· ':''}${bits.join(' · ')}</span>`:''}</div>
+      ${locs?`<div style="font-size:11.5px;color:#555;margin-top:2px;">📍 ${locs}</div>`:''}
       ${seg.notes?`<div style="font-size:11px;color:#999;font-style:italic;margin-top:2px;word-break:break-word;overflow-wrap:anywhere;">📝 ${esc(seg.notes)}</div>`:''}
       ${lockedLinkHTML(seg.link)}
       ${seg.confirmedAt?`<div style="font-size:10.5px;font-weight:800;color:#16a34a;margin-top:3px;">✓ Confirmed ${logRel(seg.confirmedAt)}</div>`:`<div style="font-size:10.5px;font-weight:700;color:#c9a227;margin-top:3px;">◷ Not yet confirmed</div>`}
@@ -13512,7 +13520,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-29-HSORT";
+var SKIPPER_BUILD="2026-08-29-DROPOFF";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
