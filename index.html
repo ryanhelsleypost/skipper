@@ -6271,6 +6271,7 @@ function buildTransSection(t, dir, title) {
         ${buildTransTitle(t,dir,title)}
         ${buildDpClockBtn(t, dir, label)}
       </div>
+      ${logStampHTML((t.logisticsTouched||{})[dir], `logConfirm('${dir}')`)}
       <div class="fg">
         <label class="lbl">Travel Mode</label>
         <div class="toggle-group">
@@ -10858,6 +10859,7 @@ function buildHotel(t) {
               ${!leg.locked?`<button class="leg-remove" onclick="removeHotelLeg(${li})" title="Remove this stay">✕</button>`:''}
             </span>
           </div>
+          ${logStampHTML(leg.updatedAt, `logConfirmHotel(${li})`)}
 
           ${leg.locked ? `<div style="background:#f0f4ff;border:1px solid #c7d2fe;border-radius:8px;padding:12px 14px;margin-top:8px;font-size:13px;color:#3730a3;display:flex;align-items:center;gap:10px;">
             ${LOCK_CLOSED_SVG} <span><strong>${esc(leg.name||'Unnamed stay')}</strong> is locked — ${buildLockBtn(false,'toggleHotelLegLock('+li+')','unlock')} to edit</span>
@@ -11799,40 +11801,53 @@ function removeExtraLegItem(dir, groupIdx, legIdx) {
   tr[key][groupIdx].legs.splice(legIdx, 1);
   patchTrip({ transportation: tr }, true); render();
 }
+function touchLog(key){ const t=trip(); const lt={...(t.logisticsTouched||{})}; lt[key]=Date.now(); return lt; }
+function logConfirm(key){ patchTrip({logisticsTouched:touchLog(key)},true); render(); }
+function logConfirmHotel(li){ const t=trip(); const legs=[...(t.hotelLegs||[])]; if(!legs[li])return; legs[li]={...legs[li],updatedAt:Date.now()}; patchTrip({hotelLegs:legs},true); render(); }
+function logRel(ts){ if(!ts)return''; const days=Math.floor((Date.now()-ts)/86400000); if(days<=0)return'today'; if(days===1)return'yesterday'; if(days<7)return days+' days ago'; if(days<14)return'over a week ago'; return 'on '+fmtDateShort(new Date(ts).toISOString().slice(0,10)); }
+function logStampHTML(ts, confirmCall){
+  const has=!!ts; const days=has?Math.floor((Date.now()-ts)/86400000):999;
+  const color=!has?'#9a9ab0':(days>=14?'#b45309':'#16a34a');
+  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;">
+    <span style="font-size:11px;font-weight:700;color:${color};">${has?('\u2713 Confirmed '+logRel(ts)):'Not yet confirmed'}</span>
+    <button onclick="${confirmCall}" title="Stamp this section as checked & correct" style="font-size:10.5px;font-weight:800;color:#4f46e5;background:#eef2ff;border:1px solid #c7d2fe;border-radius:20px;padding:3px 11px;cursor:pointer;font-family:inherit;">\u2713 Confirm now</button>
+  </div>`;
+}
+
 function updExtraLeg(dir, groupIdx, legIdx, field, val) {
   const t = trip();
   const tr = JSON.parse(JSON.stringify(t.transportation));
   const key = 'extra' + dir.charAt(0).toUpperCase() + dir.slice(1);
   if (!tr[key]?.[groupIdx]?.legs?.[legIdx]) return;
   tr[key][groupIdx].legs[legIdx][field] = val;
-  patchTrip({ transportation: tr }); persist();
+  patchTrip({ transportation: tr, logisticsTouched: touchLog(dir) }); persist();
 }
 function updLeg(dir,i,field,val) {
   const t=trip(); const sec={...t.transportation[dir]}; const legs=[...sec.legs];
   legs[i]={...legs[i],[field]:val}; sec.legs=legs;
-  patchTrip({transportation:{...t.transportation,[dir]:sec}});
+  patchTrip({transportation:{...t.transportation,[dir]:sec}, logisticsTouched: touchLog(dir)});
 }
 function addLeg(dir) {
   const t=trip(); const sec={...t.transportation[dir]};
   sec.legs=[...(sec.legs||[]),blankLeg()];
-  patchTrip({transportation:{...t.transportation,[dir]:sec}}); render();
+  patchTrip({transportation:{...t.transportation,[dir]:sec}, logisticsTouched: touchLog(dir)}); render();
 }
 function removeLeg(dir,i) {
   const t=trip(); const sec={...t.transportation[dir]}; const legs=[...(sec.legs||[])];
   legs.splice(i,1); sec.legs=legs;
-  patchTrip({transportation:{...t.transportation,[dir]:sec}}); render();
+  patchTrip({transportation:{...t.transportation,[dir]:sec}, logisticsTouched: touchLog(dir)}); render();
 }
 function updTransField(dir,field,val) {
   const t=trip(); const sec={...t.transportation[dir],[field]:val};
-  patchTrip({transportation:{...t.transportation,[dir]:sec}});
+  patchTrip({transportation:{...t.transportation,[dir]:sec}, logisticsTouched: touchLog(dir)});
 }
 function setGround(key,opt) {
   const t=trip(); const g={...t.transportation[key],option:opt};
-  patchTrip({transportation:{...t.transportation,[key]:g}}); render();
+  patchTrip({transportation:{...t.transportation,[key]:g}, logisticsTouched: touchLog(key.indexOf('Return')>=0?'return':'outbound')}); render();
 }
 function updGround(key,field,val) {
   const t=trip(); const g={...t.transportation[key],[field]:val};
-  patchTrip({transportation:{...t.transportation,[key]:g}});
+  patchTrip({transportation:{...t.transportation,[key]:g}, logisticsTouched: touchLog(key.indexOf('Return')>=0?'return':'outbound')});
 }
 function setChecklistStatus(mid, status) {
   const t = trip();
@@ -12297,7 +12312,7 @@ function removeHotelLeg(li) {
 }
 function updHotelLeg(li,field,val) {
   const t=trip(); const legs=[...(t.hotelLegs||[])];
-  legs[li]={...legs[li],[field]:val};
+  legs[li]={...legs[li],[field]:val,updatedAt:Date.now()};
   patchTrip({hotelLegs:legs});
 }
 
@@ -13259,7 +13274,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-29-LEG";
+var SKIPPER_BUILD="2026-08-29-STAMP";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
