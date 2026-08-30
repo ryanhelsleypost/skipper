@@ -1439,7 +1439,7 @@ function patchTrip(updates, skipRender) {
 // --- Blank objects ---------------------------------
 
 function blankLeg() {
-  return { id: uid(), origin:'', destination:'', airline:'', flightNum:'', departDate:'', departTime:'', arriveDate:'', arriveTime:'', seat:'', cost:null, travelers:[] };
+  return { id: uid(), origin:'', destination:'', airline:'', flightNum:'', departDate:'', departTime:'', arriveDate:'', arriveTime:'', seat:'', confirmationNum:'', notes:'', cost:null, travelers:[] };
 }
 
 function blankResort() {
@@ -2163,6 +2163,7 @@ function impApply(){
     if (idx === -1) { legs.push(blankLeg()); idx = legs.length - 1; }
     const leg = { ...legs[idx] };
     ['origin','destination','airline','flightNum','departDate','departTime','arriveDate','arriveTime'].forEach(function(k){ if (r[k]) leg[k]=r[k]; });
+    if (r._conf) leg.confirmationNum = r._conf;
     if (r.cost !== null) leg.cost = r.cost;
     legs[idx] = leg; sec.legs = legs; sec.mode = 'air';
     patchTrip({ transportation: { ...t.transportation, [st.dir]: sec } }, true);
@@ -6203,6 +6204,14 @@ function buildExtraAirLegs(t, dir, idx, sec, members) {
             <input type="number" value="${leg.cost||''}" placeholder="e.g. 420" onchange="updExtraLeg('${dir}',${idx},${i},'cost',parseFloat(this.value)||null)">
             ${eurHint(leg.cost,t)}</div>
         </div>
+        <div class="form-row">
+          <div class="fg"><label class="lbl">Confirmation #</label>
+            <input type="text" value="${esc(leg.confirmationNum||'')}" placeholder="e.g. ABC123" autocapitalize="characters"
+              onchange="updExtraLeg('${dir}',${idx},${i},'confirmationNum',this.value)"></div>
+          <div class="fg"><label class="lbl">Notes</label>
+            <input type="text" value="${esc(leg.notes||'')}" placeholder="e.g. gate, terminal"
+              onchange="updExtraLeg('${dir}',${idx},${i},'notes',this.value)"></div>
+        </div>
       </div>`).join('')}
     <button class="btn-dashed" style="margin-top:4px;margin-bottom:8px;" onclick="addExtraLegItem('${dir}',${idx})">
       ＋ Add Connecting Flight Leg
@@ -6421,6 +6430,14 @@ function buildAirLegs(t, dir, sec) {
               ${eurHint(leg.cost,t)}
             </div>
           </div>
+        </div>
+        <div class="form-row">
+          <div class="fg"><label class="lbl">Confirmation # (optional)</label>
+            <input type="text" value="${esc(leg.confirmationNum||'')}" placeholder="e.g. ABC123" autocapitalize="characters"
+              onchange="updLeg('${dir}',${i},'confirmationNum',this.value)"></div>
+          <div class="fg"><label class="lbl">Notes (optional)</label>
+            <input type="text" value="${esc(leg.notes||'')}" placeholder="e.g. TSA PreCheck, gate B12"
+              onchange="updLeg('${dir}',${i},'notes',this.value)"></div>
         </div>
       </div>`).join('')}
     <button class="btn-dashed" style="margin-top:10px;" onclick="addLeg('${dir}')">＋ Add Connection / Layover</button>`;
@@ -13242,7 +13259,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-29-BACKUP";
+var SKIPPER_BUILD="2026-08-29-LEG";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
