@@ -1881,7 +1881,7 @@ function buildApp() {
     ${buildGlossaryModal()}
     ${S.dpModal.open ? buildDpModal() : ''}
     ${S.ui.feedbackOpen ? buildFeedbackModal() : ''}
-    ${S.ui.showTripSelect ? buildTripSelectOverlay() : ''}
+    ${S.ui.showTripSelect && !S.companion ? buildTripSelectOverlay() : ''}
     ${S.ui.tourActive ? buildTourOverlay() : ''}
     ${S.ui.identityOpen ? buildIdentityModal(t) : ''}
     ${S.ui.fwOpen ? buildFWModal(t) : ''}
@@ -1998,9 +1998,9 @@ function buildHeader(t) {
   return '<div class="app-header">'
     + '<div class="header-top">'
     // Trip name (tappable)
-    + '<button onclick="S.ui.showTripSelect=true;render()" style="background:none;border:none;flex:1;min-width:0;padding:0;cursor:pointer;text-align:left;display:flex;align-items:baseline;gap:5px;">'
+    + '<button onclick="if(!S.companion){S.ui.showTripSelect=true;render()}" style="background:none;border:none;flex:1;min-width:0;padding:0;cursor:pointer;text-align:left;display:flex;align-items:baseline;gap:5px;">'
     + '<span class="header-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;">'+esc(t.name||'Trip')+'</span>'
-    + '<span style="color:rgba(255,255,255,.4);font-size:11px;">&#9660;</span>'
+    + (S.companion?'':'<span style="color:rgba(255,255,255,.4);font-size:11px;">&#9660;</span>')
     + '</button>'
     // Right: countdown + buttons
     + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
@@ -13587,7 +13587,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-GUEST";
+var SKIPPER_BUILD="2026-08-30-GUEST2";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
