@@ -41,6 +41,9 @@ body{font-family:'Nunito',system-ui,sans-serif;background:#f0f2f8;min-height:100
 .trip-tab-add{background:transparent;color:#FFD700;padding:7px 12px;border-radius:8px 8px 0 0;cursor:pointer;font-size:20px;font-weight:700;border:none;font-family:inherit;line-height:1;flex-shrink:0}
 
 /* -- Nav Tabs -- */
+.companion-ro input,.companion-ro select,.companion-ro textarea{pointer-events:none !important;background:#f5f5f9 !important;color:#555 !important;}
+.companion-ro .btn-dashed,.companion-ro .btn-danger,.companion-ro .leg-remove,.companion-ro [onclick*="remove"],.companion-ro [onclick*="Remove"],.companion-ro [onclick*="addLeg"],.companion-ro [onclick*="delTrip"]{display:none !important;}
+.guest-banner{background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;font-weight:800;font-size:12.5px;border-radius:10px;padding:9px 14px;margin:10px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px;}
 .nav-tabs{background:#fff;border-bottom:2px solid #e0e0f0;display:flex;padding:0 20px;gap:2px;overflow-x:auto;scrollbar-width:none}
 .nav-tabs::-webkit-scrollbar{display:none}
 .nav-tab{padding:11px 16px;font-size:13px;font-weight:700;color:#777;cursor:pointer;border:none;background:transparent;font-family:inherit;border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .15s;white-space:nowrap}
@@ -1428,6 +1431,7 @@ function persist() {
 function trip() { return S.trips.find(t => t.id === S.currentTripId); }
 
 function patchTrip(updates, skipRender) {
+  if (S.companion) { return; } // guest/read-only device: no edits
   const idx = S.trips.findIndex(t => t.id === S.currentTripId);
   if (idx >= 0) {
     S.trips[idx] = Object.assign({}, S.trips[idx], updates);
@@ -1717,6 +1721,26 @@ function fwKey(bn,inm){ return (bn+'::'+inm).toLowerCase().replace(/[^a-z0-9]+/g
 function fwState(){ const t=trip()||{}; if(!t.fw) t.fw={checked:{},hearts:{}}; return t.fw; }
 function fwToggleCheck(k){ const t=trip(); if(!t)return; const fw=t.fw||{checked:{},hearts:{}}; fw.checked=fw.checked||{}; fw.checked[k]=!fw.checked[k]; if(!fw.checked[k])delete fw.checked[k]; patchTrip({fw:fw},true); fwRerender(); }
 function fwToggleHeart(k){ const t=trip(); if(!t)return; const fw=t.fw||{checked:{},hearts:{}}; fw.hearts=fw.hearts||{}; fw.hearts[k]=!fw.hearts[k]; if(!fw.hearts[k])delete fw.hearts[k]; patchTrip({fw:fw},true); fwRerender(); }
+function companionOn(){ return !!S.companion; }
+function companionEnable(){
+  let pin=prompt('Set a 4-digit exit PIN for guest mode (you\'ll need it to turn this off):');
+  if(pin===null) return;
+  pin=String(pin).trim();
+  if(!/^\d{4}$/.test(pin)){ alert('Please use exactly 4 digits.'); return; }
+  localStorage.setItem('skipper_companion_pin',pin);
+  localStorage.setItem('skipper_companion','1');
+  S.companion=true; S.ui.settingsOpen=false;
+  if(['budget','packing'].includes(S.tab)) S.tab='today';
+  render();
+}
+function companionExit(){
+  const want=localStorage.getItem('skipper_companion_pin')||'';
+  const got=prompt('Enter the 4-digit PIN to exit guest view:');
+  if(got===null) return;
+  if(String(got).trim()!==want){ alert('That PIN is not correct.'); return; }
+  localStorage.removeItem('skipper_companion');
+  S.companion=false; render();
+}
 function fwOpen(){ S.ui.fwOpen=true; render(); }
 function fwRerender(){ var ov=document.getElementById('fw-overlay'); var sc=ov?ov.scrollTop:0; render(); requestAnimationFrame(function(){ var o=document.getElementById('fw-overlay'); if(o)o.scrollTop=sc; }); }
 function fwClose(){ S.ui.fwOpen=false; render(); }
@@ -1831,6 +1855,7 @@ function buildApp() {
   const VALID_TABS = ['today','itinerary','budget','logistics','packing','fishext','map_modal','photos_modal'];
   if (!VALID_TABS.includes(S.tab)) S.tab = 'today';
   if (S.tab === 'fishext' && !t.cruise) S.tab = 'today';
+  if (S.companion && ['budget','packing'].includes(S.tab)) S.tab = 'today';
 
   const settingsOverlay = S.ui.settingsOpen ? `
     <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;" onclick="if(event.target===this){S.ui.settingsOpen=false;render()}">
@@ -1846,11 +1871,12 @@ function buildApp() {
   return `
     ${buildHeader(t)}
     <div class="nav-tabs">
-      ${[['today','&#127968;','Today'],['itinerary','&#128197;','Itinerary'],['budget','&#128176;','Budget'],['logistics','&#129523;','Logistics'],['packing','&#128230;','Packing']].concat(t.cruise?[['fishext','&#128031;','Fish Ext']]:[]).map(function(tb){
+      ${[['today','&#127968;','Today'],['itinerary','&#128197;','Itinerary'],['budget','&#128176;','Budget'],['logistics','&#129523;','Logistics'],['packing','&#128230;','Packing']].filter(function(tb){return !S.companion || !['budget','packing'].includes(tb[0]);}).concat(t.cruise?[['fishext','&#128031;','Fish Ext']]:[]).map(function(tb){
         return '<button class="nav-tab' + (S.tab===tb[0]?' active':'') + '" onclick="setTab(\'' + tb[0] + '\')">' + tb[1] + ' ' + tb[2] + '</button>';
       }).join('')}
     </div>
-    <div class="main-content">${buildTabContent(t)}</div>
+    ${S.companion?`<div class="guest-banner">👁 Guest view — you can browse the plan but not change it. <button onclick="companionExit()" style="background:none;border:none;color:#4f46e5;font-weight:800;font-size:11.5px;cursor:pointer;text-decoration:underline;font-family:inherit;">Exit</button></div>`:''}
+    <div class="main-content${S.companion?' companion-ro':''}">${buildTabContent(t)}</div>
     ${S.wizard.open ? buildWizard() : ''}
     ${buildGlossaryModal()}
     ${S.dpModal.open ? buildDpModal() : ''}
@@ -1980,11 +2006,11 @@ function buildHeader(t) {
     + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
     + countdownHtml
     + '<button onclick="S.ui.identityOpen=true;render()" title="Who\'s on this phone" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fff;font-size:13px;cursor:pointer;font-family:inherit;font-weight:800;">'+(meMember(t)?(meMember(t).emoji||'🧑'):'👤')+'</button>'
-    + '<button onclick="instaOpen()" title="Insta-Trip: live in-park mode now" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fde68a;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">&#9889; Insta</button>'
-    + '<button onclick="inDemo()?exitDemo():enterDemo()" style="background:'+(inDemo()?'#dc2626':'rgba(255,255,255,.15)')+';border:none;border-radius:8px;padding:5px 9px;color:'+(inDemo()?'#fff':'#a5b4fc')+';font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">'+(inDemo()?'&#10005; Demo':'&#127918; Demo')+'</button>'
-    + '<button onclick="fwOpen()" title="EPCOT Food & Wine 2026" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">&#127860; F&amp;W</button>'
-    + '<button onclick="openSyncModal()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#FFD700;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">&#9729; Sync</button>'
-    + '<button onclick="S.ui.settingsOpen=!S.ui.settingsOpen;render()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fff;font-size:15px;cursor:pointer;font-family:inherit;">&#9881;&#65039;</button>'
+    + (S.companion?'':'<button onclick="instaOpen()" title="Insta-Trip: live in-park mode now" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fde68a;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">&#9889; Insta</button>')
+    + (S.companion?'':'<button onclick="inDemo()?exitDemo():enterDemo()" style="background:'+(inDemo()?'#dc2626':'rgba(255,255,255,.15)')+';border:none;border-radius:8px;padding:5px 9px;color:'+(inDemo()?'#fff':'#a5b4fc')+';font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">'+(inDemo()?'&#10005; Demo':'&#127918; Demo')+'</button>')
+    + (S.companion?'':'<button onclick="fwOpen()" title="EPCOT Food & Wine 2026" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">&#127860; F&amp;W</button>')
+    + (S.companion?'':'<button onclick="openSyncModal()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#FFD700;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">&#9729; Sync</button>')
+    + (S.companion?'':'<button onclick="S.ui.settingsOpen=!S.ui.settingsOpen;render()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:5px 9px;color:#fff;font-size:15px;cursor:pointer;font-family:inherit;">&#9881;&#65039;</button>')
     + '</div>'
     + '</div>'
     // Date row
@@ -6327,7 +6353,7 @@ function buildTransportation(t) {
   const hasAny = !!(t.transportation?.outbound?.legs?.[0]?.origin || t.transportation?.outbound?.legs?.[0]?.departDate);
   const extraOutbound = t.transportation.extraOutbound || [];
   const extraReturn   = t.transportation.extraReturn   || [];
-  const transLocked   = t.transportLocked || false;
+  const transLocked   = (t.transportLocked || false) || S.companion;
   return `
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
       ${buildLockBtn(transLocked, 'toggleTransportLock', 'Transportation')}
@@ -11204,6 +11230,14 @@ function buildSettings(t) {
   const dailyMealTotal = (md.breakfast||0)+(md.lunch||0)+(md.dinner||0)+(md.snacks||0);
   const tripMealEst    = dailyMealTotal * (t.parks||[]).length;
   return `
+    <div class="card" style="background:#f8fafc;border:2px solid #c7d2fe;">
+      <div class="card-header" style="color:#1a1a5e;">👁 Guest Mode (this device)</div>
+      <div style="font-size:12.5px;color:#555;line-height:1.5;margin-bottom:10px;">
+        Turns THIS phone into a read-only viewer — great for handing the trip to family. They can browse Today, Itinerary, Logistics${t.cruise?', and Fish Extender':''}, but can't edit anything, can't see the Budget, and their device never changes the shared plan. A 4-digit PIN turns it back off.
+      </div>
+      <button onclick="companionEnable()" class="btn btn-primary" style="width:100%;">👁 Turn on Guest Mode here</button>
+      <div style="font-size:11px;color:#999;margin-top:7px;">Set up sync (enter your code) BEFORE turning this on, so their phone has the trip.</div>
+    </div>
     <div class="card" style="background:linear-gradient(135deg,#1a1a5e,#2a2a8e);border:none;">
       <div class="card-header" style="color:#FFD700;border-bottom-color:rgba(255,215,0,.2);justify-content:space-between;">
         🎓 Help & Tour
@@ -13350,6 +13384,7 @@ function syncApplyRemote(v){
 }
 function syncPushNow(force){
   if(!SYNC.ref)return;
+  if(S.companion)return; // guest device never writes to the cloud
   var localTrips=_demoFreeTrips();
   // EMPTY-PUSH GUARD: never let a blank/fresh device overwrite a cloud copy that
   // still holds real trips. Surface a recovery prompt instead.
@@ -13552,7 +13587,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-29-LOCKPRETTY";
+var SKIPPER_BUILD="2026-08-30-GUEST";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
@@ -13588,6 +13623,7 @@ try{
     if(_bd.length&&_bnow>=_bd[0]&&_bnow<=_bd[_bd.length-1])S.tab='today';
   }
 }catch(e){}
+S.companion = localStorage.getItem('skipper_companion')==='1';
 pmBootExtras();
 // Home-screen launch target: ?go=today (default) or ?go=insta (jump to live in-park picker)
 try{
