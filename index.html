@@ -607,6 +607,11 @@ function dayHasLL(d){
   return !!((ll.passType && ll.passType!=='none') || (ll.tier2Picks||[]).length || (ll.illSelected||[]).length || (ll.oneSelected||[]).length);
 }
 // Selected private-party / after-hours ticketed events on a day (from day.parkHops)
+function dayPartyIcon(day,t){
+  const evs=dayPartyEvents(day,t);
+  if(!evs.length) return '';
+  return ' <span title="'+esc(evs.map(function(e){return e.name;}).join(' · '))+' — ticketed party">\uD83C\uDF9F\uFE0F</span>';
+}
 function dayPartyEvents(day, t){
   const hops = (day && day.parkHops) || [];
   const out = [];
@@ -4171,7 +4176,7 @@ function buildTodayLive(t,tm,dates,today){
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <button onclick="tmSetDate('${prevD}')" ${di===0?'disabled style="opacity:.25;width:36px;height:36px;border-radius:9px;border:1.5px solid #e4e4f0;background:#fff;font-size:15px;"':'style="background:#fff;border:1.5px solid #e4e4f0;border-radius:9px;width:36px;height:36px;font-size:15px;cursor:pointer;"'}>‹</button>
         <div style="text-align:center;flex:1;min-width:0;">
-          <div style="font-size:20px;font-weight:900;color:#1a1a5e;">${dayNum}${parkLbl?' · '+parkLbl:''}${dayLLIcons(parkDay)}${(parkDay?dayPartyEvents(parkDay,t):[]).map(e=>`<span title="${esc(e.name)}">${e.icon}</span>`).join('')}</div>
+          <div style="font-size:20px;font-weight:900;color:#1a1a5e;">${dayNum}${parkLbl?' · '+parkLbl:''}${dayLLIcons(parkDay)}${parkDay?dayPartyIcon(parkDay,t):''}</div>
           ${(()=>{const evs=parkDay?dayPartyEvents(parkDay,t):[];return evs.length?'<div style="font-size:11.5px;font-weight:800;color:#c026d3;margin-top:1px;">🎟️ '+evs.map(e=>esc(e.short)).join(' · ')+' tonight</div>':'';})()}
           <div style="font-size:13px;color:#555;">${dateLbl}${isToday?' · today':''} · ${doneCount} of ${entries.length} done${estToday?' · day est $'+Math.round(estToday):''}</div>
           ${(function(){var _ph=(SEPT_PARK_HOURS[parkDay&&parkDay.park]||DLP_PARK_HOURS[parkDay&&parkDay.park]||DLR_PARK_HOURS[parkDay&&parkDay.park]);return _ph?'<div style="font-size:12.5px;font-weight:700;color:#444;margin-top:3px;">🕘 '+_ph.open+' – '+_ph.close+(_ph.note?' <span style="font-weight:500;color:#aaa;">· '+esc(_ph.note)+'</span>':'')+'</div>':'';})()} 
@@ -7117,7 +7122,7 @@ function buildCostBreakdown(t){
     cards.push(
       '<div style="border:1.5px solid #eee;border-radius:11px;padding:12px 14px;margin-bottom:9px;background:#fff;">'
       + '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
-        + '<div style="font-size:13px;font-weight:900;color:#1a1a5e;">'+fmtDateShort(day.date)+' · '+esc(parkName(day.park))+dayLLIcons(day)+partyNote+'</div>'
+        + '<div style="font-size:13px;font-weight:900;color:#1a1a5e;">'+fmtDateShort(day.date)+' · '+esc(parkName(day.park))+dayLLIcons(day)+dayPartyIcon(day,t)+partyNote+'</div>'
         + '<div style="font-size:11px;font-weight:700;color:'+(llb.subtotal>0?'#7c3aed':'#bbb')+';">'+esc(llb.typeLabel)+'</div>'
       + '</div>'
       + '<div style="background:#faf7ff;border-radius:8px;padding:8px 10px;margin-bottom:6px;">'+llRows+'</div>'
@@ -7778,7 +7783,7 @@ function buildCalendarView(t) {
           <div style="display:flex;align-items:flex-start;justify-content:space-between;">
             <div style="font-size:11px;font-weight:700;color:${isCruise?'#1d4ed8':'#999'};">${day}</div>
             <div style="font-size:9px;font-weight:700;color:${cellBorder};text-align:right;">
-              ${dayPartyEvents(d,t).map(e=>e.icon).join('')}${isCruise?'🚢':''}${hasADR?'🍽️':''}${dayLLIcons(d)}
+              ${isCruise?'🚢':''}${hasADR?'🍽️':''}${dayLLIcons(d)}${dayPartyIcon(d,t)}
             </div>
           </div>
           ${isCruise?`<div style="font-size:16px;margin:2px 0;">🌊</div><div style="font-size:10px;font-weight:800;color:#1d4ed8;line-height:1.2;">At Sea / Port</div>`:`
@@ -8118,7 +8123,7 @@ function buildDayRow(day, i, t, parkOpts) {
                  <div style="font-size:22px;font-weight:900;color:#0b0b2e;line-height:1.05;">${day.dayNum}</div>
                </div>
                ${dayCalBadge(day.date)}
-               ${dayLLIcons(day)?('<div style="margin-top:4px;text-align:center;font-size:13px;">'+dayLLIcons(day)+'</div>'):''}
+               ${(dayLLIcons(day)||dayPartyIcon(day,t))?('<div style="margin-top:4px;text-align:center;font-size:13px;">'+dayLLIcons(day)+dayPartyIcon(day,t)+'</div>'):''}
                <button onclick="toggleDayLock(${i})" title="Lock day to finalize"
                  style="margin-top:6px;width:34px;height:22px;border-radius:5px;border:1px solid #d0d0e0;
                         background:#f8f8fc;cursor:pointer;transition:all .15s;
@@ -8345,7 +8350,7 @@ function buildLockedDayCard(day, i, t, parkOpts, llCost, mealCost, cruiseDay) {
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;">
             <div style="font-size:15.5px;font-weight:900;color:#1a1a5e;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${headline}</div>
-            ${dayLLIcons(day)?`<div style="flex-shrink:0;font-size:15px;line-height:1;">${dayLLIcons(day)}</div>`:''}
+            ${(dayLLIcons(day)||dayPartyIcon(day,t))?`<div style="flex-shrink:0;font-size:15px;line-height:1;">${dayLLIcons(day)}${dayPartyIcon(day,t)}</div>`:''}
             ${totalDay>0?`<div style="font-size:15.5px;font-weight:900;color:#1a1a5e;flex-shrink:0;font-variant-numeric:tabular-nums;margin-left:auto;">${fmtDual(totalDay,t)}</div>`:''}
           </div>
           ${extrasChips?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px;">${extrasChips}</div>`:''}
@@ -11119,7 +11124,7 @@ function buildRunOfShow(t) {
           ${dayNum ? `<span style="background:rgba(255,255,255,.15);border-radius:5px;padding:1px 8px;font-size:12px;">${dayNum}</span>` : ''}
           ${dateLabel}
           ${parkBadge}
-          ${dayLLIcons(parkDay)}
+          ${dayLLIcons(parkDay)}${dayPartyIcon(parkDay,t)}
           <button class="ros-add-manual" onclick="toggleRosAdd('${date}')" style="margin-left:auto;background:rgba(255,215,0,.15);border:1px solid rgba(255,215,0,.3);color:#FFD700;">＋ Add Entry</button>
         </div>
 
@@ -13388,7 +13393,7 @@ function companionPlan(t){
       + '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">'
         + '<span style="font-size:13px;font-weight:900;color:#1a1a5e;">'+esc(dstr)+'</span>'
         + (where?'<span style="font-size:13px;font-weight:700;color:#333;">'+esc(where)+'</span>':'<span style="font-size:12px;color:#bbb;">—</span>')
-        + dayLLIcons(d)
+        + dayLLIcons(d) + dayPartyIcon(d,t)
       + '</div>'
       + (hotel?'<div style="font-size:12px;color:#888;margin-top:3px;">🏨 '+esc(hotel)+'</div>':'')
       + (meals?'<div style="margin-top:7px;display:flex;flex-direction:column;gap:3px;">'+meals+'</div>':'')
@@ -13808,7 +13813,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-LLICON4";
+var SKIPPER_BUILD="2026-08-30-PARTYICON";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
