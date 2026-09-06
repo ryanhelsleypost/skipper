@@ -591,6 +591,17 @@ function fwActive(t, day){
   return !!(t && t.tripType==='wdw' && day && day.park==='ep' && day.date && day.date>=FW_FEST.start && day.date<=FW_FEST.end);
 }
 // True when a day has any Lightning Lane / Premier Access opted-in via the itinerary
+function llBolt(c){ return '<svg viewBox="0 0 24 24" width="1em" height="1em" style="vertical-align:-0.12em;"><path d="M7 2v11h3v9l7-12h-4l4-8z" fill="'+c+'"/></svg>'; }
+function dayLLIcons(d){
+  const ll=(d&&d.ll)||{}; const pt=ll.passType||'none';
+  if(pt==='premier'||pt==='ultimate') return ' <span title="Premier / Ultimate Pass — individual rides included">👑</span>';
+  const hasMulti = pt==='multi';
+  const hasSingle = (ll.illSelected||[]).length>0 || (ll.oneSelected||[]).length>0;
+  let out='';
+  if(hasMulti)  out+=' <span title="Lightning Lane Multi Pass">'+llBolt('#FFD700')+'</span>';
+  if(hasSingle) out+=' <span title="Individual Lightning Lane (paid upcharge)">'+llBolt('#dc2626')+'</span>';
+  return out;
+}
 function dayHasLL(d){
   const ll = (d && d.ll) || {};
   return !!((ll.passType && ll.passType!=='none') || (ll.tier2Picks||[]).length || (ll.illSelected||[]).length || (ll.oneSelected||[]).length);
@@ -4160,7 +4171,7 @@ function buildTodayLive(t,tm,dates,today){
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <button onclick="tmSetDate('${prevD}')" ${di===0?'disabled style="opacity:.25;width:36px;height:36px;border-radius:9px;border:1.5px solid #e4e4f0;background:#fff;font-size:15px;"':'style="background:#fff;border:1.5px solid #e4e4f0;border-radius:9px;width:36px;height:36px;font-size:15px;cursor:pointer;"'}>‹</button>
         <div style="text-align:center;flex:1;min-width:0;">
-          <div style="font-size:20px;font-weight:900;color:#1a1a5e;">${dayNum}${parkLbl?' · '+parkLbl:''}${dayHasLL(parkDay)?' <span title="Lightning Lane booked">⚡</span>':''}${(parkDay?dayPartyEvents(parkDay,t):[]).map(e=>`<span title="${esc(e.name)}">${e.icon}</span>`).join('')}</div>
+          <div style="font-size:20px;font-weight:900;color:#1a1a5e;">${dayNum}${parkLbl?' · '+parkLbl:''}${dayLLIcons(parkDay)}${(parkDay?dayPartyEvents(parkDay,t):[]).map(e=>`<span title="${esc(e.name)}">${e.icon}</span>`).join('')}</div>
           ${(()=>{const evs=parkDay?dayPartyEvents(parkDay,t):[];return evs.length?'<div style="font-size:11.5px;font-weight:800;color:#c026d3;margin-top:1px;">🎟️ '+evs.map(e=>esc(e.short)).join(' · ')+' tonight</div>':'';})()}
           <div style="font-size:13px;color:#555;">${dateLbl}${isToday?' · today':''} · ${doneCount} of ${entries.length} done${estToday?' · day est $'+Math.round(estToday):''}</div>
           ${(function(){var _ph=(SEPT_PARK_HOURS[parkDay&&parkDay.park]||DLP_PARK_HOURS[parkDay&&parkDay.park]||DLR_PARK_HOURS[parkDay&&parkDay.park]);return _ph?'<div style="font-size:12.5px;font-weight:700;color:#444;margin-top:3px;">🕘 '+_ph.open+' – '+_ph.close+(_ph.note?' <span style="font-weight:500;color:#aaa;">· '+esc(_ph.note)+'</span>':'')+'</div>':'';})()} 
@@ -7106,7 +7117,7 @@ function buildCostBreakdown(t){
     cards.push(
       '<div style="border:1.5px solid #eee;border-radius:11px;padding:12px 14px;margin-bottom:9px;background:#fff;">'
       + '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
-        + '<div style="font-size:13px;font-weight:900;color:#1a1a5e;">'+fmtDateShort(day.date)+' · '+esc(parkName(day.park))+(dayHasLL(day)?' ⚡':'')+partyNote+'</div>'
+        + '<div style="font-size:13px;font-weight:900;color:#1a1a5e;">'+fmtDateShort(day.date)+' · '+esc(parkName(day.park))+dayLLIcons(day)+partyNote+'</div>'
         + '<div style="font-size:11px;font-weight:700;color:'+(llb.subtotal>0?'#7c3aed':'#bbb')+';">'+esc(llb.typeLabel)+'</div>'
       + '</div>'
       + '<div style="background:#faf7ff;border-radius:8px;padding:8px 10px;margin-bottom:6px;">'+llRows+'</div>'
@@ -7767,7 +7778,7 @@ function buildCalendarView(t) {
           <div style="display:flex;align-items:flex-start;justify-content:space-between;">
             <div style="font-size:11px;font-weight:700;color:${isCruise?'#1d4ed8':'#999'};">${day}</div>
             <div style="font-size:9px;font-weight:700;color:${cellBorder};text-align:right;">
-              ${dayPartyEvents(d,t).map(e=>e.icon).join('')}${isCruise?'🚢':''}${hasADR?'🍽️':''}${hasLL?' ⚡':''}
+              ${dayPartyEvents(d,t).map(e=>e.icon).join('')}${isCruise?'🚢':''}${hasADR?'🍽️':''}${dayLLIcons(d)}
             </div>
           </div>
           ${isCruise?`<div style="font-size:16px;margin:2px 0;">🌊</div><div style="font-size:10px;font-weight:800;color:#1d4ed8;line-height:1.2;">At Sea / Port</div>`:`
@@ -13796,7 +13807,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-PRINT3";
+var SKIPPER_BUILD="2026-08-30-LLICON";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
