@@ -9890,33 +9890,20 @@ const PACKED_STATUSES = ['packed','repacked'];
 function buildPackingList(t) {
   const suitcases = t.suitcases || [];
 
-  // Init default suitcases if empty
-  if (suitcases.length === 0) {
-    const presets = getPackingPresets(t.tripType, t.startDate);
-    // Group presets by category into default suitcases
-    const catGroups = {};
-    presets.forEach(item => {
-      if (!catGroups[item.cat]) catGroups[item.cat] = [];
-      catGroups[item.cat].push({
-        id: uid(), name: item.name, note: item.note||'',
-        status: 'pending', assignedTo: [], qty: item.qty||1,
-      });
-    });
-    const defaultSuitcases = Object.entries(catGroups).map(([name, items]) => ({
-      id: uid(), name, icon: name.split(' ')[0], items,
-    }));
-    patchTrip({ suitcases: defaultSuitcases });
-    return buildPackingList(trip());
-  }
-
+  // No auto-seed — bags start empty and the user builds their own.
   const members = (t.partyMembers||[]).filter(m=>m.name);
+  const guest = !!S.companion;
+  const me = meMember(t);
+  const packFilter = guest ? (me?me.id:'__all__') : (S.ui.packFilter||'__all__');
+  const bagVisible = (sc)=>{ if(packFilter==='__all__') return true; const at=sc.assignedTo||[]; return at.length===0 || at.includes(packFilter); };
+  const vis = suitcases.filter(bagVisible);
   const byUnits     = packCountUnits(t);
-  const totalItems  = suitcases.reduce((s,sc)=>s+packCount(sc.items,t),0);
-  const packedItems = suitcases.reduce((s,sc)=>s+packCount(sc.items,t,i=>PACKED_STATUSES.includes(i.status)),0);
-  const needBuy     = suitcases.reduce((s,sc)=>s+packCount(sc.items,t,i=>i.status==='needbuy'),0);
-  const issues      = suitcases.reduce((s,sc)=>s+packCount(sc.items,t,i=>i.status==='issue'),0);
-  const totalLines  = suitcases.reduce((s,sc)=>s+(sc.items||[]).length,0);
-  const totalUnits  = suitcases.reduce((s,sc)=>s+(sc.items||[]).reduce((a,i)=>a+packQty(i),0),0);
+  const totalItems  = vis.reduce((s,sc)=>s+packCount(sc.items,t),0);
+  const packedItems = vis.reduce((s,sc)=>s+packCount(sc.items,t,i=>PACKED_STATUSES.includes(i.status)),0);
+  const needBuy     = vis.reduce((s,sc)=>s+packCount(sc.items,t,i=>i.status==='needbuy'),0);
+  const issues      = vis.reduce((s,sc)=>s+packCount(sc.items,t,i=>i.status==='issue'),0);
+  const totalLines  = vis.reduce((s,sc)=>s+(sc.items||[]).length,0);
+  const totalUnits  = vis.reduce((s,sc)=>s+(sc.items||[]).reduce((a,i)=>a+packQty(i),0),0);
 
   return `
     
@@ -9942,7 +9929,7 @@ function buildPackingList(t) {
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
       <button class="btn btn-primary" onclick="addSuitcase('${t.id}')">🧳 New Suitcase / Bag</button>
       <button class="btn btn-primary" onclick="openBulkAdd('')">⚡ Quick Add Items</button>
-      <button class="btn btn-ghost btn-sm" onclick="resetPackingList('${t.id}')">↺ Reset to Defaults</button>
+      ${suitcases.length?`<button class="btn btn-ghost btn-sm" onclick="clearAllBags('${t.id}')">🗑 Clear All</button>`:''}
       <div style="display:flex;align-items:center;gap:0;margin-left:auto;background:#f0f0f8;border-radius:9px;padding:3px;"
            title="Count 3x Ponchos as 1 item or 3 units">
         ${[[false,'Items',totalLines],[true,'Units',totalUnits]].map(function(o){
@@ -9957,7 +9944,16 @@ function buildPackingList(t) {
     </div>
 
     
-    ${suitcases.map((sc,si) => buildSuitcaseCard(sc, si, t, members)).join('')}
+    ${(!guest && members.length>1) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">
+      <span style="font-size:11px;font-weight:800;color:#999;text-transform:uppercase;">Show bags:</span>
+      ${[['__all__','👥 Everyone']].concat(members.map(m=>[m.id,(m.emoji||'🧑')+' '+esc(m.name.split(' ')[0])])).map(function(o){
+        const on=packFilter===o[0];
+        return `<button onclick="setPackFilter('${o[0]}')" style="padding:5px 11px;border-radius:20px;border:1.5px solid ${on?'#1a1a5e':'#e4e4f0'};background:${on?'#1a1a5e':'#fff'};color:${on?'#FFD700':'#666'};font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">${o[1]}</button>`;
+      }).join('')}
+    </div>`:''}
+    ${guest && me ? `<div style="font-size:12px;font-weight:700;color:#3730a3;background:#eef2ff;border:1px solid #c7d2fe;border-radius:9px;padding:8px 12px;margin-bottom:14px;">${me.emoji||'🧑'} Showing ${esc(me.name.split(' ')[0])}'s bags (and shared bags).</div>`:''}
+    ${vis.length===0 ? `<div class="empty-rich" style="margin:8px 0;"><div class="er-icon">🧳</div><div class="er-title">${suitcases.length?'No bags to show here':'No bags yet'}</div><div class="er-body">${suitcases.length?'Nothing matches this filter.':'Tap “New Suitcase / Bag” to create one, then assign it to who it belongs to.'}</div></div>` : ''}
+    ${vis.map((sc) => buildSuitcaseCard(sc, suitcases.indexOf(sc), t, members)).join('')}
 
     
     ${buildStoreList(t)}
@@ -10055,6 +10051,7 @@ function buildSuitcaseCard(sc, si, t, members) {
             onchange="updSuitcase('${sc.id}','name',this.value)"
             style="background:transparent;border:none;border-bottom:1px dashed rgba(255,255,255,.3);color:#FFD700;font-size:14px;font-weight:800;font-family:inherit;outline:none;width:100%;">
         </div>
+        ${(sc.assignedTo||[]).length?`<span style="font-size:13px;letter-spacing:-2px;" title="Assigned">${(sc.assignedTo||[]).map(id=>{const m=(t.partyMembers||[]).find(m=>m.id===id);return m?(m.emoji||'🧑'):'';}).filter(Boolean).join('')}</span>`:''}
         <span style="font-size:12px;font-weight:700;color:${packed===bagTotal&&bagTotal>0?'#6ee7b7':'rgba(255,255,255,.5)'};">${packed}/${bagTotal} packed</span>
         <span style="font-size:12px;color:rgba(255,255,255,.4);transform:${isOpen?'rotate(180deg)':'rotate(0)'};display:inline-block;transition:transform .2s;">▼</span>
         <button onclick="event.stopPropagation();deleteSuitcase('${sc.id}')"
@@ -10064,7 +10061,11 @@ function buildSuitcaseCard(sc, si, t, members) {
 
       ${isOpen?`
       <div style="padding:14px 16px;">
-        
+        ${((t.partyMembers||[]).filter(m=>m.name).length>1)?`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #f0f0f6;">
+          <span style="font-size:11px;font-weight:800;color:#999;">👤 Whose bag:</span>
+          ${(t.partyMembers||[]).filter(m=>m.name).map(m=>{const on=(sc.assignedTo||[]).includes(m.id);return `<button onclick="toggleSuitcaseAssign('${sc.id}','${m.id}')" style="padding:4px 10px;border-radius:20px;border:1.5px solid ${on?'#1a1a5e':'#e4e4f0'};background:${on?'#f0f0ff':'#fff'};color:${on?'#1a1a5e':'#999'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">${m.emoji||'🧑'} ${esc(m.name.split(' ')[0])}</button>`;}).join('')}
+          ${(sc.assignedTo||[]).length===0?`<span style="font-size:11px;color:#bbb;font-style:italic;">shared / everyone</span>`:''}
+        </div>`:''}
         ${items.map((item,ii) => {
           const st = PACK_STATUSES[item.status||'pending'];
           const assignees = (item.assignedTo||[]).map(id=>{
@@ -10135,12 +10136,24 @@ function buildSuitcaseCard(sc, si, t, members) {
 }
 
 // -- Packing list handlers --
+function clearAllBags(tripId){ if(!confirm('Remove ALL bags and their items? This cannot be undone.'))return; patchTrip({suitcases:[]},true); render(); }
+function setPackFilter(v){ S.ui.packFilter=v; render(); }
+function toggleSuitcaseAssign(scId, memberId){
+  const t=trip();
+  const suitcases=(t.suitcases||[]).map(s=>{
+    if(s.id!==scId) return s;
+    const at=[...(s.assignedTo||[])]; const i=at.indexOf(memberId);
+    if(i>=0) at.splice(i,1); else at.push(memberId);
+    return {...s, assignedTo:at};
+  });
+  patchTrip({suitcases}); render();
+}
 function addSuitcase(tripId) {
   const name = prompt('Suitcase / bag name:', 'My Bag');
   if (!name?.trim()) return;
   const t = trip();
   const emoji = ['🧳','👜','🎒','💼','🛄','👝'][Math.floor(Math.random()*6)];
-  const suitcases = [...(t.suitcases||[]), { id:uid(), name:name.trim(), icon:emoji, items:[] }];
+  const suitcases = [...(t.suitcases||[]), { id:uid(), name:name.trim(), icon:emoji, items:[], assignedTo:[] }];
   patchTrip({ suitcases }, true); render();
 }
 function deleteSuitcase(scId) {
@@ -13586,7 +13599,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-FWTAB";
+var SKIPPER_BUILD="2026-08-30-PACK";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
