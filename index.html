@@ -43,6 +43,8 @@ body{font-family:'Nunito',system-ui,sans-serif;background:#f0f2f8;min-height:100
 /* -- Nav Tabs -- */
 .companion-ro input,.companion-ro select,.companion-ro textarea{pointer-events:none !important;background:#f5f5f9 !important;color:#555 !important;}
 .companion-ro .btn-dashed,.companion-ro .btn-danger,.companion-ro .leg-remove,.companion-ro [onclick*="remove"],.companion-ro [onclick*="Remove"],.companion-ro [onclick*="addLeg"],.companion-ro [onclick*="delTrip"]{display:none !important;}
+@media print { #app{display:none !important;} #print-root{display:block !important;} @page{margin:14mm;} }
+#print-root{display:none;}
 .guest-banner{background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;font-weight:800;font-size:12.5px;border-radius:10px;padding:9px 14px;margin:10px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px;}
 .nav-tabs{background:#fff;border-bottom:2px solid #e0e0f0;display:flex;padding:0 20px;gap:2px;overflow-x:auto;scrollbar-width:none}
 .nav-tabs::-webkit-scrollbar{display:none}
@@ -469,6 +471,7 @@ input[type=checkbox]{width:auto;accent-color:#1a1a5e;width:16px;height:16px;curs
 <style>@keyframes sppulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 #skipper-splash.sp-hide{opacity:0;pointer-events:none}</style>
 <div id="app"></div>
+<div id="print-root"></div>
 <div id="sync-modal-root"></div>
 
 <script>
@@ -2283,6 +2286,116 @@ function buildPersonalInfo(t){
   }).join('');
 }
 
+// ═══════════ FULL TRIP PRINTOUT (Save as PDF) ═══════════
+function printTrip(){
+  const t=trip(); if(!t){ alert('No trip to print.'); return; }
+  const root=document.getElementById('print-root');
+  if(!root){ alert('Print area missing.'); return; }
+  root.innerHTML=buildPrintDoc(t);
+  setTimeout(function(){ window.print(); }, 60);
+}
+function _pfDate(d){ return d?fmtDateShort(d):''; }
+function buildPrintDoc(t){
+  const H=(txt)=>`<h2 style="font-size:15px;margin:18px 0 6px;padding-bottom:3px;border-bottom:2px solid #000;page-break-after:avoid;">${txt}</h2>`;
+  const sym=curSym(t);
+  const dr=[_pfDate(t.startDate), _pfDate(t.endDate)].filter(Boolean).join(' – ');
+  let html=`<div style="font-family:Georgia,'Times New Roman',serif;color:#000;font-size:12px;line-height:1.4;padding:6px;">
+    <div style="text-align:center;border-bottom:3px double #000;padding-bottom:8px;margin-bottom:6px;">
+      <div style="font-size:22px;font-weight:800;">${esc(t.name||'Trip')}</div>
+      <div style="font-size:13px;color:#333;">${dr}</div>
+    </div>`;
+
+  // ── ITINERARY ──
+  const parks=(t.parks||[]).filter(d=>d.date).slice().sort((a,b)=>a.date<b.date?-1:1);
+  if(parks.length){
+    html+=H('📅 Itinerary');
+    html+='<table style="width:100%;border-collapse:collapse;">';
+    parks.forEach(d=>{
+      const rows=rosEntriesForDate(t,d.date)||[];
+      const label=d.park?parkName(d.park):(d.label||'');
+      html+=`<tr style="page-break-inside:avoid;"><td style="vertical-align:top;padding:3px 8px 3px 0;white-space:nowrap;font-weight:700;border-bottom:1px solid #ccc;">Day ${d.dayNum||''}<br>${_pfDate(d.date)}</td>
+        <td style="vertical-align:top;padding:3px 0;border-bottom:1px solid #ccc;"><b>${esc(label||'—')}</b>`;
+      if(rows.length){ html+='<div style="color:#333;font-size:11px;margin-top:2px;">'+rows.map(r=>esc((r.time?r.time+' · ':'')+(r.label||r.title||''))).filter(Boolean).join('<br>')+'</div>'; }
+      html+='</td></tr>';
+    });
+    html+='</table>';
+  }
+
+  // ── FLIGHTS ──
+  const fBlocks=[];
+  [['outbound','Outbound'],['return','Return']].forEach(([dir,lbl])=>{
+    (lockedFlightGroups(t,dir)||[]).forEach(g=>{
+      let b=`<div style="page-break-inside:avoid;margin-bottom:6px;"><b>${lbl} — ${esc(g.title)}</b>`;
+      (g.legs||[]).forEach((leg,i)=>{
+        const dep=[_pfDate(leg.departDate),fmt12(leg.departTime)].filter(Boolean).join(' ');
+        const arr=[_pfDate(leg.arriveDate),fmt12(leg.arriveTime)].filter(Boolean).join(' ');
+        b+=`<div style="margin-left:10px;">${(g.legs.length>1?('Leg '+(i+1)+': '):'')}<b>${esc(leg.origin||'?')} → ${esc(leg.destination||'?')}</b> · ${esc(leg.airline||'')} ${esc(leg.flightNum?'#'+leg.flightNum:'')}<br>
+          <span style="color:#333;">${dep?'Dep '+dep:''}${arr?' · Arr '+arr:''}${leg.seat?' · Seat '+esc(leg.seat):''}${leg.confirmationNum?' · Conf '+esc(leg.confirmationNum):''}</span></div>`;
+      });
+      b+='</div>'; fBlocks.push(b);
+    });
+  });
+  if(fBlocks.length){ html+=H('✈️ Flights')+fBlocks.join(''); }
+
+  // ── HOTELS ──
+  const hotels=(t.hotelLegs||[]).filter(l=>l.name||l.checkInDate).slice().sort((a,b)=>((a.checkInDate||'')<(b.checkInDate||'')?-1:1));
+  if(hotels.length){
+    html+=H('🏨 Hotels');
+    hotels.forEach(h=>{
+      html+=`<div style="page-break-inside:avoid;margin-bottom:5px;"><b>${esc(h.name||'Stay')}</b> — ${_pfDate(h.checkInDate)} → ${_pfDate(h.checkOutDate)}
+        <div style="color:#333;margin-left:10px;">${h.roomType?esc(h.roomType)+' · ':''}${h.confirmationNum?'Conf '+esc(h.confirmationNum):''}${h.resortArea?' · '+esc(h.resortArea):''}</div></div>`;
+    });
+  }
+
+  // ── GROUND + OTHER TRANSPORT ──
+  const trans=[];
+  ['ground','groundReturn'].forEach(k=>{ const g=(t.transportation||{})[k]; if(g&&(g.option||g.notes)&&!((t.transportation.groundHidden||{})[k])){
+    const dates=[_pfDate(g.pickupDate),_pfDate(g.dropoffDate)].filter(Boolean).join(' → ');
+    const locs=[g.pickupLocation,g.dropoffLocation].filter(Boolean).join(' → ');
+    trans.push(`<div style="page-break-inside:avoid;margin-bottom:4px;"><b>${k==='ground'?'Airport → Resort':'Resort → Airport'}:</b> ${esc(g.option||'')}${g.rentalCompany?' ('+esc(g.rentalCompany)+')':''}${dates?' · '+dates:''}${locs?' · '+esc(locs):''}${g.notes?'<br><span style="color:#333;margin-left:10px;">'+esc(g.notes)+'</span>':''}</div>`);
+  }});
+  ((t.transportation||{}).extraSegments||[]).forEach(s=>{
+    const dates=[_pfDate(s.startDate),_pfDate(s.endDate)].filter(Boolean).join(' → ');
+    const locs=[s.pickupLocation,s.dropoffLocation].filter(Boolean).join(' → ');
+    trans.push(`<div style="page-break-inside:avoid;margin-bottom:4px;"><b>${esc(s.title||s.option||'Transport')}:</b> ${esc(s.option||'')}${s.rentalCompany?' ('+esc(s.rentalCompany)+')':''}${dates?' · '+dates:''}${locs?' · '+esc(locs):''}${s.notes?'<br><span style="color:#333;margin-left:10px;">'+esc(s.notes)+'</span>':''}</div>`);
+  });
+  if(trans.length){ html+=H('🚗 Ground & Other Transportation')+trans.join(''); }
+
+  // ── PACKING ──
+  const bags=(t.suitcases||[]).filter(b=>(b.items||[]).length||b.name);
+  if(bags.length){
+    html+=H('🧳 Packing');
+    bags.forEach(b=>{
+      const who=(b.assignedTo||[]).map(id=>{const m=(t.partyMembers||[]).find(m=>m.id===id);return m?m.name:'';}).filter(Boolean).join(', ');
+      html+=`<div style="page-break-inside:avoid;margin-bottom:6px;"><b>${esc(b.icon||'')} ${esc(b.name||'Bag')}</b>${who?' <span style="color:#555;">('+esc(who)+')</span>':''}
+        <div style="margin-left:10px;color:#222;">${(b.items||[]).map(it=>'☐ '+((parseInt(it.qty)||1)>1?(it.qty+'× '):'')+esc(it.name)).join('<br>')}</div></div>`;
+    });
+  }
+
+  // ── FISH EXTENDER (by group: cabin / stateroom / person / gifts / characters) ──
+  const groups=(t.feGroups||[]).filter(g=>(g.cabins||[]).length);
+  if(groups.length){
+    html+=H('🎁 Fish Extender — Delivery Map');
+    groups.forEach(g=>{
+      html+=`<div style="page-break-inside:avoid;margin-top:8px;"><div style="font-size:13px;font-weight:800;background:#eee;padding:3px 6px;">${esc(g.name||'Group')}</div>`;
+      (g.cabins||[]).slice().sort((a,b)=>((a.stateroom||'')<(b.stateroom||'')?-1:1)).forEach(c=>{
+        html+=`<div style="page-break-inside:avoid;margin:5px 0 5px 4px;border-left:3px solid #888;padding-left:8px;">
+          <div><b>Stateroom ${esc(c.stateroom||'—')}</b>${c.familyName?' · '+esc(c.familyName):''}${c.celebration?' · 🎉 '+esc(c.celebration):''}${c.delivered?' · ✅ delivered':''}</div>`;
+        (c.people||[]).forEach(p=>{
+          const g2=feNormGender(p.gender); const ag=(p.age||'')+(g2||'');
+          html+=`<div style="margin-left:10px;">• <b>${esc(p.name||'—')}</b>${ag?' ('+esc(ag)+')':''}${p.characters?' — ⭐ '+esc(p.characters):''}${p.plannedGift?' — 🎁 '+esc(p.plannedGift):''}${(p.giftTags||[]).length?' ['+esc((p.giftTags||[]).join(', '))+']':''}</div>`;
+        });
+        if(c.notes) html+=`<div style="margin-left:10px;color:#555;font-size:11px;">📝 ${esc(c.notes)}</div>`;
+        html+='</div>';
+      });
+      html+='</div>';
+    });
+  }
+
+  html+=`<div style="text-align:center;color:#999;font-size:10px;margin-top:16px;border-top:1px solid #ccc;padding-top:6px;">Skipper Tripper · printed ${new Date().toLocaleDateString()}</div></div>`;
+  return html;
+}
+
 function buildLogistics(t) {
   if (!S.ui.logOpen) S.ui.logOpen = {transport:true, hotel:true};
 
@@ -2302,6 +2415,7 @@ function buildLogistics(t) {
     + '<div style="display:flex;align-items:center;gap:9px;margin-bottom:12px;flex-wrap:wrap;">'
     +   '<button onclick="openImport(\'flight\',\'outbound\')" style="background:#fff;border:1.5px solid #c7d2fe;border-radius:9px;padding:8px 13px;font-family:inherit;font-size:12.5px;font-weight:800;color:#4f46e5;cursor:pointer;">📋 Import from confirmation</button>'
     +   '<span style="font-size:11.5px;color:#aaa;">Optional — or just fill the fields in below.</span>'
+    +   '<button onclick="printTrip()" style="margin-left:auto;background:#1a1a5e;border:none;border-radius:9px;padding:8px 13px;font-family:inherit;font-size:12.5px;font-weight:800;color:#FFD700;cursor:pointer;">📄 Trip Printout</button>'
     + '</div>'
     + section('transport','&#9992;&#65039;','Transportation', function(){ return typeof buildTransportation === 'function' ? buildTransportation(t) : '<div style="color:#999;font-size:13px;">Loading...</div>'; })
     + section('hotel','&#127968;','Hotel', function(){ return typeof buildHotel === 'function' ? buildHotel(t) : ''; }, logStampHTML(logHotelsTs(t), 'logConfirmHotels()'))
@@ -13651,7 +13765,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-GUESTFE";
+var SKIPPER_BUILD="2026-08-30-PRINT";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
