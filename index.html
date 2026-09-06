@@ -2306,19 +2306,26 @@ function buildPrintDoc(t){
     </div>`;
 
   // ── ITINERARY ──
-  const parks=(t.parks||[]).filter(d=>d.date).slice().sort((a,b)=>a.date<b.date?-1:1);
-  if(parks.length){
+  const days=(t.parks||[]).filter(d=>d.date).slice().sort((a,b)=>(a.date<b.date?-1:1));
+  if(days.length){
     html+=H('📅 Itinerary');
-    html+='<table style="width:100%;border-collapse:collapse;">';
-    parks.forEach(d=>{
-      const rows=rosEntriesForDate(t,d.date)||[];
-      const label=d.park?parkName(d.park):(d.label||'');
-      html+=`<tr style="page-break-inside:avoid;"><td style="vertical-align:top;padding:3px 8px 3px 0;white-space:nowrap;font-weight:700;border-bottom:1px solid #ccc;">Day ${d.dayNum||''}<br>${_pfDate(d.date)}</td>
-        <td style="vertical-align:top;padding:3px 0;border-bottom:1px solid #ccc;"><b>${esc(label||'—')}</b>`;
-      if(rows.length){ html+='<div style="color:#333;font-size:11px;margin-top:2px;">'+rows.map(r=>esc((r.time?r.time+' · ':'')+(r.label||r.title||''))).filter(Boolean).join('<br>')+'</div>'; }
-      html+='</td></tr>';
+    days.forEach(d=>{
+      const entries=(rosEntriesForDate(t,d.date)||[]).filter(e=>e && !e.isSentinel && String(e.text||'').trim());
+      let label=d.park?parkName(d.park):(d.label||'');
+      const hops=(d.parkHops||[]).filter(h=>h && !String(h).startsWith('event-')).map(h=>parkName(h));
+      if(hops.length) label += ' → ' + hops.join(' → ');
+      html+=`<div style="page-break-inside:avoid;margin-bottom:6px;">
+        <div style="font-weight:800;font-size:12.5px;background:#eee;padding:2px 6px;border-left:3px solid #000;">Day ${d.dayNum||''} · ${_pfDate(d.date)}${label?' — '+esc(label):''}</div>`;
+      if(entries.length){
+        html+='<table style="width:100%;border-collapse:collapse;margin:2px 0 0;">'+entries.map(e=>
+          `<tr style="page-break-inside:avoid;"><td style="white-space:nowrap;vertical-align:top;color:#555;padding:1px 8px 1px 8px;width:1%;font-size:11px;">${e.time?fmt12(e.time):''}</td>`+
+          `<td style="vertical-align:top;padding:1px 0;">${e.icon||''} ${e.text||''}${e.sub?` <span style="color:#666;font-size:10px;">— ${e.sub}</span>`:''}</td></tr>`
+        ).join('')+'</table>';
+      } else {
+        html+='<div style="color:#999;font-size:11px;margin:2px 0 0 8px;">Nothing scheduled.</div>';
+      }
+      html+='</div>';
     });
-    html+='</table>';
   }
 
   // ── FLIGHTS ──
@@ -13765,7 +13772,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-PRINT";
+var SKIPPER_BUILD="2026-08-30-PRINT2";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
