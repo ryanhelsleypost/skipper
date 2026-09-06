@@ -8345,7 +8345,8 @@ function buildLockedDayCard(day, i, t, parkOpts, llCost, mealCost, cruiseDay) {
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;">
             <div style="font-size:15.5px;font-weight:900;color:#1a1a5e;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${headline}</div>
-            ${totalDay>0?`<div style="font-size:15.5px;font-weight:900;color:#1a1a5e;flex-shrink:0;font-variant-numeric:tabular-nums;">${fmtDual(totalDay,t)}</div>`:''}
+            ${dayLLIcons(day)?`<div style="flex-shrink:0;font-size:15px;line-height:1;">${dayLLIcons(day)}</div>`:''}
+            ${totalDay>0?`<div style="font-size:15.5px;font-weight:900;color:#1a1a5e;flex-shrink:0;font-variant-numeric:tabular-nums;margin-left:auto;">${fmtDual(totalDay,t)}</div>`:''}
           </div>
           ${extrasChips?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px;">${extrasChips}</div>`:''}
           ${(rowHtml||llRow)?`<div style="margin-top:9px;border-top:1px solid #f0f0f6;padding-top:7px;">${rowHtml}${llRow}</div>`:''}
@@ -13807,7 +13808,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-LLICON3";
+var SKIPPER_BUILD="2026-08-30-LLICON4";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
