@@ -8118,7 +8118,7 @@ function buildDayRow(day, i, t, parkOpts) {
                  <div style="font-size:22px;font-weight:900;color:#0b0b2e;line-height:1.05;">${day.dayNum}</div>
                </div>
                ${dayCalBadge(day.date)}
-               ${dayHasLL(day)?'<div title="Lightning Lane booked this day" style="margin-top:4px;text-align:center;font-size:13px;background:#fef9c3;border:1px solid #fde68a;border-radius:6px;padding:1px 0;">⚡</div>':''}
+               ${dayLLIcons(day)?('<div style="margin-top:4px;text-align:center;font-size:13px;">'+dayLLIcons(day)+'</div>'):''}
                <button onclick="toggleDayLock(${i})" title="Lock day to finalize"
                  style="margin-top:6px;width:34px;height:22px;border-radius:5px;border:1px solid #d0d0e0;
                         background:#f8f8fc;cursor:pointer;transition:all .15s;
@@ -11118,7 +11118,7 @@ function buildRunOfShow(t) {
           ${dayNum ? `<span style="background:rgba(255,255,255,.15);border-radius:5px;padding:1px 8px;font-size:12px;">${dayNum}</span>` : ''}
           ${dateLabel}
           ${parkBadge}
-          ${dayHasLL(parkDay)?'<span title="Lightning Lane booked" style="font-size:13px;">⚡</span>':''}
+          ${dayLLIcons(parkDay)}
           <button class="ros-add-manual" onclick="toggleRosAdd('${date}')" style="margin-left:auto;background:rgba(255,215,0,.15);border:1px solid rgba(255,215,0,.3);color:#FFD700;">＋ Add Entry</button>
         </div>
 
@@ -13387,7 +13387,7 @@ function companionPlan(t){
       + '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">'
         + '<span style="font-size:13px;font-weight:900;color:#1a1a5e;">'+esc(dstr)+'</span>'
         + (where?'<span style="font-size:13px;font-weight:700;color:#333;">'+esc(where)+'</span>':'<span style="font-size:12px;color:#bbb;">—</span>')
-        + (dayHasLL(d)?'<span title="Lightning Lane booked" style="font-size:12px;">⚡</span>':'')
+        + dayLLIcons(d)
       + '</div>'
       + (hotel?'<div style="font-size:12px;color:#888;margin-top:3px;">🏨 '+esc(hotel)+'</div>':'')
       + (meals?'<div style="margin-top:7px;display:flex;flex-direction:column;gap:3px;">'+meals+'</div>':'')
@@ -13807,7 +13807,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-LLICON2";
+var SKIPPER_BUILD="2026-08-30-LLICON3";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
