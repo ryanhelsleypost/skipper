@@ -1875,8 +1875,8 @@ function buildApp() {
         return '<button class="nav-tab' + (S.tab===tb[0]?' active':'') + '" onclick="setTab(\'' + tb[0] + '\')">' + tb[1] + ' ' + tb[2] + '</button>';
       }).join('') + '<button class="nav-tab" onclick="fwOpen()">&#127860; F&amp;W</button>'}
     </div>
-    ${S.companion?`<div class="guest-banner">👁 Guest view — you can browse the plan but not change it. <button onclick="companionExit()" style="background:none;border:none;color:#4f46e5;font-weight:800;font-size:11.5px;cursor:pointer;text-decoration:underline;font-family:inherit;">Exit</button></div>`:''}
-    <div class="main-content${S.companion?' companion-ro':''}">${buildTabContent(t)}</div>
+    ${S.companion?`<div class="guest-banner">👁 Guest view — browse everything; you can edit only the Fish Extender. <button onclick="companionExit()" style="background:none;border:none;color:#4f46e5;font-weight:800;font-size:11.5px;cursor:pointer;text-decoration:underline;font-family:inherit;">Exit</button></div>`:''}
+    <div class="main-content${S.companion && S.tab!=='fishext'?' companion-ro':''}">${buildTabContent(t)}</div>
     ${S.wizard.open ? buildWizard() : ''}
     ${buildGlossaryModal()}
     ${S.dpModal.open ? buildDpModal() : ''}
@@ -4304,7 +4304,22 @@ function feExportDelivery(){
 }
 
 function feGroups(){ const t=trip(); if(!t.feGroups) t.feGroups=[]; return t.feGroups; }
-function feSave(){ const t=trip(); patchTrip({feGroups:t.feGroups}); }
+function feSave(){
+  const t=trip();
+  if(S.companion){
+    // Guest carve-out: Fish Extender is the one area guests can edit. Persist + push
+    // ONLY the FE change; everything else stays locked.
+    const idx=S.trips.findIndex(x=>x.id===S.currentTripId);
+    if(idx>=0){
+      S.trips[idx]=Object.assign({},S.trips[idx],{feGroups:t.feGroups});
+      persist();
+      if(SYNC.ref){ S._guestFEPush=true; syncPushNow(); S._guestFEPush=false; }
+      render();
+    }
+    return;
+  }
+  patchTrip({feGroups:t.feGroups});
+}
 function feGroupById(gid){ return feGroups().find(g=>g.id===gid); }
 function feFindCabin(cid){ const gs=feGroups(); for(const g of gs){ const c=(g.cabins||[]).find(x=>x.id===cid); if(c) return {g,c}; } return {}; }
 
@@ -13433,7 +13448,7 @@ function syncApplyRemote(v){
 }
 function syncPushNow(force){
   if(!SYNC.ref)return;
-  if(S.companion)return; // guest device never writes to the cloud
+  if(S.companion && !S._guestFEPush)return; // guest writes blocked EXCEPT the FE carve-out
   var localTrips=_demoFreeTrips();
   // EMPTY-PUSH GUARD: never let a blank/fresh device overwrite a cloud copy that
   // still holds real trips. Surface a recovery prompt instead.
@@ -13636,7 +13651,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-PERSONAL";
+var SKIPPER_BUILD="2026-08-30-GUESTFE";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
