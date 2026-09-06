@@ -2247,6 +2247,42 @@ function buildImportModal(t){
     + '</div></div></div>';
 }
 
+// ═══════════ PERSONAL & EMERGENCY INFO (attached to people) ═══════════
+function _piGet(t,mid){ const pi={...(t.personalInfo||{})}; pi[mid]={...(pi[mid]||{})}; return pi; }
+function updPersonInfo(mid, field, val){ const t=trip(); const pi=_piGet(t,mid); pi[mid][field]=val; patchTrip({personalInfo:pi}); }
+function addEmergencyContact(mid){ const t=trip(); const pi=_piGet(t,mid); pi[mid].contacts=[...(pi[mid].contacts||[]),{name:'',phone:''}]; patchTrip({personalInfo:pi}); render(); }
+function updEmergencyContact(mid, idx, field, val){ const t=trip(); const pi=_piGet(t,mid); const cs=[...(pi[mid].contacts||[])]; cs[idx]={...(cs[idx]||{}),[field]:val}; pi[mid].contacts=cs; patchTrip({personalInfo:pi}); }
+function removeEmergencyContact(mid, idx){ const t=trip(); const pi=_piGet(t,mid); const cs=[...(pi[mid].contacts||[])]; cs.splice(idx,1); pi[mid].contacts=cs; patchTrip({personalInfo:pi}); render(); }
+function buildPersonalInfo(t){
+  const guest=!!S.companion; const me=meMember(t);
+  let members=(t.partyMembers||[]).filter(m=>m.name && m.name.trim());
+  if(guest) members = me ? members.filter(m=>m.id===me.id) : [];
+  const pi=t.personalInfo||{};
+  const noteBar = `<div style="font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 11px;margin-bottom:12px;line-height:1.5;">🔒 Sensitive info. It syncs to everyone on your sync code${guest?'':' — in Guest Mode each person sees only their own'}. Keep your sync code private.</div>`;
+  if(!members.length) return noteBar + `<div style="color:#999;font-size:13px;padding:4px 0;">${guest?'Set who\'s using this phone with the 👤 button to see your info.':'Add party members first (Settings → party) to attach personal info.'}</div>`;
+  const F=(mid,label,field,ph,type)=> `<div class="fg"><label class="lbl">${label}</label><input type="${type||'text'}" value="${esc((pi[mid]||{})[field]||'')}" placeholder="${ph||''}" autocapitalize="characters" onchange="updPersonInfo('${mid}','${field}',this.value)"></div>`;
+  return noteBar + members.map(m=>{
+    const info=pi[m.id]||{}; const contacts=info.contacts||[];
+    return `<div class="card" style="border-left:3px solid #dc2626;">
+      <div class="card-header">${m.emoji||'🧑'} ${esc(m.name)}</div>
+      <div class="form-row">${F(m.id,'Date of Birth','dob','MM/DD/YYYY')}${F(m.id,"Driver's License #",'dl','')}</div>
+      <div class="fg"><label class="lbl">Passport #</label><input type="text" value="${esc(info.passport||'')}" placeholder="" autocapitalize="characters" onchange="updPersonInfo('${m.id}','passport',this.value)"></div>
+      <div class="form-row">${F(m.id,'Passport Issued','passIss','MM/DD/YYYY')}${F(m.id,'Passport Expires','passExp','MM/DD/YYYY')}</div>
+      <div class="form-row">${F(m.id,'Known Traveler # (TSA PreCheck)','ktn','')}${F(m.id,'Medical / Insurance ID','med','')}</div>
+      <div class="fg"><label class="lbl">🚨 Emergency Contacts</label>
+        ${contacts.map((c,ci)=>`<div style="display:flex;gap:6px;margin-bottom:5px;">
+          <input type="text" value="${esc(c.name||'')}" placeholder="Name" onchange="updEmergencyContact('${m.id}',${ci},'name',this.value)" style="flex:1;min-width:0;">
+          <input type="tel" value="${esc(c.phone||'')}" placeholder="Phone" onchange="updEmergencyContact('${m.id}',${ci},'phone',this.value)" style="flex:1;min-width:0;">
+          <button onclick="removeEmergencyContact('${m.id}',${ci})" class="btn btn-danger btn-sm">✕</button>
+        </div>`).join('')}
+        <button class="btn-dashed" style="margin-top:2px;" onclick="addEmergencyContact('${m.id}')">＋ Add contact</button>
+      </div>
+      <div class="fg"><label class="lbl">Notes</label>
+        <input type="text" value="${esc(info.notes||'')}" placeholder="e.g. allergies, insurance provider, policy #" onchange="updPersonInfo('${m.id}','notes',this.value)"></div>
+    </div>`;
+  }).join('');
+}
+
 function buildLogistics(t) {
   if (!S.ui.logOpen) S.ui.logOpen = {transport:true, hotel:true};
 
@@ -2269,6 +2305,7 @@ function buildLogistics(t) {
     + '</div>'
     + section('transport','&#9992;&#65039;','Transportation', function(){ return typeof buildTransportation === 'function' ? buildTransportation(t) : '<div style="color:#999;font-size:13px;">Loading...</div>'; })
     + section('hotel','&#127968;','Hotel', function(){ return typeof buildHotel === 'function' ? buildHotel(t) : ''; }, logStampHTML(logHotelsTs(t), 'logConfirmHotels()'))
+    + section('personal','&#129706;','Personal &amp; Emergency Info', function(){ return buildPersonalInfo(t); })
     + buildImportModal(t)
     + '</div>';
 }
@@ -13599,7 +13636,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-PACK";
+var SKIPPER_BUILD="2026-08-30-PERSONAL";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
