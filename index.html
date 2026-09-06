@@ -591,7 +591,7 @@ function fwActive(t, day){
   return !!(t && t.tripType==='wdw' && day && day.park==='ep' && day.date && day.date>=FW_FEST.start && day.date<=FW_FEST.end);
 }
 // True when a day has any Lightning Lane / Premier Access opted-in via the itinerary
-function llBolt(c){ return '<svg viewBox="0 0 24 24" width="1em" height="1em" style="vertical-align:-0.12em;"><path d="M7 2v11h3v9l7-12h-4l4-8z" fill="'+c+'"/></svg>'; }
+function llBolt(c){ return '<svg viewBox="0 0 24 24" width="1.05em" height="1.05em" style="vertical-align:-0.15em;"><path d="M11 21h-1l1-7H6l7-13h1l-1 7h5z" fill="'+c+'" fill-rule="nonzero"/></svg>'; }
 function dayLLIcons(d){
   const ll=(d&&d.ll)||{}; const pt=ll.passType||'none';
   if(pt==='premier'||pt==='ultimate') return ' <span title="Premier / Ultimate Pass — individual rides included">👑</span>';
@@ -13807,7 +13807,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-LLICON";
+var SKIPPER_BUILD="2026-08-30-LLICON2";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
