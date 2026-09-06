@@ -2379,27 +2379,51 @@ function buildPrintDoc(t){
     });
   }
 
-  // ── FISH EXTENDER (by group: cabin / stateroom / person / gifts / characters) ──
-  const groups=(t.feGroups||[]).filter(g=>(g.cabins||[]).length);
-  if(groups.length){
-    html+=H('🎁 Fish Extender — Delivery Map');
-    groups.forEach(g=>{
-      html+=`<div style="page-break-inside:avoid;margin-top:8px;"><div style="font-size:13px;font-weight:800;background:#eee;padding:3px 6px;">${esc(g.name||'Group')}</div>`;
-      (g.cabins||[]).slice().sort((a,b)=>((a.stateroom||'')<(b.stateroom||'')?-1:1)).forEach(c=>{
-        html+=`<div style="page-break-inside:avoid;margin:5px 0 5px 4px;border-left:3px solid #888;padding-left:8px;">
-          <div><b>Stateroom ${esc(c.stateroom||'—')}</b>${c.familyName?' · '+esc(c.familyName):''}${c.celebration?' · 🎉 '+esc(c.celebration):''}${c.delivered?' · ✅ delivered':''}</div>`;
-        (c.people||[]).forEach(p=>{
-          const g2=feNormGender(p.gender); const ag=(p.age||'')+(g2||'');
-          html+=`<div style="margin-left:10px;">• <b>${esc(p.name||'—')}</b>${ag?' ('+esc(ag)+')':''}${p.characters?' — ⭐ '+esc(p.characters):''}${p.plannedGift?' — 🎁 '+esc(p.plannedGift):''}${(p.giftTags||[]).length?' ['+esc((p.giftTags||[]).join(', '))+']':''}</div>`;
-        });
-        if(c.notes) html+=`<div style="margin-left:10px;color:#555;font-size:11px;">📝 ${esc(c.notes)}</div>`;
-        html+='</div>';
+  // ── FISH EXTENDER — delivery sheet (grouped by exchange → ship zone, with check box) ──
+  const feGroupsP=(t.feGroups||[]).filter(g=>(g.cabins||[]).length);
+  if(feGroupsP.length){
+    html+=H('🎁 Fish Extender — Delivery Sheet');
+    html+='<div style="font-size:10.5px;color:#666;margin:-2px 0 8px;">Check the box as you deliver each cabin.</div>';
+    const zoneOrder=['Fwd','Mid','Aft','']; const zoneName={Fwd:'Forward',Mid:'Midship',Aft:'Aft','':'Position not set'};
+    const personRow=(pp)=>{
+      const g2=feNormGender(pp.gender);
+      const who=`<span style="font-weight:700;">${esc(pp.name||'—')}</span>${pp.age?` <span style="color:#666;">(${esc(pp.age)}${esc(g2)})</span>`:''}`;
+      const gifts=[].concat(Array.isArray(pp.giftTags)?pp.giftTags:[], pp.plannedGift?[pp.plannedGift]:[]).filter(Boolean).map(esc).join(', ');
+      const alg=pp.hasAllergies?`<span style="color:#b91c1c;font-weight:600;">⚠ ${pp.allergies?esc(pp.allergies):'allergy'}</span>`:'';
+      return `<tr>
+        <td style="border-top:1px solid #eee;padding:2px 5px;vertical-align:top;">${who}</td>
+        <td style="border-top:1px solid #eee;padding:2px 5px;vertical-align:top;">${pp.characters?esc(pp.characters):''}</td>
+        <td style="border-top:1px solid #eee;padding:2px 5px;vertical-align:top;color:#7c2d12;">${gifts}</td>
+        <td style="border-top:1px solid #eee;padding:2px 5px;vertical-align:top;">${alg}</td></tr>`;
+    };
+    const cabinBlock=(c)=>{
+      const zone=feCabinZone(c);
+      const hdr=[`<b>Stateroom ${esc(c.stateroom)||'—'}</b>`, c.deck?'Deck '+esc(c.deck):'', zone?esc(zone):'', c.familyName?esc(c.familyName):'', c.celebration?('🎉 '+esc(c.celebration)):'', c.delivered?'✅ delivered':''].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      let rows=(c.people||[]).map(personRow).join(''); if(!rows) rows='<tr><td colspan="4" style="color:#999;padding:2px 5px;">(no people listed)</td></tr>';
+      return `<div style="display:flex;gap:8px;border:1px solid #cfcfda;border-radius:8px;padding:8px;margin-bottom:6px;page-break-inside:avoid;">
+        <div style="flex:0 0 auto;width:20px;height:20px;border:2px solid #333;border-radius:4px;"></div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12.5px;margin-bottom:3px;">${hdr}</div>
+          <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+            <tr><td style="color:#999;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;padding:0 5px;">Person</td><td style="color:#999;font-size:9.5px;text-transform:uppercase;padding:0 5px;">Characters</td><td style="color:#999;font-size:9.5px;text-transform:uppercase;padding:0 5px;">Gift</td><td style="color:#999;font-size:9.5px;text-transform:uppercase;padding:0 5px;">Allergy</td></tr>
+            ${rows}
+          </table>
+          ${c.notes?`<div style="font-size:10.5px;color:#555;margin-top:3px;font-style:italic;">${esc(c.notes)}</div>`:''}
+        </div></div>`;
+    };
+    feGroupsP.forEach(g=>{
+      const cabins=g.cabins||[];
+      html+=`<div style="font-size:14px;font-weight:800;color:#312e81;border-bottom:2px solid #4f46e5;padding-bottom:2px;margin:14px 0 4px;page-break-after:avoid;">${esc(g.name||'Group')} <span style="font-weight:400;color:#999;font-size:11px;">(${cabins.length} cabins)</span></div>`;
+      zoneOrder.forEach(z=>{
+        const inZ=cabins.filter(c=>feCabinZone(c)===z);
+        if(!inZ.length) return;
+        inZ.sort((a,b)=>String(a.stateroom||'').localeCompare(String(b.stateroom||''),undefined,{numeric:true}));
+        html+=`<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#777;margin:8px 0 4px;page-break-after:avoid;">${zoneName[z]}</div>`+inZ.map(cabinBlock).join('');
       });
-      html+='</div>';
     });
   }
 
-  html+=`<div style="text-align:center;color:#999;font-size:10px;margin-top:16px;border-top:1px solid #ccc;padding-top:6px;">Skipper Tripper · printed ${new Date().toLocaleDateString()}</div></div>`;
+    html+=`<div style="text-align:center;color:#999;font-size:10px;margin-top:16px;border-top:1px solid #ccc;padding-top:6px;">Skipper Tripper · printed ${new Date().toLocaleDateString()}</div></div>`;
   return html;
 }
 
@@ -13772,7 +13796,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-PRINT2";
+var SKIPPER_BUILD="2026-08-30-PRINT3";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
