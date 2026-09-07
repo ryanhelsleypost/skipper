@@ -2363,13 +2363,39 @@ function updPersonInfo(mid, field, val){ const t=trip(); const pi=_piGet(t,mid);
 function addEmergencyContact(mid){ const t=trip(); const pi=_piGet(t,mid); pi[mid].contacts=[...(pi[mid].contacts||[]),{name:'',phone:''}]; patchTrip({personalInfo:pi}); render(); }
 function updEmergencyContact(mid, idx, field, val){ const t=trip(); const pi=_piGet(t,mid); const cs=[...(pi[mid].contacts||[])]; cs[idx]={...(cs[idx]||{}),[field]:val}; pi[mid].contacts=cs; patchTrip({personalInfo:pi}); }
 function removeEmergencyContact(mid, idx){ const t=trip(); const pi=_piGet(t,mid); const cs=[...(pi[mid].contacts||[])]; cs.splice(idx,1); pi[mid].contacts=cs; patchTrip({personalInfo:pi}); render(); }
+function togglePersonalLock(){ const t=trip(); patchTrip({personalLocked: !t.personalLocked}); render(); }
+function _piRow(label,val){ if(!val) return ''; return `<div style="display:flex;gap:8px;padding:3px 0;border-top:1px solid #f4f4f8;"><span style="flex:0 0 108px;font-size:10.5px;font-weight:800;color:#9a9ab0;text-transform:uppercase;letter-spacing:.03em;padding-top:1px;">${label}</span><span style="flex:1;min-width:0;font-size:12.5px;font-weight:700;color:#1a1a2e;word-break:break-word;">${esc(val)}</span></div>`; }
+function buildPersonalCardLocked(m, info){
+  const passport = info.passport ? esc(info.passport)+(info.passIss||info.passExp?` <span style="font-weight:600;color:#888;">(${[info.passIss?'iss '+esc(info.passIss):'',info.passExp?'exp '+esc(info.passExp):''].filter(Boolean).join(' · ')})</span>`:'') : '';
+  const contacts=(info.contacts||[]).filter(c=>c&&(c.name||c.phone));
+  const contactsHtml = contacts.length ? `<div style="display:flex;gap:8px;padding:5px 0 0;border-top:1px solid #f4f4f8;margin-top:2px;"><span style="flex:0 0 108px;font-size:10.5px;font-weight:800;color:#b91c1c;text-transform:uppercase;">🚨 Emergency</span><span style="flex:1;min-width:0;font-size:12.5px;">${contacts.map(c=>`<div style="margin-bottom:2px;"><b>${esc(c.name||'')}</b>${c.phone?` <a href="tel:${esc(String(c.phone).replace(/[^\d+]/g,''))}" style="color:#4f46e5;text-decoration:none;font-weight:700;">${esc(c.phone)}</a>`:''}</div>`).join('')}</span></div>` : '';
+  const rows = _piRow('Date of Birth',info.dob)+_piRow("Driver's Lic.",info.dl)+(passport?`<div style="display:flex;gap:8px;padding:3px 0;border-top:1px solid #f4f4f8;"><span style="flex:0 0 108px;font-size:10.5px;font-weight:800;color:#9a9ab0;text-transform:uppercase;padding-top:1px;">Passport</span><span style="flex:1;min-width:0;font-size:12.5px;font-weight:700;color:#1a1a2e;word-break:break-word;">${passport}</span></div>`:'')+_piRow('Known Traveler',info.ktn)+_piRow('Medical / Ins.',info.med)+_piRow('Notes',info.notes)+contactsHtml;
+  const empty = !rows;
+  return `<div style="border:1.5px solid #e4e4f0;border-radius:12px;background:#fff;margin-bottom:9px;position:relative;overflow:hidden;">
+    <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#dc2626;"></div>
+    <div style="padding:11px 13px 11px 15px;">
+      <div style="font-size:13.5px;font-weight:900;color:#1a1a5e;margin-bottom:${empty?'0':'4px'};">${m.emoji||'🧑'} ${esc(m.name)}</div>
+      ${empty?'<div style="font-size:11.5px;color:#bbb;">No info entered yet.</div>':rows}
+    </div></div>`;
+}
+
 function buildPersonalInfo(t){
   const guest=!!S.companion; const me=meMember(t);
   let members=(t.partyMembers||[]).filter(m=>m.name && m.name.trim());
   if(guest) members = me ? members.filter(m=>m.id===me.id) : [];
   const pi=t.personalInfo||{};
-  const noteBar = `<div style="font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 11px;margin-bottom:12px;line-height:1.5;">🔒 Sensitive info. It syncs to everyone on your sync code${guest?'':' — in Guest Mode each person sees only their own'}. Keep your sync code private.</div>${guest?'':'<button onclick="piBatchOpen()" class="btn-dashed" style="width:100%;margin-bottom:12px;">📋 Batch import (paste everyone at once)</button>'}`;
-  if(!members.length) return noteBar + `<div style="color:#999;font-size:13px;padding:4px 0;">${guest?'Set who\'s using this phone with the 👤 button to see your info.':'Add party members first (Settings → party) to attach personal info.'}</div>`;
+  const locked = !!t.personalLocked;
+  const privacyNote = `<div style="font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 11px;margin-bottom:12px;line-height:1.5;">🔒 Sensitive info. It syncs to everyone on your sync code${guest?'':' — in Guest Mode each person sees only their own'}. Keep your sync code private.</div>`;
+  if(!members.length) return privacyNote + `<div style="color:#999;font-size:13px;padding:4px 0;">${guest?'Set who\'s using this phone with the 👤 button to see your info.':'Add party members first (Settings → party) to attach personal info.'}</div>`;
+  // LOCKED (or guest) → clean read-only cards
+  if(locked || guest){
+    const lockBar = guest ? '' : `<div style="background:#f0f0ff;border:1px solid #c7d2fe;border-radius:8px;padding:9px 13px;margin-bottom:12px;font-size:13px;color:#3730a3;font-weight:700;">🔒 Locked — <button onclick="togglePersonalLock()" style="background:none;border:none;cursor:pointer;color:#1a1a5e;font-weight:800;font-size:13px;text-decoration:underline;font-family:inherit;">unlock</button> to edit</div>`;
+    return privacyNote + lockBar + members.map(m=>buildPersonalCardLocked(m, pi[m.id]||{})).join('');
+  }
+  const noteBar = privacyNote + `<div style="display:flex;gap:8px;margin-bottom:12px;">
+    <button onclick="piBatchOpen()" class="btn-dashed" style="flex:1;margin:0;">📋 Batch import</button>
+    <button onclick="togglePersonalLock()" class="btn btn-ghost btn-sm" style="flex:0 0 auto;">🔒 Lock</button>
+  </div>`;
   const F=(mid,label,field,ph,type)=> `<div class="fg"><label class="lbl">${label}</label><input type="${type||'text'}" value="${esc((pi[mid]||{})[field]||'')}" placeholder="${ph||''}" autocapitalize="characters" onchange="updPersonInfo('${mid}','${field}',this.value)"></div>`;
   return noteBar + members.map(m=>{
     const info=pi[m.id]||{}; const contacts=info.contacts||[];
@@ -13938,7 +13964,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-31-PIIMPORT";
+var SKIPPER_BUILD="2026-08-31-PILOCK";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
