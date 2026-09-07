@@ -4484,7 +4484,7 @@ function feSave(){
 function feGroupById(gid){ return feGroups().find(g=>g.id===gid); }
 function feFindCabin(cid){ const gs=feGroups(); for(const g of gs){ const c=(g.cabins||[]).find(x=>x.id===cid); if(c) return {g,c}; } return {}; }
 
-function feAddGroup(){ const n=prompt('Name this group / exchange (e.g. Kids, Ornaments, Minnie Group):',''); if(n===null) return; const g=blankFEGroup(n.trim()||'New group'); if(S.companion){ const me=meMember(trip()); if(me) g.assignedTo=[me.id]; } feGroups().push(g); feSave(); }
+function feAddGroup(){ const n=prompt('Name this group / exchange (e.g. Kids, Ornaments, Minnie Group):',''); if(n===null) return; const g=blankFEGroup(n.trim()||'New group'); const me=meMember(trip()); if(me) g.assignedTo=[me.id]; feGroups().push(g); feSave(); }
 function feToggleGroupAssign(gid, memberId){ const g=feGroupById(gid); if(!g)return; const at=[...(g.assignedTo||[])]; const i=at.indexOf(memberId); if(i>=0)at.splice(i,1); else at.push(memberId); g.assignedTo=at; feSave(); }
 function feDelGroup(gid){ const g=feGroupById(gid); if(!g) return; if(!confirm('Delete the '+(g.name||'')+' group with its '+(g.cabins||[]).length+' cabins and gift list?')) return; const t=trip(); t.feGroups=t.feGroups.filter(x=>x.id!==gid); feSave(); }
 function feUpdGroup(gid,field,val){ const g=feGroupById(gid); if(g){ g[field]=val; feSave(); } }
@@ -13847,7 +13847,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-31-MINE3";
+var SKIPPER_BUILD="2026-08-31-MINE4";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
