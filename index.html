@@ -10400,7 +10400,8 @@ function addSuitcase(tripId) {
   if (!name?.trim()) return;
   const t = trip();
   const emoji = ['🧳','👜','🎒','💼','🛄','👝'][Math.floor(Math.random()*6)];
-  const suitcases = [...(t.suitcases||[]), { id:uid(), name:name.trim(), icon:emoji, items:[], assignedTo:[] }];
+  const me = meMember(t);
+  const suitcases = [...(t.suitcases||[]), { id:uid(), name:name.trim(), icon:emoji, items:[], assignedTo: me?[me.id]:[] }];
   patchTrip({ suitcases }, true); render();
 }
 function deleteSuitcase(scId) {
@@ -13846,7 +13847,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-31-MINE2";
+var SKIPPER_BUILD="2026-08-31-MINE3";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
