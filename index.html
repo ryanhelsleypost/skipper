@@ -10123,8 +10123,15 @@ function buildPackingList(t) {
   const members = (t.partyMembers||[]).filter(m=>m.name);
   const guest = !!S.companion;
   const me = meMember(t);
-  const packFilter = guest ? (me?me.id:'__all__') : (S.ui.packFilter||'__all__');
-  const bagVisible = (sc)=>{ if(packFilter==='__all__') return true; const at=sc.assignedTo||[]; return at.length===0 || at.includes(packFilter); };
+  const packFilter = guest ? (me?me.id:'__none__') : (S.ui.packFilter||'__all__');
+  // Owner: '__all__' shows everything; a person filter shows their bags + shared (unassigned).
+  // Guest: locked to their own id and sees ONLY bags assigned to them (unassigned hidden), same as Fish Extender.
+  const bagVisible = (sc)=>{
+    if(packFilter==='__all__') return true;
+    if(packFilter==='__none__') return false;
+    const at=sc.assignedTo||[];
+    return guest ? at.includes(packFilter) : (at.length===0 || at.includes(packFilter));
+  };
   const vis = suitcases.filter(bagVisible);
   const byUnits     = packCountUnits(t);
   const totalItems  = vis.reduce((s,sc)=>s+packCount(sc.items,t),0);
@@ -10180,7 +10187,7 @@ function buildPackingList(t) {
         return `<button onclick="setPackFilter('${o[0]}')" style="padding:5px 11px;border-radius:20px;border:1.5px solid ${on?'#1a1a5e':'#e4e4f0'};background:${on?'#1a1a5e':'#fff'};color:${on?'#FFD700':'#666'};font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">${o[1]}</button>`;
       }).join('')}
     </div>`:''}
-    ${guest && me ? `<div style="font-size:12px;font-weight:700;color:#3730a3;background:#eef2ff;border:1px solid #c7d2fe;border-radius:9px;padding:8px 12px;margin-bottom:14px;">${me.emoji||'🧑'} Showing ${esc(me.name.split(' ')[0])}'s bags (and shared bags).</div>`:''}
+    ${guest ? `<div style="font-size:12px;font-weight:700;color:#3730a3;background:#eef2ff;border:1px solid #c7d2fe;border-radius:9px;padding:8px 12px;margin-bottom:14px;">${me?(me.emoji||'🧑')+' Showing only '+esc(me.name.split(' ')[0])+"'s bags. Others' bags are hidden.":'Set who you are with the 👤 button to see your bags.'}</div>`:''}
     ${vis.length===0 ? `<div class="empty-rich" style="margin:8px 0;"><div class="er-icon">🧳</div><div class="er-title">${suitcases.length?'No bags to show here':'No bags yet'}</div><div class="er-body">${suitcases.length?'Nothing matches this filter.':'Tap “New Suitcase / Bag” to create one, then assign it to who it belongs to.'}</div></div>` : ''}
     ${vis.map((sc) => buildSuitcaseCard(sc, suitcases.indexOf(sc), t, members)).join('')}
 
@@ -13828,7 +13835,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-FEGUARD";
+var SKIPPER_BUILD="2026-08-30-PACKGUARD";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
