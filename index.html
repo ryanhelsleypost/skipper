@@ -1904,6 +1904,7 @@ function buildApp() {
     ${S.ui.tourActive ? buildTourOverlay() : ''}
     ${S.ui.identityOpen ? buildIdentityModal(t) : ''}
     ${S.ui.fwOpen ? buildFWModal(t) : ''}
+    ${(S.ui.piImport&&S.ui.piImport.open) ? buildPersonalImportModal() : ''}
     ${S.ui.instaOpen ? buildInstaModal() : ''}
     ${settingsOverlay}
     ${buildSyncRecoverBanner()}
@@ -2268,6 +2269,96 @@ function buildImportModal(t){
 
 // ═══════════ PERSONAL & EMERGENCY INFO (attached to people) ═══════════
 function _piGet(t,mid){ const pi={...(t.personalInfo||{})}; pi[mid]={...(pi[mid]||{})}; return pi; }
+// ── Personal & Emergency Info: batch importer ──
+const PI_EMOJIS=['🧑','👩','🧒','👦','👧','🧔','👴','👵','🙂'];
+function piBatchOpen(){ S.ui.piImport={open:true, raw:'', parsed:null, err:''}; render(); }
+function piBatchClose(){ if(S.ui.piImport) S.ui.piImport.open=false; render(); }
+function piBatchSetRaw(v){ if(S.ui.piImport){ S.ui.piImport.raw=v; } }
+function _piIsDate(s){ return /^\s*\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}\s*$/.test(s); }
+function _piFieldFor(label){
+  const l=label.trim().toLowerCase();
+  if(l==='dl'||l.startsWith('driver')||l.startsWith('license')) return 'dl';
+  if(l==='ktn'||l.indexOf('known traveler')>=0||l.indexOf('tsa')>=0||l.indexOf('precheck')>=0) return 'ktn';
+  if(l==='passport'||l.startsWith('pass')) return 'passport';
+  if(l==='iss'||l.indexOf('issue')>=0) return 'passIss';
+  if(l==='exp'||l.indexOf('expir')>=0) return 'passExp';
+  if(l==='med'||l.indexOf('medical')>=0||l.indexOf('insurance')>=0||l.indexOf('health')>=0) return 'med';
+  if(l==='dob'||l.indexOf('birth')>=0) return 'dob';
+  return null;
+}
+function piBatchParse(){
+  const st=S.ui.piImport; if(!st) return;
+  const t=trip(); const members=(t.partyMembers||[]).filter(m=>m.name&&m.name.trim());
+  const blocks=String(st.raw||'').replace(/\r/g,'').split(/\n\s*\n/).map(b=>b.trim()).filter(Boolean);
+  const out=[];
+  blocks.forEach(block=>{
+    const lines=block.split('\n').map(l=>l.trim()).filter(Boolean);
+    if(!lines.length) return;
+    const rec={name:lines[0], fields:{}, contacts:[]};
+    for(let i=1;i<lines.length;i++){
+      const line=lines[i];
+      const m=line.match(/^([A-Za-z][A-Za-z .\/]*?)\s*:\s*(.+)$/);
+      if(m){ const f=_piFieldFor(m[1]); if(f){ rec.fields[f]=m[2].trim(); continue; } }
+      if(_piIsDate(line) && !rec.fields.dob){ rec.fields.dob=line.trim(); continue; }
+      // "Name - phone" emergency contact
+      const c=line.match(/^(.+?)\s*[-\u2013]\s*([\d()+\-.\sxext]{7,})$/i);
+      if(c){ rec.contacts.push({name:c[1].trim(), phone:c[2].trim()}); continue; }
+    }
+    // match to an existing party member by first name / full name
+    const nmFull=rec.name.toLowerCase();
+    const nmFirst=nmFull.split(/\s+/)[0];
+    const hit=members.find(mm=>{ const pn=(mm.name||'').toLowerCase(); return pn===nmFull || pn.split(/\s+/)[0]===nmFirst; });
+    rec.memberId = hit?hit.id:null;
+    rec.matchName = hit?hit.name:null;
+    out.push(rec);
+  });
+  st.parsed=out; st.err = out.length?'':'Nothing parsed — check the format (Name on its own line, then DL:/Passport:/ISS:/EXP:/MED: lines).';
+  render();
+}
+function piBatchImport(){
+  const st=S.ui.piImport; if(!st||!st.parsed) return;
+  const t=trip();
+  let members=[...(t.partyMembers||[])];
+  const pi={...(t.personalInfo||{})};
+  st.parsed.forEach((rec,idx)=>{
+    let mid=rec.memberId;
+    if(!mid){ mid=uid(); members.push({id:mid,name:rec.name,emoji:PI_EMOJIS[members.length%PI_EMOJIS.length]}); }
+    const cur={...(pi[mid]||{})};
+    Object.keys(rec.fields).forEach(k=>{ if(rec.fields[k]) cur[k]=rec.fields[k]; });
+    if(rec.contacts.length){ cur.contacts=(cur.contacts||[]).concat(rec.contacts); }
+    pi[mid]=cur;
+  });
+  patchTrip({ partyMembers:members, personalInfo:pi });
+  S.ui.piImport.open=false; render();
+}
+function buildPersonalImportModal(){
+  const st=S.ui.piImport; if(!st||!st.open) return '';
+  const parsed=st.parsed;
+  const preview = parsed ? (parsed.length? parsed.map(r=>{
+    const fset=Object.keys(r.fields).filter(k=>r.fields[k]);
+    return `<div style="border:1px solid #ececf3;border-radius:9px;padding:9px 11px;margin-bottom:7px;">
+      <div style="font-weight:800;color:#1a1a5e;font-size:13px;">${esc(r.name)} <span style="font-weight:600;font-size:11px;color:${r.memberId?'#16a34a':'#b45309'};">${r.memberId?'→ '+esc(r.matchName):'→ new party member'}</span></div>
+      <div style="font-size:11px;color:#666;margin-top:2px;">${fset.length?fset.map(k=>({dl:'DL',ktn:'KTN',passport:'Passport',passIss:'Issued',passExp:'Expires',med:'Medical',dob:'DOB'}[k]||k)).join(' · '):'<span style="color:#c00;">no fields detected</span>'}${r.contacts.length?' · '+r.contacts.length+' contact'+(r.contacts.length>1?'s':''):''}</div>
+    </div>`;
+  }).join('') : `<div style="color:#c00;font-size:12px;">${esc(st.err||'Nothing parsed.')}</div>`) : '';
+  return `
+  <div class="modal-overlay" onclick="if(event.target===this)piBatchClose()" style="z-index:2600;align-items:flex-start;padding:22px 10px;overflow-y:auto;">
+    <div class="modal" style="max-width:520px;width:100%;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="modal-h" style="margin:0;">📋 Batch import personal info</div>
+        <button onclick="piBatchClose()" style="background:none;border:1px solid #e4e4f0;border-radius:8px;padding:4px 10px;font-size:12px;color:#999;cursor:pointer;font-family:inherit;">✕ Close</button>
+      </div>
+      <div class="modal-sub" style="margin:6px 0 10px;">Paste one person per block (blank line between people). First line = name, then lines like <code>DL:</code> <code>KTN:</code> <code>Passport:</code> <code>ISS:</code> <code>EXP:</code> <code>MED:</code>, a bare date = DOB, and <code>Name - phone</code> = emergency contact.</div>
+      <textarea oninput="piBatchSetRaw(this.value)" placeholder="Ryan&#10;DL: ...&#10;KTN: ...&#10;Passport: ...&#10;ISS: 08/27/2023&#10;EXP: 08/26/2033&#10;MED: ...&#10;&#10;Amanda&#10;DL: ..." style="width:100%;box-sizing:border-box;min-height:150px;font-family:ui-monospace,monospace;font-size:12px;padding:10px;border:1.5px solid #e4e4f0;border-radius:10px;">${esc(st.raw||'')}</textarea>
+      <div style="display:flex;gap:8px;margin:10px 0;">
+        <button onclick="piBatchParse()" class="btn btn-primary" style="flex:1;">Parse</button>
+        ${parsed&&parsed.length?`<button onclick="piBatchImport()" class="btn btn-primary" style="flex:1;background:#16a34a;">✓ Import ${parsed.length}</button>`:''}
+      </div>
+      ${parsed!==null?`<div style="font-size:10px;font-weight:800;color:#a2a2b2;text-transform:uppercase;margin:4px 0 6px;">Preview</div>${preview}`:''}
+    </div>
+  </div>`;
+}
+
 function updPersonInfo(mid, field, val){ const t=trip(); const pi=_piGet(t,mid); pi[mid][field]=val; patchTrip({personalInfo:pi}); }
 function addEmergencyContact(mid){ const t=trip(); const pi=_piGet(t,mid); pi[mid].contacts=[...(pi[mid].contacts||[]),{name:'',phone:''}]; patchTrip({personalInfo:pi}); render(); }
 function updEmergencyContact(mid, idx, field, val){ const t=trip(); const pi=_piGet(t,mid); const cs=[...(pi[mid].contacts||[])]; cs[idx]={...(cs[idx]||{}),[field]:val}; pi[mid].contacts=cs; patchTrip({personalInfo:pi}); }
@@ -2277,7 +2368,7 @@ function buildPersonalInfo(t){
   let members=(t.partyMembers||[]).filter(m=>m.name && m.name.trim());
   if(guest) members = me ? members.filter(m=>m.id===me.id) : [];
   const pi=t.personalInfo||{};
-  const noteBar = `<div style="font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 11px;margin-bottom:12px;line-height:1.5;">🔒 Sensitive info. It syncs to everyone on your sync code${guest?'':' — in Guest Mode each person sees only their own'}. Keep your sync code private.</div>`;
+  const noteBar = `<div style="font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 11px;margin-bottom:12px;line-height:1.5;">🔒 Sensitive info. It syncs to everyone on your sync code${guest?'':' — in Guest Mode each person sees only their own'}. Keep your sync code private.</div>${guest?'':'<button onclick="piBatchOpen()" class="btn-dashed" style="width:100%;margin-bottom:12px;">📋 Batch import (paste everyone at once)</button>'}`;
   if(!members.length) return noteBar + `<div style="color:#999;font-size:13px;padding:4px 0;">${guest?'Set who\'s using this phone with the 👤 button to see your info.':'Add party members first (Settings → party) to attach personal info.'}</div>`;
   const F=(mid,label,field,ph,type)=> `<div class="fg"><label class="lbl">${label}</label><input type="${type||'text'}" value="${esc((pi[mid]||{})[field]||'')}" placeholder="${ph||''}" autocapitalize="characters" onchange="updPersonInfo('${mid}','${field}',this.value)"></div>`;
   return noteBar + members.map(m=>{
@@ -13847,7 +13938,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-31-MINE4";
+var SKIPPER_BUILD="2026-08-31-PIIMPORT";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
