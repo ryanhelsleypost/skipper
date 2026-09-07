@@ -4507,8 +4507,10 @@ function feToggleGift(gid,giftId){ const g=feGroupById(gid); if(!g) return; cons
 
 function buildFishExtenders(t){
   const _guest=!!S.companion; const _me=meMember(t);
-  let groups = t.feGroups || [];
-  if(_guest){ groups = _me ? groups.filter(g=>(g.assignedTo||[]).includes(_me.id)) : []; }
+  const _feFilter = _guest ? (_me?_me.id:'__none__') : (S.ui.feFilter!==undefined ? S.ui.feFilter : (_me?_me.id:'__all__'));
+  const _feVisible = g => _feFilter==='__all__' ? true : _feFilter==='__none__' ? false : (g.assignedTo||[]).includes(_feFilter);
+  let groups = (t.feGroups || []).filter(_feVisible);
+  const _feMembers = (t.partyMembers||[]).filter(m=>m.name&&m.name.trim());
   const allCabins = groups.reduce((a,g)=>a.concat(g.cabins||[]),[]);
   const totalPeople = allCabins.reduce((n,c)=>n+(c.people?c.people.length:0),0);
   const delivered = allCabins.filter(c=>c.delivered).length;
@@ -4549,6 +4551,13 @@ function buildFishExtenders(t){
   return `<div class="tab-pane">
     <h2 style="font-size:19px;font-weight:900;color:#0b0b2e;margin:0 0 14px;">&#128031; Fish Extenders</h2>
     ${intro}${actions}${summary}
+    ${(!_guest && _feMembers.length>1) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
+      <span style="font-size:11px;font-weight:800;color:#999;text-transform:uppercase;">Show groups:</span>
+      ${[['__all__','👥 Everyone']].concat(_feMembers.map(m=>[m.id,(m.emoji||'🧑')+' '+esc(m.name.split(' ')[0])])).map(function(o){
+        const on=_feFilter===o[0];
+        return `<button onclick="setFeFilter('${o[0]}')" style="padding:5px 11px;border-radius:20px;border:1.5px solid ${on?'#1a1a5e':'#e4e4f0'};background:${on?'#1a1a5e':'#fff'};color:${on?'#FFD700':'#666'};font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">${o[1]}</button>`;
+      }).join('')}
+    </div>`:''}
     ${_guest?`<div style="font-size:12px;font-weight:700;color:#3730a3;background:#eef2ff;border:1px solid #c7d2fe;border-radius:9px;padding:8px 12px;margin-bottom:12px;">${_me?(_me.emoji||'🧑')+' Showing only '+esc(_me.name.split(' ')[0])+"'s groups. Others' groups are hidden.":'Set who you are with the 👤 button to see your groups.'}</div>`:''}
     ${groups.length ? groups.map(g=>feGroupCard(g)).join('') : (_guest?'<div style="text-align:center;padding:24px;color:#999;font-size:13px;">No groups assigned to you yet. Tap “＋ New group” to make your own, or ask the trip owner to assign you one.</div>':empty)}
     ${S.feWiz && S.feWiz.open ? feWizModal() : ''}
@@ -10123,14 +10132,13 @@ function buildPackingList(t) {
   const members = (t.partyMembers||[]).filter(m=>m.name);
   const guest = !!S.companion;
   const me = meMember(t);
-  const packFilter = guest ? (me?me.id:'__none__') : (S.ui.packFilter||'__all__');
+  const packFilter = guest ? (me?me.id:'__none__') : (S.ui.packFilter!==undefined ? S.ui.packFilter : (me?me.id:'__all__'));
   // Owner: '__all__' shows everything; a person filter shows their bags + shared (unassigned).
   // Guest: locked to their own id and sees ONLY bags assigned to them (unassigned hidden), same as Fish Extender.
   const bagVisible = (sc)=>{
     if(packFilter==='__all__') return true;
     if(packFilter==='__none__') return false;
-    const at=sc.assignedTo||[];
-    return guest ? at.includes(packFilter) : (at.length===0 || at.includes(packFilter));
+    return (sc.assignedTo||[]).includes(packFilter);
   };
   const vis = suitcases.filter(bagVisible);
   const byUnits     = packCountUnits(t);
@@ -10374,6 +10382,7 @@ function buildSuitcaseCard(sc, si, t, members) {
 // -- Packing list handlers --
 function clearAllBags(tripId){ if(!confirm('Remove ALL bags and their items? This cannot be undone.'))return; patchTrip({suitcases:[]},true); render(); }
 function setPackFilter(v){ S.ui.packFilter=v; render(); }
+function setFeFilter(v){ S.ui.feFilter=v; render(); }
 function toggleSuitcaseAssign(scId, memberId){
   const t=trip();
   const suitcases=(t.suitcases||[]).map(s=>{
@@ -13835,7 +13844,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-PACKGUARD";
+var SKIPPER_BUILD="2026-08-31-MINE";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
