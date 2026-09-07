@@ -4386,7 +4386,7 @@ function blankFEPerson(){ return {id:uid(), name:'', gender:'', age:'', characte
 function feNormGender(g){ const c=String(g||'').trim().charAt(0).toUpperCase(); return (c==='M'||c==='F')?c:''; }
 function blankFECabin(){ return {id:uid(), stateroom:'', deck:'', position:'', familyName:'', celebration:'', favChars:'', allergies:'', notes:'', delivered:false, collapsed:true, people:[blankFEPerson()]}; }
 function blankFEGift(){ return {id:uid(), name:'', qty:1, done:false}; }
-function blankFEGroup(name){ return {id:uid(), name:(name||'Fish Extenders'), icon:'\uD83D\uDC1F', collapsed:true, cabins:[], gifts:[]}; }
+function blankFEGroup(name){ return {id:uid(), name:(name||'Fish Extenders'), icon:'\uD83D\uDC1F', collapsed:true, cabins:[], gifts:[], assignedTo:[]}; }
 
 // DCL room numbers: last 3 digits are the room, leading digit(s) are the deck (7528 -> 7, 12520 -> 12)
 function feDeriveDeck(room){ const d=String(room||'').replace(/\D/g,''); return d.length>3?d.slice(0,d.length-3):''; }
@@ -4484,7 +4484,8 @@ function feSave(){
 function feGroupById(gid){ return feGroups().find(g=>g.id===gid); }
 function feFindCabin(cid){ const gs=feGroups(); for(const g of gs){ const c=(g.cabins||[]).find(x=>x.id===cid); if(c) return {g,c}; } return {}; }
 
-function feAddGroup(){ const n=prompt('Name this group / exchange (e.g. Kids, Ornaments, Minnie Group):',''); if(n===null) return; feGroups().push(blankFEGroup(n.trim()||'New group')); feSave(); }
+function feAddGroup(){ const n=prompt('Name this group / exchange (e.g. Kids, Ornaments, Minnie Group):',''); if(n===null) return; const g=blankFEGroup(n.trim()||'New group'); if(S.companion){ const me=meMember(trip()); if(me) g.assignedTo=[me.id]; } feGroups().push(g); feSave(); }
+function feToggleGroupAssign(gid, memberId){ const g=feGroupById(gid); if(!g)return; const at=[...(g.assignedTo||[])]; const i=at.indexOf(memberId); if(i>=0)at.splice(i,1); else at.push(memberId); g.assignedTo=at; feSave(); }
 function feDelGroup(gid){ const g=feGroupById(gid); if(!g) return; if(!confirm('Delete the '+(g.name||'')+' group with its '+(g.cabins||[]).length+' cabins and gift list?')) return; const t=trip(); t.feGroups=t.feGroups.filter(x=>x.id!==gid); feSave(); }
 function feUpdGroup(gid,field,val){ const g=feGroupById(gid); if(g){ g[field]=val; feSave(); } }
 function feToggleGroup(gid){ const g=feGroupById(gid); if(g){ g.collapsed=!g.collapsed; if(!g.collapsed){ (g.cabins||[]).forEach(c=>c.collapsed=false); } feSave(); } }
@@ -4505,7 +4506,9 @@ function feUpdGift(gid,giftId,field,val){ const g=feGroupById(gid); if(!g) retur
 function feToggleGift(gid,giftId){ const g=feGroupById(gid); if(!g) return; const gift=(g.gifts||[]).find(x=>x.id===giftId); if(gift){ gift.done=!gift.done; feSave(); } }
 
 function buildFishExtenders(t){
-  const groups = t.feGroups || [];
+  const _guest=!!S.companion; const _me=meMember(t);
+  let groups = t.feGroups || [];
+  if(_guest){ groups = _me ? groups.filter(g=>(g.assignedTo||[]).includes(_me.id)) : []; }
   const allCabins = groups.reduce((a,g)=>a.concat(g.cabins||[]),[]);
   const totalPeople = allCabins.reduce((n,c)=>n+(c.people?c.people.length:0),0);
   const delivered = allCabins.filter(c=>c.delivered).length;
@@ -4546,7 +4549,8 @@ function buildFishExtenders(t){
   return `<div class="tab-pane">
     <h2 style="font-size:19px;font-weight:900;color:#0b0b2e;margin:0 0 14px;">&#128031; Fish Extenders</h2>
     ${intro}${actions}${summary}
-    ${groups.length ? groups.map(g=>feGroupCard(g)).join('') : empty}
+    ${_guest?`<div style="font-size:12px;font-weight:700;color:#3730a3;background:#eef2ff;border:1px solid #c7d2fe;border-radius:9px;padding:8px 12px;margin-bottom:12px;">${_me?(_me.emoji||'🧑')+' Showing only '+esc(_me.name.split(' ')[0])+"'s groups. Others' groups are hidden.":'Set who you are with the 👤 button to see your groups.'}</div>`:''}
+    ${groups.length ? groups.map(g=>feGroupCard(g)).join('') : (_guest?'<div style="text-align:center;padding:24px;color:#999;font-size:13px;">No groups assigned to you yet. Tap “＋ New group” to make your own, or ask the trip owner to assign you one.</div>':empty)}
     ${S.feWiz && S.feWiz.open ? feWizModal() : ''}
   </div>`;
 }
@@ -4557,16 +4561,27 @@ function feGroupCard(g){
   const giftsReady=gifts.filter(x=>x.done).length;
   const st=feCabinStats(cabins);
   const allCollapsed = cabins.length>0 && cabins.every(c=>c.collapsed);
+  const _t=trip();
+  const _members=(_t.partyMembers||[]).filter(m=>m.name&&m.name.trim());
+  const _assignEmojis=(g.assignedTo||[]).map(id=>{const m=_members.find(m=>m.id===id);return m?(m.emoji||'\uD83E\uDDD1'):'';}).filter(Boolean).join('');
+  const _assignRow=(!S.companion && _members.length)?`
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 4px 10px 32px;">
+      <span style="font-size:10px;font-weight:800;color:#9a9ab0;text-transform:uppercase;">\uD83D\uDC64 Whose group:</span>
+      ${_members.map(m=>{const on=(g.assignedTo||[]).includes(m.id);return `<button onclick="feToggleGroupAssign('${g.id}','${m.id}')" style="padding:3px 9px;border-radius:20px;border:1.5px solid ${on?'#4f46e5':'#e4e4f0'};background:${on?'#eef2ff':'#fff'};color:${on?'#4f46e5':'#999'};font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">${m.emoji||'\uD83E\uDDD1'} ${esc(m.name.split(' ')[0])}</button>`;}).join('')}
+      ${(g.assignedTo||[]).length===0?`<span style="font-size:10px;color:#c0392b;font-weight:700;">unassigned \u2014 hidden from guests</span>`:''}
+    </div>`:'';
   const head = `
     <div style="display:flex;align-items:center;gap:8px;padding:2px 2px 12px;">
       <button onclick="feToggleGroup('${g.id}')" style="flex:0 0 auto;background:none;border:none;font-size:15px;color:#4f46e5;cursor:pointer;width:22px;">${g.collapsed?'&#9654;':'&#9660;'}</button>
       <input value="${esc(g.icon||'')}" onchange="feUpdGroup('${g.id}','icon',this.value)" style="flex:0 0 34px;width:34px;text-align:center;font-size:17px;padding:5px 2px;border:2px solid #e4e4f0;border-radius:8px;">
       <input value="${esc(g.name||'')}" onchange="feUpdGroup('${g.id}','name',this.value)" placeholder="Group name" style="flex:1;font-size:15px;font-weight:800;color:#0b0b2e;padding:6px 8px;border:2px solid #e4e4f0;border-radius:8px;">
+      ${_assignEmojis?`<span style="flex:0 0 auto;font-size:14px;" title="Assigned to">${_assignEmojis}</span>`:''}
       <button onclick="feDelGroup('${g.id}')" style="flex:0 0 auto;background:none;border:none;color:#d33;font-size:17px;cursor:pointer;">&#128465;</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px 12px;padding:0 4px 10px 32px;font-size:11px;font-weight:700;color:#8888a0;">
       <span>&#128031; ${cabins.length} cabins</span><span>&#128100; ${st.adults} adults</span><span>&#128118; ${st.under5} under 5</span><span>&#9989; ${delivered}/${cabins.length} delivered</span>${gifts.length?`<span>&#127873; ${giftsReady}/${gifts.length} gifts ready</span>`:''}
-    </div>`;
+    </div>
+    ${_assignRow}`;
 
   if(g.collapsed){
     return `<div style="background:#f6f6fb;border:1px solid #e7e7f0;border-radius:14px;padding:10px 12px 4px;margin-bottom:14px;">${head}</div>`;
@@ -13813,7 +13828,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-30-PARTYICON";
+var SKIPPER_BUILD="2026-08-30-FEGUARD";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
