@@ -1295,6 +1295,19 @@ function loadStorage() {
 // Migrate old trip data to new schema
 function migrateAllTrips() {
   S.trips = S.trips.map(t => {
+    // Re-key llBookings from raw ride names → safe slugs (raw names with "/" etc. broke Firebase sync)
+    (t.parks||[]).forEach(function(d){
+      if(d && d.llBookings && typeof d.llBookings==='object'){
+        var nb={}; var changed=false;
+        Object.keys(d.llBookings).forEach(function(k){
+          var v=d.llBookings[k]||{}; var nk=llBkKey(v.name||k);
+          if(!v.name) v.name=k;
+          if(nk!==k) changed=true;
+          nb[nk]=v;
+        });
+        if(changed) d.llBookings=nb;
+      }
+    });
     // Add missing top-level fields
     if (!t.resort) t.resort = blankResort();
     if (!t.guestAccounts || typeof t.guestAccounts !== 'object' || Array.isArray(t.guestAccounts)) t.guestAccounts = {};
@@ -1450,7 +1463,19 @@ function persist() {
 function trip() { return S.trips.find(t => t.id === S.currentTripId); }
 
 function patchTrip(updates, skipRender) {
-  if (S.companion) { return; } // guest/read-only device: no edits
+  if (S.companion) {
+    // Guest carve-out: allow editing ONLY their own packing (suitcases). FE goes via feSave.
+    const keys = Object.keys(updates||{});
+    const GUEST_OK = ['suitcases'];
+    if (!keys.length || !keys.every(k => GUEST_OK.includes(k))) return; // block everything else
+    const gi = S.trips.findIndex(t => t.id === S.currentTripId);
+    if (gi < 0) return;
+    S.trips[gi] = Object.assign({}, S.trips[gi], updates);
+    persist();
+    if (SYNC.ref) { S._guestFEPush = true; syncPushNow(); S._guestFEPush = false; }
+    if (!skipRender) render();
+    return;
+  }
   const idx = S.trips.findIndex(t => t.id === S.currentTripId);
   if (idx >= 0) {
     S.trips[idx] = Object.assign({}, S.trips[idx], updates);
@@ -1894,8 +1919,8 @@ function buildApp() {
         return '<button class="nav-tab' + (S.tab===tb[0]?' active':'') + '" onclick="setTab(\'' + tb[0] + '\')">' + tb[1] + ' ' + tb[2] + '</button>';
       }).join('') + '<button class="nav-tab" onclick="fwOpen()">&#127860; F&amp;W</button>'}
     </div>
-    ${S.companion?`<div class="guest-banner">👁 Guest view — browse everything; you can edit only the Fish Extender. <button onclick="companionExit()" style="background:none;border:none;color:#4f46e5;font-weight:800;font-size:11.5px;cursor:pointer;text-decoration:underline;font-family:inherit;">Exit</button></div>`:''}
-    <div class="main-content${S.companion && S.tab!=='fishext'?' companion-ro':''}">${buildTabContent(t)}</div>
+    ${S.companion?`<div class="guest-banner">👁 Guest view — browse everything; you can edit your own Packing and Fish Extender. <button onclick="companionExit()" style="background:none;border:none;color:#4f46e5;font-weight:800;font-size:11.5px;cursor:pointer;text-decoration:underline;font-family:inherit;">Exit</button></div>`:''}
+    <div class="main-content${S.companion && S.tab!=='fishext' && S.tab!=='packing'?' companion-ro':''}">${buildTabContent(t)}</div>
     ${S.wizard.open ? buildWizard() : ''}
     ${buildGlossaryModal()}
     ${S.dpModal.open ? buildDpModal() : ''}
@@ -2994,13 +3019,14 @@ function llPicksForDate(t,date){
   const d=(t.parks||[]).find(function(p){return p.date===date;});
   return d?llPicksForDay0(d):[];
 }
+function llBkKey(name){ return String(name||'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'ride'; }
 function llBookings(t,date){
   const d=(t.parks||[]).find(function(p){return p.date===date;});
   return (d&&d.llBookings)||{};
 }
 function llBookedCount(t,date){
   const bk=llBookings(t,date);
-  return llPicksForDate(t,date).filter(function(p){return bk[p.name]&&bk[p.name].start;}).length;
+  return llPicksForDate(t,date).filter(function(p){return bk[llBkKey(p.name)]&&bk[llBkKey(p.name)].start;}).length;
 }
 function llAddHour(hm){
   if(!hm)return'';
@@ -3038,20 +3064,22 @@ function llQuickTimes(){
     return '<button type="button" onclick="document.getElementById(\'llb-start\').value=\''+v+'\';var u=document.getElementById(\'llb-until\');if(u)u.textContent=\'→ until \'+fmt12(llAddHour(\''+v+'\')); " style="padding:5px 9px;background:#f3f0ff;border:1.5px solid #c4b5fd;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:#5b21b6;white-space:nowrap;">'+fmt12(v)+'</button>';
   }).join('');
 }
-function llSetBooking(date,name){
+function llSetBooking(date,key){
   const t=trip();if(!t)return;
   const d=(t.parks||[]).find(function(p){return p.date===date;});if(!d)return;
   const start=document.getElementById('llb-start')?.value;
   if(!start){alert('Pick the window start time.');return;}
+  const pick=llPicksForDate(t,date).find(function(p){return llBkKey(p.name)===key;});
+  const nm=pick?pick.name:key;
   d.llBookings=d.llBookings||{};
-  d.llBookings[name]={start:start,end:llAddHour(start)}; // LL windows are always 1 hour
+  d.llBookings[key]={name:nm,start:start,end:llAddHour(start)}; // key = safe slug; name stored inside
   S.ui.llEditRide=null;
   persist();render();
 }
-function llClearBooking(date,name){
+function llClearBooking(date,key){
   const t=trip();if(!t)return;
   const d=(t.parks||[]).find(function(p){return p.date===date;});if(!d||!d.llBookings)return;
-  delete d.llBookings[name];
+  delete d.llBookings[key];
   persist();render();
 }
 function llOpenEdit(date,name){
@@ -3073,10 +3101,10 @@ function buildLLConfirm(t,date){
   if(!picks.length)return'';
   const bk=llBookings(t,date);
   const rows=picks.map(function(p){
-    const b=bk[p.name];
+    const key=llBkKey(p.name);
+    const b=bk[key];
     const booked=b&&b.start;
-    const editing=S.ui.llEditRide===date+'||'+p.name;
-    const nameAttr=esc(p.name).replace(/'/g,'&#39;');
+    const editing=S.ui.llEditRide===date+'||'+key;
     return `<div style="padding:9px 11px;border:1.5px solid ${booked?'#bbf7d0':'#e9d5ff'};border-radius:10px;background:${booked?'#f0fdf4':'#fff'};margin-bottom:6px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
         <span style="font-size:13px;font-weight:700;color:#3b0764;">${esc(p.name)}${p.ill?' <span class="ll-ill">ILL</span>':''}</span>
@@ -3084,16 +3112,16 @@ function buildLLConfirm(t,date){
       </div>
       ${booked&&!editing?`<div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
         <span style="font-size:12px;color:#555;">🕐 ${fmt12(b.start)}${b.end?' – '+fmt12(b.end):''}</span>
-        <button onclick="llOpenEdit('${date}','${nameAttr}')" style="background:#fff;border:1.5px solid #e4e4f0;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">✎ Time</button>
-        <button onclick="llClearBooking('${date}','${nameAttr}')" style="background:#fff;border:1.5px solid #e4e4f0;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;color:#999;cursor:pointer;font-family:inherit;">✕ Unbook</button>
+        <button onclick="llOpenEdit('${date}','${key}')" style="background:#fff;border:1.5px solid #e4e4f0;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">✎ Time</button>
+        <button onclick="llClearBooking('${date}','${key}')" style="background:#fff;border:1.5px solid #e4e4f0;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;color:#999;cursor:pointer;font-family:inherit;">✕ Unbook</button>
             </div>`:''} ${(!booked&&!editing)?`<div style="display:flex;gap:6px;margin-top:7px;">
-        <button onclick="llOpenEdit('${date}','${nameAttr}')" style="flex:1;background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:7px 0;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">⚡ Got it — set time</button>
+        <button onclick="llOpenEdit('${date}','${key}')" style="flex:1;background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:7px 0;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">⚡ Got it — set time</button>
       </div>`:''}
       ${editing?`<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;align-items:center;">
         <span style="font-size:11px;color:#888;">window starts</span>
         <select id="llb-start" onchange="var s=document.getElementById('llb-until');if(s)s.textContent=this.value?('→ until '+fmt12(llAddHour(this.value))):'';" style="padding:8px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:14px;font-family:inherit;">${llTimeOptions(booked?b.start:'')}</select>
         <span id="llb-until" style="font-size:12px;color:#7c3aed;font-weight:700;">${booked&&b.start?'→ until '+fmt12(llAddHour(b.start)):''}</span>
-        <button onclick="llSetBooking('${date}','${nameAttr}')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button>
+        <button onclick="llSetBooking('${date}','${key}')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button>
         <button onclick="S.ui.llEditRide=null;render()" style="background:none;border:none;color:#999;font-size:12px;cursor:pointer;font-family:inherit;">cancel</button>
         </div>
       </div>`:''}
@@ -11014,7 +11042,7 @@ function rosEntriesForDate(t, date) {
         (function(){
           const bk=(parkDay.llBookings)||{};
           llPicksForDay0(parkDay).forEach(function(p){
-            const b=bk[p.name];
+            const b=bk[llBkKey(p.name)];
             if(b&&b.start){
               const illP=p.ill?((parkDay.ll&&parkDay.ll.illPrices&&parkDay.ll.illPrices[p.name])||(parkDay.ll&&parkDay.ll.onePrices&&parkDay.ll.onePrices[p.name])||null):null;
               const pty=(parkDay.ll&&parkDay.ll.partySize)||t.partySize||1;
@@ -13964,7 +13992,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-08-31-PILOCK";
+var SKIPPER_BUILD="2026-09-07-LLKEY-PACK";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
