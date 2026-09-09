@@ -3009,10 +3009,12 @@ function llPicksForDay0(day){
   const ll=day&&day.ll;if(!ll)return[];
   if(ll.passType==='premier'||ll.passType==='ultimate')return[]; // covers everything, no bookings needed
   const out=[];
-  if(ll.tier1Pick)out.push({name:ll.tier1Pick,ill:false});
-  (ll.tier2Picks||[]).forEach(function(r){out.push({name:r,ill:false});});
-  (ll.illSelected||[]).forEach(function(r){out.push({name:r,ill:true});});
-  (ll.oneSelected||[]).forEach(function(r){out.push({name:r,ill:true});}); // DLP Premier Access one-shots
+  if(ll.passType==='multi'){ // Multi Pass tier rides only count when Multi Pass is the active pass type
+    if(ll.tier1Pick)out.push({name:ll.tier1Pick,ill:false});
+    (ll.tier2Picks||[]).forEach(function(r){out.push({name:r,ill:false});});
+  }
+  (ll.illSelected||[]).forEach(function(r){out.push({name:r,ill:true});});   // ILL upcharges apply regardless of pass type
+  (ll.oneSelected||[]).forEach(function(r){out.push({name:r,ill:true});});   // DLP Premier Access one-shots
   return out;
 }
 function llPicksForDate(t,date){
@@ -13992,7 +13994,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-09-07-LLKEY-PACK";
+var SKIPPER_BUILD="2026-09-09-LLPICKS";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
