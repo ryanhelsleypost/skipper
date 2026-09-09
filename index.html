@@ -3027,6 +3027,10 @@ function llBookings(t,date){
   const d=(t.parks||[]).find(function(p){return p.date===date;});
   return (d&&d.llBookings)||{};
 }
+function llResolvedCount(t,date){
+  const bk=llBookings(t,date);
+  return llPicksForDate(t,date).filter(function(p){var b=bk[llBkKey(p.name)];return b&&(b.start||b.missed);}).length;
+}
 function llBookedCount(t,date){
   const bk=llBookings(t,date);
   return llPicksForDate(t,date).filter(function(p){return bk[llBkKey(p.name)]&&bk[llBkKey(p.name)].start;}).length;
@@ -3079,13 +3083,23 @@ function llSetBooking(date,key){
   d.llBookings=d.llBookings||{};
   d.llBookings[key]={name:nm,actual:actual,start:start,end:llAddHour(start)}; // wished name + actual ride
   S.ui.llEditRide=null;
-  persist();render();
+  patchTrip({parks:t.parks});
 }
 function llClearBooking(date,key){
   const t=trip();if(!t)return;
   const d=(t.parks||[]).find(function(p){return p.date===date;});if(!d||!d.llBookings)return;
   delete d.llBookings[key];
-  persist();render();
+  patchTrip({parks:t.parks});
+}
+function llMarkMissed(date,key){
+  const t=trip();if(!t)return;
+  const d=(t.parks||[]).find(function(p){return p.date===date;});if(!d)return;
+  const pick=llPicksForDate(t,date).find(function(p){return llBkKey(p.name)===key;});
+  const nm=pick?pick.name:key;
+  d.llBookings=d.llBookings||{};
+  d.llBookings[key]={name:nm,missed:true};
+  S.ui.llEditRide=null;
+  patchTrip({parks:t.parks});
 }
 function llOpenEdit(date,name){
   S.ui.llEditRide=date+'||'+name;render();
@@ -3111,18 +3125,25 @@ function buildLLConfirm(t,date){
     const key=llBkKey(p.name);
     const b=bk[key];
     const booked=b&&b.start;
+    const missed=b&&b.missed;
     const editing=S.ui.llEditRide===date+'||'+key;
-    return `<div style="padding:9px 11px;border:1.5px solid ${booked?'#bbf7d0':'#e9d5ff'};border-radius:10px;background:${booked?'#f0fdf4':'#fff'};margin-bottom:6px;">
+    return `<div style="padding:9px 11px;border:1.5px solid ${booked?'#bbf7d0':missed?'#e5e7eb':'#e9d5ff'};border-radius:10px;background:${booked?'#f0fdf4':missed?'#f9fafb':'#fff'};margin-bottom:6px;${missed?'opacity:.75;':''}">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
         <span style="font-size:13px;font-weight:700;color:#3b0764;">${esc((b&&b.actual)||p.name)}${(b&&b.actual&&b.actual!==p.name)?` <span style="font-size:10px;color:#a78bfa;font-weight:600;">(wished ${esc(p.name)})</span>`:''}${p.ill?' <span class="ll-ill">ILL</span>':''}</span>
-        <span style="font-size:11px;font-weight:800;padding:2px 9px;border-radius:9px;background:${booked?'#dcfce7':'#f3e8ff'};color:${booked?'#16a34a':'#7c3aed'};">${booked?'booked':'wished'}</span>
+        <span style="font-size:11px;font-weight:800;padding:2px 9px;border-radius:9px;background:${booked?'#dcfce7':missed?'#e5e7eb':'#f3e8ff'};color:${booked?'#16a34a':missed?'#6b7280':'#7c3aed'};">${booked?'booked':missed?'didn\u2019t get it':'wished'}</span>
       </div>
       ${booked&&!editing?`<div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
         <span style="font-size:12px;color:#555;">🕐 ${fmt12(b.start)}${b.end?' – '+fmt12(b.end):''}</span>
         <button onclick="llOpenEdit('${date}','${key}')" style="background:#fff;border:1.5px solid #e4e4f0;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">✎ Time</button>
         <button onclick="llClearBooking('${date}','${key}')" style="background:#fff;border:1.5px solid #e4e4f0;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;color:#999;cursor:pointer;font-family:inherit;">✕ Unbook</button>
-            </div>`:''} ${(!booked&&!editing)?`<div style="display:flex;gap:6px;margin-top:7px;">
+            </div>`:''} ${(!booked&&!missed&&!editing)?`<div style="display:flex;gap:6px;margin-top:7px;">
         <button onclick="llOpenEdit('${date}','${key}')" style="flex:1;background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:7px 0;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">⚡ Got it — set time</button>
+        <button onclick="llMarkMissed('${date}','${key}')" style="flex:0 0 auto;background:#fff;border:1.5px solid #e4e4f0;color:#999;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">✕ Didn’t get it</button>
+      </div>`:''}
+      ${(missed&&!editing)?`<div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
+        <span style="font-size:12px;color:#6b7280;">😕 Didn’t get this one</span>
+        <button onclick="llClearBooking('${date}','${key}')" style="background:#fff;border:1.5px solid #e4e4f0;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;color:#7c3aed;cursor:pointer;font-family:inherit;">↺ Back to wished</button>
+        <button onclick="llOpenEdit('${date}','${key}')" style="background:#fff;border:1.5px solid #e4e4f0;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">⚡ Actually got it</button>
       </div>`:''}
       ${editing?`<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;align-items:center;">
         <span style="font-size:11px;color:#888;width:100%;">Actual ride booked</span>
@@ -3151,7 +3172,7 @@ function buildLLPreflight(t){
   const rows=days.map(function(d){
     const picks=llPicksForDay0(d).length;
     const booked=llBookedCount(t,d.date);
-    const allSet=booked>=picks;
+    const allSet=llResolvedCount(t,d.date)>=picks;
     const open=S.ui.llConfirmDate===d.date;
     const lbl=new Date(d.date+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
     return `<div style="border:1.5px solid ${allSet?'#bbf7d0':'#fde68a'};border-radius:10px;background:${allSet?'#f0fdf4':'#fffbeb'};padding:9px 11px;margin-bottom:6px;">
@@ -14001,7 +14022,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-09-09-LL10";
+var SKIPPER_BUILD="2026-09-09-LLMISS";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
