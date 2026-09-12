@@ -1297,6 +1297,15 @@ function migrateAllTrips() {
   S.trips = S.trips.map(t => {
     // Re-key llBookings from raw ride names → safe slugs (raw names with "/" etc. broke Firebase sync)
     (t.parks||[]).forEach(function(d){
+      if(d && d.ll){
+        ['illPrices','illAddlBooked'].forEach(function(fld){
+          var o=d.ll[fld]; if(o && typeof o==='object' && !Array.isArray(o)){
+            var no={}, ch=false;
+            Object.keys(o).forEach(function(k){ var nk=llBkKey(k); if(nk!==k)ch=true; no[nk]=o[k]; });
+            if(ch) d.ll[fld]=no;
+          }
+        });
+      }
       if(d && d.llBookings && typeof d.llBookings==='object'){
         var nb={}; var changed=false;
         Object.keys(d.llBookings).forEach(function(k){
@@ -1499,7 +1508,7 @@ function blankDining() {
 }
 
 function blankLL() {
-  return { passType:'none', partySize:null, llmpPrice:20, premierPrice:150, tier1Pick:'', tier2Picks:[], illSelected:[], illPrices:{} };
+  return { passType:'none', partySize:null, llmpPrice:20, premierPrice:150, tier1Pick:'', tier2Picks:[], illSelected:[], illPrices:{}, multiAddlBooked:false, illAddlBooked:{} };
 }
 // Disneyland Paris equivalent of blankLL() — stored in the same day.ll field
 function blankPA() {
@@ -7269,7 +7278,7 @@ function llBreakdownForDay(day, t){
   const ps=(ll&&ll.partySize!=null)?ll.partySize:((t&&t.partySize)||4);
   const lines=[]; let subtotal=0; let typeLabel='None';
   const illLine=function(name){
-    const price=((ll.illPrices||{})[name]) ?? (((pd.ill.find(function(r){return r.name===name;})||{}).price)||0);
+    const price=((ll.illPrices||{})[llBkKey(name)]) ?? (((pd.ill.find(function(r){return r.name===name;})||{}).price)||0);
     lines.push({label:name, sub:'Single Pass', math:sym+price+' × '+ps, amt:price*ps});
     subtotal+=price*ps;
   };
@@ -8620,14 +8629,14 @@ function calcDayLLCost(day, t) {
   if (ll.passType === 'multi') {
     total += (ll.llmpPrice||20) * ps;
     (ll.illSelected||[]).forEach(name => {
-      const price = (ll.illPrices||{})[name] ?? (pd.ill.find(r=>r.name===name)?.price||0);
+      const price = (ll.illPrices||{})[llBkKey(name)] ?? (pd.ill.find(r=>r.name===name)?.price||0);
       total += price * ps;
     });
   } else if (ll.passType === 'premier') {
     total += (ll.premierPrice||150) * ps;
   } else {
     (ll.illSelected||[]).forEach(name => {
-      const price = (ll.illPrices||{})[name] ?? (pd.ill.find(r=>r.name===name)?.price||0);
+      const price = (ll.illPrices||{})[llBkKey(name)] ?? (pd.ill.find(r=>r.name===name)?.price||0);
       total += price * ps;
     });
   }
@@ -8793,7 +8802,11 @@ function buildLLSection(day, i, t) {
           onchange="updLL(${i},'llmpPrice',parseFloat(this.value)||20)"
           style="width:60px;padding:3px 6px;border:1px solid #ddd;border-radius:5px;font-size:13px;text-align:center;font-family:inherit;">
         <span style="font-size:11px;color:#9333ea;">(range $16–$45)</span>
-      </div>`;
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11.5px;font-weight:700;color:${ll.multiAddlBooked?'#16a34a':'#9333ea'};background:#fff;border:1px solid ${ll.multiAddlBooked?'#bbf7d0':'#ddd6fe'};border-radius:7px;padding:4px 9px;">
+        <input type="checkbox" ${ll.multiAddlBooked?'checked':''} onchange="setLLMultiAddl(${i},this.checked)" style="width:auto;accent-color:#16a34a;cursor:pointer;">
+        ${ll.multiAddlBooked?'✓ Additional party booked':'Additional party booked?'}
+      </label>`;
     } else {
       html += `<div style="display:flex;align-items:center;gap:7px;">
         <span style="font-size:11px;font-weight:800;color:#6b21a8;text-transform:uppercase;">Premier $/pp/day</span>
@@ -8869,7 +8882,7 @@ function buildLLSection(day, i, t) {
       <div style="background:#fff;border-radius:8px;padding:8px 10px;border:1px solid #fde68a;">`;
     pd.ill.forEach((illRide,ri) => {
       const checked = (ll.illSelected||[]).includes(illRide.name);
-      const price = (ll.illPrices||{})[illRide.name] ?? illRide.price;
+      const price = (ll.illPrices||{})[llBkKey(illRide.name)] ?? illRide.price;
       html += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #fef9c3;">
         <label class="ll-ride-label" style="flex:1;margin:0;">
           <input type="checkbox" ${checked?'checked':''}
@@ -8880,7 +8893,11 @@ function buildLLSection(day, i, t) {
         <span style="font-size:11px;color:#777;flex-shrink:0;">$/pp:</span>
         <input type="number" value="${price}" min="1" max="99" class="ll-ill-price"
           onchange="updILLPrice(${i},${ri},parseFloat(this.value)||${illRide.price})">
-      </div>`;
+      </div>
+      ${checked?`<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:700;color:${(ll.illAddlBooked||{})[llBkKey(illRide.name)]?'#16a34a':'#9a9ab0'};padding:0 0 6px 24px;">
+        <input type="checkbox" ${(ll.illAddlBooked||{})[llBkKey(illRide.name)]?'checked':''} onchange="setLLIllAddl(${i},'${llBkKey(illRide.name)}',this.checked)" style="width:auto;accent-color:#16a34a;cursor:pointer;">
+        ${(ll.illAddlBooked||{})[llBkKey(illRide.name)]?'✓ Additional party booked':'Additional party booked?'}
+      </label>`:''}`;
     });
     html += `</div>`;
   }
@@ -8893,7 +8910,7 @@ function buildLLSection(day, i, t) {
     costLines.push(`LLMP: $${ll.llmpPrice||20} × ${ps} = <strong>$${base}</strong>`);
     total += base;
     (ll.illSelected||[]).forEach(name => {
-      const price = (ll.illPrices||{})[name] ?? (pd.ill.find(r=>r.name===name)?.price||0);
+      const price = (ll.illPrices||{})[llBkKey(name)] ?? (pd.ill.find(r=>r.name===name)?.price||0);
       const c = price * ps;
       costLines.push(`ILL ${name}: $${price} × ${ps} = <strong>$${c}</strong>`);
       total += c;
@@ -8904,7 +8921,7 @@ function buildLLSection(day, i, t) {
     total += base;
   } else if ((ll.illSelected||[]).length > 0) {
     (ll.illSelected||[]).forEach(name => {
-      const price = (ll.illPrices||{})[name] ?? (pd.ill.find(r=>r.name===name)?.price||0);
+      const price = (ll.illPrices||{})[llBkKey(name)] ?? (pd.ill.find(r=>r.name===name)?.price||0);
       const c = price * ps;
       costLines.push(`ILL ${name}: $${price} × ${ps} = <strong>$${c}</strong>`);
       total += c;
@@ -11074,7 +11091,7 @@ function rosEntriesForDate(t, date) {
           llPicksForDay0(parkDay).forEach(function(p){
             const b=bk[llBkKey(p.name)];
             if(b&&b.start){
-              const illP=p.ill?((parkDay.ll&&parkDay.ll.illPrices&&parkDay.ll.illPrices[p.name])||(parkDay.ll&&parkDay.ll.onePrices&&parkDay.ll.onePrices[p.name])||null):null;
+              const illP=p.ill?((parkDay.ll&&parkDay.ll.illPrices&&parkDay.ll.illPrices[llBkKey(p.name)])||(parkDay.ll&&parkDay.ll.onePrices&&parkDay.ll.onePrices[llBkKey(p.name)])||null):null;
               const pty=(parkDay.ll&&parkDay.ll.partySize)||t.partySize||1;
               entries.push({
                 time:b.start,
@@ -12752,6 +12769,8 @@ function applyLLEstimates(){
   });
   patchTrip({parks}, true); render();
 }
+function setLLMultiAddl(i,checked){ const t=trip(); const parks=[...t.parks]; parks[i]={...parks[i], ll:{...(parks[i].ll||blankLL()), multiAddlBooked:checked}}; patchTrip({parks}); }
+function setLLIllAddl(i,key,checked){ const t=trip(); const parks=[...t.parks]; const ll={...(parks[i].ll||blankLL())}; const m={...(ll.illAddlBooked||{})}; if(checked)m[key]=true; else delete m[key]; ll.illAddlBooked=m; parks[i]={...parks[i], ll:ll}; patchTrip({parks}); }
 function updLL(i,field,val) {
   const t=trip(); const parks=[...t.parks];
   parks[i]={...parks[i], ll:{...(parks[i].ll||blankLL()), [field]:val}};
@@ -12802,7 +12821,7 @@ function updILLPrice(i,ri,price) {
   const pd=LL_DATA[parks[i].park];
   if (!pd) return;
   const name=pd.ill[ri].name;
-  const illPrices={...(ll.illPrices||{}), [name]:price};
+  const illPrices={...(ll.illPrices||{}), [llBkKey(name)]:price};
   parks[i]={...parks[i], ll:{...ll, illPrices}};
   patchTrip({parks}, true); render();
 }
@@ -14022,7 +14041,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-09-09-LLMISS";
+var SKIPPER_BUILD="2026-09-13-ADDLPARTY2";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
