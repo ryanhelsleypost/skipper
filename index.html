@@ -471,7 +471,7 @@ input[type=checkbox]{width:auto;accent-color:#1a1a5e;width:16px;height:16px;curs
 <style>@keyframes sppulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 #skipper-splash.sp-hide{opacity:0;pointer-events:none}</style>
 <div id="app"></div>
-<div id="ver-badge" style="position:fixed;top:calc(env(safe-area-inset-top,0px) + 3px);right:7px;z-index:99998;font-size:9px;font-weight:700;letter-spacing:.02em;color:rgba(255,255,255,.38);pointer-events:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;"></div>
+<div id="ver-badge" title="Version: Donald Duck" style="position:fixed;top:calc(env(safe-area-inset-top,0px) + 3px);right:8px;z-index:99998;font-size:15px;opacity:.4;pointer-events:none;line-height:1;">🦆</div>
 <div id="print-root"></div>
 <div id="sync-modal-root"></div>
 
@@ -14053,7 +14053,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-09-13-VER";
+var SKIPPER_BUILD="2026-09-13-DONALD";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
@@ -14091,7 +14091,6 @@ try{
 }catch(e){}
 S.companion = localStorage.getItem('skipper_companion')==='1';
 pmBootExtras();
-try{var _vb=document.getElementById('ver-badge'); if(_vb)_vb.textContent='v'+SKIPPER_BUILD;}catch(e){}
 // Home-screen launch target: ?go=today (default) or ?go=insta (jump to live in-park picker)
 try{
   var _go=new URLSearchParams(location.search).get('go');
