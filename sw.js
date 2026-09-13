@@ -1,6 +1,6 @@
 // Skipper/Heath offline shell — cache-first with background refresh.
 // Upload this file to each repo alongside index.html.
-const CACHE = 'app-shell-v3';
+const CACHE = 'app-shell-v4';
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./','icon-180.png','icon-192.png','icon-512.png','manifest.webmanifest'])).then(() => self.skipWaiting()));
 });
