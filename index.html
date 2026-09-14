@@ -3607,6 +3607,19 @@ function tmToggleSkip(date,eKey){
 }
 function tmOpenNote(date,eKey){S.ui.todayNote=date+'||'+eKey;S.ui.todayCash=null;render();
   setTimeout(function(){var el=document.getElementById('tm-note-input');if(el)el.focus();},60);}
+function tmClearNote(date,eKey){ const t=trip();if(!t)return; tmEntry(t,date,eKey).note=''; S.ui.todayNote=null; persist();render(); }
+function tmClearCash(date,eKey,entryText){
+  const t=trip();if(!t)return;
+  const j=tmEntry(t,date,eKey);
+  (((t.budget||{}).categories)||[]).forEach(function(c){
+    if(!c.transactions)return;
+    if(j.txnId){ c.transactions=c.transactions.filter(function(x){return x.id!==j.txnId;}); }
+    else { var note='📍 '+(entryText||''); var idx=-1; c.transactions.forEach(function(x,i){ if(x.onTrip&&x.tripDate===date&&x.note===note) idx=i; }); if(idx>=0) c.transactions.splice(idx,1); }
+    c.spent=catSpent(c);
+  });
+  j.actual=null; j.done=false; delete j.txnId;
+  S.ui.todayCash=null; persist();render();
+}
 function tmSaveNote(date,eKey){
   const t=trip();if(!t)return;
   const v=document.getElementById('tm-note-input')?.value||'';
@@ -3635,7 +3648,11 @@ function tmSaveCash(date,eKey,entryText){
     c.transactions.push({id:uid(),amount:amt,note:'📍 '+entryText,date:date,createdAt:Date.now(),onTrip:true,tripDate:date});
     c.spent=catSpent(c);
   }
-  const j=tmEntry(t,date,eKey);j.actual=amt;j.done=true;
+  const j=tmEntry(t,date,eKey);
+  // If this entry was already actualized, drop the old logged txn so re-actualizing replaces (not duplicates)
+  if(j.txnId){ (((t.budget||{}).categories)||[]).forEach(function(cc){ if(cc.transactions){ cc.transactions=cc.transactions.filter(function(x){return x.id!==j.txnId;}); cc.spent=catSpent(cc);} }); }
+  if(c&&c.transactions&&c.transactions.length){ j.txnId=c.transactions[c.transactions.length-1].id; }
+  j.actual=amt;j.done=true;
   S.ui.todayCash=null;persist();render();
 }
 function tmQuickSpend(date){S.ui.todayCash=date+'||__quick__';S.ui.todayNote=null;render();
@@ -4336,6 +4353,7 @@ function buildTodayLive(t,tm,dates,today){
           onkeydown="if(event.key==='Enter')tmSaveNote('${sel}','${kAttr}')"
           style="flex:1;min-width:0;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">
         <button onclick="tmSaveNote('${sel}','${kAttr}')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button>
+        ${j.note?`<button onclick="tmClearNote('${sel}','${kAttr}')" title="Delete note" style="background:#fff;border:1.5px solid #fecdd3;color:#e11d48;border-radius:8px;padding:8px 11px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">🗑</button>`:''}
       </div>`:''}
       ${cashOpen?`<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
         <span style="font-size:12px;color:#888;">actual $</span>
@@ -4344,6 +4362,7 @@ function buildTodayLive(t,tm,dates,today){
           style="width:90px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">
         <select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:150px;">${catOpts((tmGuessCat(t,e)||{}).id)}</select>
         <button onclick="tmSaveCash('${sel}','${kAttr}','${txtAttr}')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Log it</button>
+        ${j.actual!=null?`<button onclick="tmClearCash('${sel}','${kAttr}','${txtAttr}')" title="Delete this actual" style="background:#fff;border:1.5px solid #fecdd3;color:#e11d48;border-radius:8px;padding:8px 11px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">🗑</button>`:''}
       </div>`:''}
       ${buildEntryActions(e,sel,kAttr,j,noteOpen,cashOpen,dim)}
     </div>`;
@@ -14053,7 +14072,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-09-13-DUCKY";
+var SKIPPER_BUILD="2026-09-14-DELLOG";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
