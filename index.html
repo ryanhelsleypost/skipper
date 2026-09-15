@@ -1938,6 +1938,7 @@ function buildApp() {
     ${S.ui.showTripSelect && !S.companion ? buildTripSelectOverlay() : ''}
     ${S.ui.tourActive ? buildTourOverlay() : ''}
     ${S.ui.identityOpen ? buildIdentityModal(t) : ''}
+    ${S.ui.endDay ? buildEndDayModal(t) : ''}
     ${S.ui.fwOpen ? buildFWModal(t) : ''}
     ${(S.ui.piImport&&S.ui.piImport.open) ? buildPersonalImportModal() : ''}
     ${S.ui.instaOpen ? buildInstaModal() : ''}
@@ -4261,29 +4262,103 @@ function pmSaveSpend(date){
   S.ui.parkModeSpend=false;persist();render();
 }
 
-function pmShowEndDay(date){
+// ═══════════ END-OF-DAY SUMMARY (estimate vs actual + unlinked charges) ═══════════
+function closeEndDay(){ if(S.ui)S.ui.endDay=null; render(); }
+function _edDayTxns(t,date){
+  const out=[];
+  ((t.budget||{}).categories||[]).forEach(function(c){
+    (c.transactions||[]).forEach(function(tx){ if(tx.onTrip&&tx.tripDate===date) out.push(Object.assign({catName:c.name,catEmoji:c.emoji},tx)); });
+  });
+  return out;
+}
+function _edLinkedTxIds(t,date){
+  const ids={}; const jm=((t.tripMode||{}).journal||{})[date]||{};
+  Object.keys(jm).forEach(function(k){ if(jm[k]&&jm[k].txnId) ids[jm[k].txnId]=true; });
+  return ids;
+}
+function endDayLink(date,txId,eKey){
   const t=trip();if(!t)return;
+  const tx=_edDayTxns(t,date).find(function(x){return x.id===txId;}); if(!tx)return;
+  if(!eKey){ return; } // "— leave unlinked —"
+  // clear any other entry that already claimed this txn
+  const jm=((t.tripMode||{}).journal||{})[date]||{};
+  Object.keys(jm).forEach(function(k){ if(jm[k]&&jm[k].txnId===txId){ jm[k].actual=null; delete jm[k].txnId; } });
+  const j=tmEntry(t,date,eKey); j.actual=tx.amount; j.txnId=txId; j.done=true;
+  persist();render();
+}
+function buildEndDayModal(t){
+  const date=S.ui.endDay; if(!date) return '';
   const parkDay=(t.parks||[]).find(function(d){return d.date===date;});
   const dayNum=parkDay&&parkDay.dayNum?'Day '+parkDay.dayNum:'Today';
-  const cats=(t.budget||{}).categories||[];
-  let daySpent=0;
-  const catBreakdown=[];
-  cats.forEach(function(c){
-    let catSpent=0;
-    (c.transactions||[]).forEach(function(tx){
-      if(tx.onTrip&&tx.tripDate===date){catSpent+=tx.amount||0;daySpent+=tx.amount||0;}
-    });
-    if(catSpent>0)catBreakdown.push({name:c.name,emoji:c.emoji,spent:catSpent});
-  });
-  const msg='END OF DAY: '+dayNum+'\n\nToday Spent: $'+daySpent.toFixed(2)+'\n\n'+
-    catBreakdown.map(function(c){return c.emoji+' '+c.name+': $'+c.spent.toFixed(2);}).join('\n')+
-    '\n\nReady for tomorrow?';
-  if(confirm(msg)){
-    S.ui.parkMode=false;
-    const nextIdx=t.parks.findIndex(function(d){return d.date===date;})+1;
-    if(nextIdx<t.parks.length){S.ui.todayDate=t.parks[nextIdx].date;}
-    persist();render();
-  }
+  const parkLbl=parkDay&&parkDay.park?parkName(parkDay.park):'';
+  const est=(parkDay?(calcDayFoodCost(parkDay,t)+calcDayLLCost(parkDay,t)):0);
+  const txns=_edDayTxns(t,date);
+  const actual=txns.reduce(function(s,x){return s+(x.amount||0);},0);
+  const diff=actual-est;
+  const sym=curSym(t);
+  const linkedIds=_edLinkedTxIds(t,date);
+  const unlinked=txns.filter(function(x){return !linkedIds[x.id];});
+
+  // scheduled items for the link dropdown
+  const entries=rosEntriesForDate(t,date).filter(function(e){return !e.isSentinel && String(e.text||'').trim();});
+  const optHtml=entries.map(function(e){ const k=e.id||(e.cls+'|'+e.text); return '<option value="'+esc(k)+'">'+esc((e.icon||'')+' '+e.text)+'</option>'; }).join('');
+
+  // category breakdown of actuals
+  const byCat={};
+  txns.forEach(function(x){ const key=(x.catEmoji||'💵')+' '+(x.catName||'Spend'); byCat[key]=(byCat[key]||0)+(x.amount||0); });
+
+  const diffColor=diff>0?'#dc2626':diff<0?'#16a34a':'#6b7280';
+  const diffLabel=diff>0?('over by '+sym+diff.toFixed(2)):diff<0?('under by '+sym+Math.abs(diff).toFixed(2)):'right on estimate';
+
+  return `
+  <div class="modal-overlay" onclick="if(event.target===this)closeEndDay()" style="z-index:2600;align-items:flex-start;padding:20px 10px;overflow-y:auto;">
+    <div class="modal" style="max-width:520px;width:100%;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="modal-h" style="margin:0;">📋 End of Day</div>
+        <button onclick="closeEndDay()" style="background:none;border:1px solid #e4e4f0;border-radius:8px;padding:4px 10px;font-size:12px;color:#999;cursor:pointer;font-family:inherit;">✕ Close</button>
+      </div>
+      <div class="modal-sub" style="margin:2px 0 12px;">${dayNum}${parkLbl?' · '+esc(parkLbl):''} · ${fmtDateShort(date)}</div>
+
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <div style="flex:1;background:#f8f8ff;border:1.5px solid #e4e4f0;border-radius:12px;padding:11px;text-align:center;">
+          <div style="font-size:10px;font-weight:800;color:#9a9ab0;text-transform:uppercase;">Estimated</div>
+          <div style="font-size:19px;font-weight:900;color:#1a1a5e;">${sym}${est.toFixed(0)}</div>
+        </div>
+        <div style="flex:1;background:#f8f8ff;border:1.5px solid #e4e4f0;border-radius:12px;padding:11px;text-align:center;">
+          <div style="font-size:10px;font-weight:800;color:#9a9ab0;text-transform:uppercase;">Actual</div>
+          <div style="font-size:19px;font-weight:900;color:#1a1a5e;">${sym}${actual.toFixed(2)}</div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:13px;font-weight:800;color:${diffColor};margin-bottom:16px;">${actual||est?diffLabel:'nothing logged yet'}</div>
+
+      ${unlinked.length?`
+      <div style="font-size:11px;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px;">⚠️ Charges not linked to anything (${unlinked.length})</div>
+      ${unlinked.map(function(x){ return `<div style="border:1.5px solid #fde68a;background:#fffbeb;border-radius:10px;padding:9px 11px;margin-bottom:7px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:15px;">${x.catEmoji||'💵'}</span>
+          <span style="flex:1;min-width:0;font-size:13px;font-weight:700;color:#1a1a2e;">${esc((x.note||'').replace(/^📍\\s*/,'')||x.catName||'Charge')}</span>
+          <span style="font-weight:900;color:#b45309;">${sym}${(x.amount||0).toFixed(2)}</span>
+        </div>
+        <div style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+          <span style="font-size:10.5px;color:#9a9ab0;font-weight:700;">🔗 Link to:</span>
+          <select onchange="endDayLink('${date}','${x.id}',this.value)" style="flex:1;min-width:0;font-size:12px;padding:5px 7px;border:1px solid #e4e4f0;border-radius:7px;font-family:inherit;">
+            <option value="">— leave unlinked —</option>${optHtml}
+          </select>
+        </div>
+      </div>`; }).join('')}`:'<div style="font-size:12.5px;color:#16a34a;font-weight:700;margin-bottom:14px;">✓ Every charge is linked to something.</div>'}
+
+      ${Object.keys(byCat).length?`
+      <div style="font-size:11px;font-weight:800;color:#9a9ab0;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 7px;">By category</div>
+      ${Object.keys(byCat).map(function(k){ return `<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 2px;border-top:1px solid #f4f4f8;"><span>${k}</span><span style="font-weight:800;">${sym}${byCat[k].toFixed(2)}</span></div>`; }).join('')}`:''}
+
+      <button onclick="closeEndDay()" class="btn btn-primary" style="width:100%;margin-top:16px;">Done</button>
+    </div>
+  </div>`;
+}
+
+function pmShowEndDay(date){
+  const t=trip();if(!t)return;
+  S.ui.endDay=date; render();
 }
 function buildTodayLive(t,tm,dates,today){
   let sel=S.ui.todayDate;
@@ -14082,7 +14157,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-09-14-REDDUCK";
+var SKIPPER_BUILD="2026-09-14-ENDDAY";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
