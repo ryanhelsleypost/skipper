@@ -471,7 +471,7 @@ input[type=checkbox]{width:auto;accent-color:#1a1a5e;width:16px;height:16px;curs
 <style>@keyframes sppulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 #skipper-splash.sp-hide{opacity:0;pointer-events:none}</style>
 <div id="app"></div>
-<div id="ver-badge" title="Version: Red Rubber Ducky" style="position:fixed;top:calc(env(safe-area-inset-top,0px) + 4px);right:9px;z-index:99998;opacity:.55;pointer-events:none;line-height:0;"><svg viewBox="0 0 24 24" width="18" height="18"><ellipse cx="13" cy="16" rx="8" ry="5.2" fill="#dc2626"/><path d="M20 16 q3 -1 3.2 1 q-1.6 1.2 -3.2 0.6 z" fill="#dc2626"/><circle cx="8.5" cy="9.5" r="4.6" fill="#dc2626"/><path d="M4.2 9.2 q-3 0.3 -3.2 1.4 q1.6 1.2 3.4 0.4 z" fill="#F7A81B"/><circle cx="8.2" cy="8.4" r="0.95" fill="#2b2b2b"/></svg></div>
+<div id="ver-badge" title="Version: Blue Rubber Ducky" style="position:fixed;top:calc(env(safe-area-inset-top,0px) + 4px);right:9px;z-index:99998;opacity:.55;pointer-events:none;line-height:0;"><svg viewBox="0 0 24 24" width="18" height="18"><ellipse cx="13" cy="16" rx="8" ry="5.2" fill="#2563eb"/><path d="M20 16 q3 -1 3.2 1 q-1.6 1.2 -3.2 0.6 z" fill="#2563eb"/><circle cx="8.5" cy="9.5" r="4.6" fill="#2563eb"/><path d="M4.2 9.2 q-3 0.3 -3.2 1.4 q1.6 1.2 3.4 0.4 z" fill="#F7A81B"/><circle cx="8.2" cy="8.4" r="0.95" fill="#2b2b2b"/></svg></div>
 <div id="print-root"></div>
 <div id="sync-modal-root"></div>
 
@@ -4267,7 +4267,7 @@ function closeEndDay(){ if(S.ui)S.ui.endDay=null; render(); }
 function _edDayTxns(t,date){
   const out=[];
   ((t.budget||{}).categories||[]).forEach(function(c){
-    (c.transactions||[]).forEach(function(tx){ if(tx.onTrip&&tx.tripDate===date) out.push(Object.assign({catName:c.name,catEmoji:c.emoji},tx)); });
+    (c.transactions||[]).forEach(function(tx){ if(tx.onTrip&&tx.tripDate===date) out.push(Object.assign({catId:c.id,catName:c.name,catEmoji:c.emoji},tx)); });
   });
   return out;
 }
@@ -4275,6 +4275,17 @@ function _edLinkedTxIds(t,date){
   const ids={}; const jm=((t.tripMode||{}).journal||{})[date]||{};
   Object.keys(jm).forEach(function(k){ if(jm[k]&&jm[k].txnId) ids[jm[k].txnId]=true; });
   return ids;
+}
+function endDayRecat(date,txId,newCatId){
+  const t=trip();if(!t||!newCatId)return;
+  const cats=((t.budget||{}).categories)||[];
+  let tx=null, from=null;
+  cats.forEach(function(c){ if(c.transactions){ var i=c.transactions.findIndex(function(x){return x.id===txId;}); if(i>=0){ tx=c.transactions[i]; from=c; } } });
+  if(!tx||!from) return;
+  var to=cats.find(function(c){return c.id===newCatId;}); if(!to||to===from) return;
+  from.transactions=from.transactions.filter(function(x){return x.id!==txId;}); from.spent=catSpent(from);
+  to.transactions=to.transactions||[]; to.transactions.push(tx); to.spent=catSpent(to);
+  persist();render();
 }
 function endDayLink(date,txId,eKey){
   const t=trip();if(!t)return;
@@ -4347,9 +4358,22 @@ function buildEndDayModal(t){
         </div>
       </div>`; }).join('')}`:'<div style="font-size:12.5px;color:#16a34a;font-weight:700;margin-bottom:14px;">✓ Every charge is linked to something.</div>'}
 
-      ${Object.keys(byCat).length?`
-      <div style="font-size:11px;font-weight:800;color:#9a9ab0;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 7px;">By category</div>
-      ${Object.keys(byCat).map(function(k){ return `<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 2px;border-top:1px solid #f4f4f8;"><span>${k}</span><span style="font-weight:800;">${sym}${byCat[k].toFixed(2)}</span></div>`; }).join('')}`:''}
+      ${txns.length?`
+      <div style="font-size:11px;font-weight:800;color:#9a9ab0;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 7px;">Expenses</div>
+      ${txns.slice().sort(function(a,b){return (a.createdAt||0)-(b.createdAt||0);}).map(function(x){
+        const catSel=cats.map(function(c){return '<option value="'+c.id+'"'+(c.id===x.catId?' selected':'')+'>'+(c.emoji||'')+' '+esc(c.name)+'</option>';}).join('');
+        return `<div style="border-top:1px solid #f4f4f8;padding:8px 2px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:15px;">${x.catEmoji||'💵'}</span>
+            <span style="flex:1;min-width:0;font-size:13px;font-weight:700;color:#1a1a2e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc((x.note||'').replace(/^📍\s*/,'')||x.catName||'Charge')}</span>
+            <span style="font-weight:900;color:#1a1a2e;">${sym}${(x.amount||0).toFixed(2)}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:5px;padding-left:23px;">
+            <span style="font-size:10px;color:#c0c0cf;font-weight:700;">budget:</span>
+            <select onchange="endDayRecat('${date}','${x.id}',this.value)" style="font-size:11.5px;padding:3px 6px;border:1px solid #ececf3;border-radius:6px;font-family:inherit;color:#666;">${catSel}</select>
+          </div>
+        </div>`;
+      }).join('')}`:''}
 
       <button onclick="closeEndDay()" class="btn btn-primary" style="width:100%;margin-top:16px;">Done</button>
     </div>
@@ -14160,7 +14184,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-09-14-ENDDAY2";
+var SKIPPER_BUILD="2026-09-14-EXPLIST";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
