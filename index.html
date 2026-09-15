@@ -4483,7 +4483,10 @@ function buildTodayLive(t,tm,dates,today){
         </div>
         <button onclick="tmSetDate('${nextD}')" ${di===dates.length-1?'disabled style="opacity:.25;width:36px;height:36px;border-radius:9px;border:1.5px solid #e4e4f0;background:#fff;font-size:15px;"':'style="background:#fff;border:1.5px solid #e4e4f0;border-radius:9px;width:36px;height:36px;font-size:15px;cursor:pointer;"'}>›</button>
       </div>
-      ${isToday?`<button onclick="S.ui.parkMode=true;S.ui.parkModeWT=false;S.ui.parkModeLog=false;render()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#1a1a5e,#312e81);color:#FFD700;border:none;border-radius:10px;padding:9px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;">🎡 Park Mode</button>`:''}
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        ${isToday?`<button onclick="S.ui.parkMode=true;S.ui.parkModeWT=false;S.ui.parkModeLog=false;render()" style="flex:1;background:linear-gradient(135deg,#1a1a5e,#312e81);color:#FFD700;border:none;border-radius:10px;padding:9px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;">🎡 Park Mode</button>`:''}
+        <button onclick="pmShowEndDay('${sel}')" style="flex:1;background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff;border:none;border-radius:10px;padding:9px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;">📋 End Day</button>
+      </div>
     </div>
     <div style="display:flex;gap:8px;padding:0 0 10px;justify-content:flex-end;">
       <button onclick="S.tab='map_modal';render()" style="background:#e0f2fe;border:none;border-radius:20px;padding:7px 14px;font-size:12px;font-weight:700;color:#0369a1;cursor:pointer;font-family:inherit;">&#128506;&#65039; Map</button>
@@ -14157,7 +14160,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-09-14-ENDDAY";
+var SKIPPER_BUILD="2026-09-14-ENDDAY2";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
