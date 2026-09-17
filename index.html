@@ -4614,7 +4614,7 @@ function buildTodayLive(t,tm,dates,today){
         const d=new Date(tx.createdAt||0);
         const time=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
         const label=(tx.note||'').replace(/^📍\s*/,'');
-        return {id:'tx-'+tx.id,txId:tx.id,text:label,icon:tx.catEmoji,sub:'$'+tx.amount.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2}),time:time,cls:'spenttx',isSpendTx:true};
+        return {id:'tx-'+tx.id,txId:tx.id,text:label,icon:tx.catEmoji,sub:'$'+(Number(tx.amount)||0).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2}),time:time,cls:'spenttx',isSpendTx:true};
       });
       const merged=[].concat(entries).concat(uplEntries).concat(txEntries).sort(function(a,b){
         const ta=timeToMins(a.time)||0,tb=timeToMins(b.time)||0;
@@ -4690,7 +4690,7 @@ function buildTodayLive(t,tm,dates,today){
         </div>
         ${todayTxns.length?`<span style="font-size:14px;color:#7c3aed;">${S.ui.spentOpen?'▲':'▼'}</span>`:''}
       </div>
-      ${S.ui.spentOpen&&todayTxns.length?`<div style="margin-top:8px;border-top:1px solid #f0eeff;padding-top:8px;display:flex;flex-direction:column;gap:6px;">${todayTxns.map(function(tx){const d=new Date(tx.createdAt||0);const txTime=fmt12(String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'));const txName=(tx.note||'').replace(/^📍\s*/,'');return '<div style="display:flex;align-items:center;gap:8px;">'+'<span style="font-size:16px;">'+tx.catEmoji+'</span>'+'<div style="flex:1;min-width:0;">'+'<div style="font-size:13px;font-weight:700;color:#333;">'+esc(txName)+'</div>'+'<div style="font-size:11px;color:#999;">'+txTime+'</div>'+'</div>'+'<span style="font-size:14px;font-weight:800;color:#1a1a5e;">$'+tx.amount.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2})+'</span>'+'</div>';}).join('')}</div>`:''}
+      ${S.ui.spentOpen&&todayTxns.length?`<div style="margin-top:8px;border-top:1px solid #f0eeff;padding-top:8px;display:flex;flex-direction:column;gap:6px;">${todayTxns.map(function(tx){const d=new Date(tx.createdAt||0);const txTime=fmt12(String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'));const txName=(tx.note||'').replace(/^📍\s*/,'');return '<div style="display:flex;align-items:center;gap:8px;">'+'<span style="font-size:16px;">'+tx.catEmoji+'</span>'+'<div style="flex:1;min-width:0;">'+'<div style="font-size:13px;font-weight:700;color:#333;">'+esc(txName)+'</div>'+'<div style="font-size:11px;color:#999;">'+txTime+'</div>'+'</div>'+'<span style="font-size:14px;font-weight:800;color:#1a1a5e;">$'+(Number(tx.amount)||0).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2})+'</span>'+'</div>';}).join('')}</div>`:''}
     </div>
 
     ${buildDaySnacks(t, parkDay, sel)}
@@ -14184,7 +14184,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-09-14-TAPFIX";
+var SKIPPER_BUILD="2026-09-14-AMTGUARD";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
