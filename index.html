@@ -4309,6 +4309,7 @@ function buildEndDayModal(t){
   const sym=curSym(t);
   const linkedIds=_edLinkedTxIds(t,date);
   const unlinked=txns.filter(function(x){return !linkedIds[x.id];});
+  const cats=((t.budget||{}).categories)||[];
 
   // scheduled items for the link dropdown
   const entries=rosEntriesForDate(t,date).filter(function(e){return !e.isSentinel && String(e.text||'').trim();});
@@ -14184,7 +14185,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-09-14-REDDUCK2";
+var SKIPPER_BUILD="2026-09-14-ENDDAYFIX";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
