@@ -4385,7 +4385,10 @@ function pmShowEndDay(date){
   const t=trip();if(!t)return;
   S.ui.endDay=date; render();
 }
-function buildFoodLeft(t,sel){
+function buildFoodLeft(t,viewSel,dates){
+  dates=dates||[];
+  const pinned=S.ui.foodAsOf && dates.indexOf(S.ui.foodAsOf)>-1;
+  const sel=pinned?S.ui.foodAsOf:viewSel;
   const cats=((t.budget||{}).categories)||[];
   const foodCat=cats.find(function(c){return /food|meal|dining/i.test(c.name||'');});
   if(!foodCat) return '';
@@ -4415,7 +4418,7 @@ function buildFoodLeft(t,sel){
   return '<div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;padding:12px 14px;margin-bottom:10px;">'+
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'+
       '<span style="font-size:13px;font-weight:900;color:#15803d;">🍔 Food budget</span>'+
-      '<span style="font-size:11px;color:#9a9ab0;font-weight:700;">as of '+fmtDateShort(sel)+'</span>'+
+      '<span style="display:flex;align-items:center;gap:6px;font-size:11px;color:#9a9ab0;font-weight:700;">from '+'<select onchange="S.ui.foodAsOf=this.value;render()" style="font-size:12px;font-weight:800;color:#15803d;background:#fff;border:1.5px solid #bbf7d0;border-radius:8px;padding:3px 6px;font-family:inherit;cursor:pointer;">'+dates.map(function(d){return '<option value="'+d+'"'+(d===sel?' selected':'')+'>'+fmtDateShort(d)+'</option>';}).join('')+'</select>'+(pinned&&S.ui.foodAsOf!==viewSel?'<button onclick="S.ui.foodAsOf=null;render()" title="Follow the day you are viewing" style="background:none;border:none;color:#15803d;font-size:13px;font-weight:900;cursor:pointer;padding:0 2px;">↺</button>':'')+'</span>'+
     '</div>'+
     '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;"><span style="color:#555;">Budget</span><span style="font-weight:800;color:#1a1a2e;">'+fmt(budget)+'</span></div>'+
     '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-top:1px solid #dcfce7;"><span style="color:#555;">Spent so far</span><span style="font-weight:800;color:#1a1a2e;">'+fmt(totalSpent)+'</span></div>'+
@@ -4555,7 +4558,7 @@ function buildTodayLive(t,tm,dates,today){
         <button onclick="pmShowEndDay('${sel}')" style="flex:1;background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff;border:none;border-radius:10px;padding:9px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;">📋 End Day</button>
       </div>
     </div>
-    ${buildFoodLeft(t,sel)}
+    ${buildFoodLeft(t,sel,dates)}
     <div style="display:flex;gap:8px;padding:0 0 10px;justify-content:flex-end;">
       <button onclick="S.tab='map_modal';render()" style="background:#e0f2fe;border:none;border-radius:20px;padding:7px 14px;font-size:12px;font-weight:700;color:#0369a1;cursor:pointer;font-family:inherit;">&#128506;&#65039; Map</button>
       <button onclick="S.tab='photos_modal';render()" style="background:#fdf4ff;border:none;border-radius:20px;padding:7px 14px;font-size:12px;font-weight:700;color:#7c3aed;cursor:pointer;font-family:inherit;">&#128247; Photo Spots</button>
@@ -14228,7 +14231,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-09-27-GREENDUCK";
+var SKIPPER_BUILD="2026-09-27-FOODDATE";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
