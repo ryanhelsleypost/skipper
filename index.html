@@ -471,7 +471,7 @@ input[type=checkbox]{width:auto;accent-color:#1a1a5e;width:16px;height:16px;curs
 <style>@keyframes sppulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 #skipper-splash.sp-hide{opacity:0;pointer-events:none}</style>
 <div id="app"></div>
-<div id="ver-badge" title="Version: Green Rubber Ducky" style="position:fixed;top:calc(env(safe-area-inset-top,0px) + 4px);right:9px;z-index:99998;opacity:.55;pointer-events:none;line-height:0;"><svg viewBox="0 0 24 24" width="18" height="18"><ellipse cx="13" cy="16" rx="8" ry="5.2" fill="#16a34a"/><path d="M20 16 q3 -1 3.2 1 q-1.6 1.2 -3.2 0.6 z" fill="#16a34a"/><circle cx="8.5" cy="9.5" r="4.6" fill="#16a34a"/><path d="M4.2 9.2 q-3 0.3 -3.2 1.4 q1.6 1.2 3.4 0.4 z" fill="#F7A81B"/><circle cx="8.2" cy="8.4" r="0.95" fill="#2b2b2b"/></svg></div>
+<div id="ver-badge" title="Version: Brown Rubber Ducky" style="position:fixed;top:calc(env(safe-area-inset-top,0px) + 4px);right:9px;z-index:99998;opacity:.55;pointer-events:none;line-height:0;"><svg viewBox="0 0 24 24" width="18" height="18"><ellipse cx="13" cy="16" rx="8" ry="5.2" fill="#8b5a2b"/><path d="M20 16 q3 -1 3.2 1 q-1.6 1.2 -3.2 0.6 z" fill="#8b5a2b"/><circle cx="8.5" cy="9.5" r="4.6" fill="#8b5a2b"/><path d="M4.2 9.2 q-3 0.3 -3.2 1.4 q1.6 1.2 3.4 0.4 z" fill="#F7A81B"/><circle cx="8.2" cy="8.4" r="0.95" fill="#2b2b2b"/></svg></div>
 <div id="print-root"></div>
 <div id="sync-modal-root"></div>
 
@@ -4061,14 +4061,8 @@ function buildParkMode(t,tm,dates,today,sel){
   const nowHHMM=String(nowD.getHours()).padStart(2,'0')+':'+String(nowD.getMinutes()).padStart(2,'0');
   
   // Get NOW + NEXT items
-  let nowItem=null,nextItems=[];
-  entries.forEach(function(e){
-    const k=e.id||(e.cls+'|'+e.text);const j=journal[k]||{};
-    if(j.done||j.skipped)return;
-    const m=timeToMins(e.time);
-    if(m<=nowMins&&!nowItem)nowItem=e;
-    else if(nextItems.length<3)nextItems.push(e);
-  });
+  const _nn=tmNowNext(entries,journal);
+  let nowItem=_nn.now, nextItems=_nn.rest.slice(0,3);
   
   const ph=(SEPT_PARK_HOURS[parkKey]||DLP_PARK_HOURS[parkKey]||DLR_PARK_HOURS[parkKey]);
   const parkLabel=parkKey&&parkKey!=='rest'&&parkKey!=='unassigned'?parkName(parkKey):'';
@@ -4483,6 +4477,45 @@ function buildFoodLeft(t,viewSel,dates){
     '</div>':'')+
   '</div>';
 }
+// ── Order-driven Now/Next (build 2026-09-30-BROWNDUCK) ──
+// NOW = first item you haven't done or skipped, NEXT = the one after — in schedule order, not clock order.
+// The clock only feeds the "running behind / ahead" readout.
+function tmNowNext(entries,journal){
+  var act=entries.filter(function(e){ if(e.isSentinel||e.cls==='auto')return false; var j=journal[e.id||(e.cls+'|'+e.text)]||{}; return !j.done&&!j.skipped; })
+    .map(function(e,i){return {e:e,i:i};}).sort(function(a,b){return (timeToMins(a.e.time)-timeToMins(b.e.time))||(a.i-b.i);}).map(function(x){return x.e;});
+  var total=entries.filter(function(e){return !e.isSentinel&&e.cls!=='auto';}).length;
+  var now=act[0]||null, next=act[1]||null;
+  var d=new Date(), nm=d.getHours()*60+d.getMinutes(), pace=null;
+  if(now){
+    if(next&&next.time&&nm>timeToMins(next.time)+5) pace={behind:nm-timeToMins(next.time)};
+    else if(now.time&&timeToMins(now.time)>nm+15) pace={ahead:timeToMins(now.time)-nm};
+    else pace={on:true};
+  }
+  return {now:now,next:next,rest:act.slice(1),total:total,left:act.length,done:total-act.length,pace:pace};
+}
+function tmKey(e){ return e?(e.id||(e.cls+'|'+e.text)):null; }
+function tmFmtMins(m){ m=Math.round(m); return m>=60?(Math.floor(m/60)+'h'+(m%60?' '+(m%60)+'m':'')):(m+' min'); }
+function tmNowBar(nn,sel){
+  if(!nn.total) return '';
+  var pct=Math.round(nn.done/nn.total*100);
+  var paceChip=!nn.pace?'':nn.pace.behind?'<span style="background:#fee2e2;color:#b91c1c;font-size:11px;font-weight:900;padding:2px 8px;border-radius:999px;">running '+tmFmtMins(nn.pace.behind)+' behind</span>'
+    :nn.pace.ahead?'<span style="background:#dcfce7;color:#15803d;font-size:11px;font-weight:900;padding:2px 8px;border-radius:999px;">'+tmFmtMins(nn.pace.ahead)+' ahead</span>'
+    :'<span style="background:#e0e7ff;color:#4338ca;font-size:11px;font-weight:900;padding:2px 8px;border-radius:999px;">on schedule</span>';
+  var head='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;">'+
+    '<span style="font-size:11px;font-weight:900;color:#c7d2fe;letter-spacing:.06em;">'+nn.done+' OF '+nn.total+' DONE</span>'+paceChip+'</div>'+
+    '<div style="height:5px;background:rgba(255,255,255,.18);border-radius:3px;overflow:hidden;margin-bottom:9px;"><div style="height:100%;width:'+pct+'%;background:#FFD700;"></div></div>';
+  if(!nn.now) return '<div style="position:relative;background:#1a1a5e;color:#fff;border-radius:14px;padding:11px 13px;margin-bottom:10px;box-shadow:0 4px 14px rgba(26,26,94,.25);">'+head+'<div style="font-size:15px;font-weight:900;">🎉 Everything on today\'s list is done</div></div>';
+  var k=attrSafe(tmKey(nn.now));
+  return '<div style="position:relative;background:#1a1a5e;color:#fff;border-radius:14px;padding:11px 13px;margin-bottom:10px;box-shadow:0 4px 14px rgba(26,26,94,.25);">'+head+
+    '<div style="display:flex;align-items:center;gap:10px;">'+
+      '<div style="flex:1;min-width:0;">'+
+        '<div style="font-size:10px;font-weight:900;color:#FFD700;letter-spacing:.1em;">NOW'+(nn.now.time?' · '+fmt12(nn.now.time):'')+'</div>'+
+        '<div style="font-size:16px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(nn.now.icon||'')+' '+esc(nn.now.text)+'</div>'+
+        (nn.next?'<div style="font-size:12px;color:#c7d2fe;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">NEXT → '+(nn.next.time?fmt12(nn.next.time)+' · ':'')+(nn.next.icon||'')+' '+esc(nn.next.text)+'</div>':'<div style="font-size:12px;color:#c7d2fe;margin-top:2px;">Last item of the day</div>')+
+      '</div>'+
+      '<button onclick="tmToggleDone(\''+sel+'\',\''+k+'\')" style="flex-shrink:0;background:#FFD700;color:#1a1a5e;border:none;border-radius:11px;padding:11px 14px;font-size:14px;font-weight:900;cursor:pointer;font-family:inherit;">✓ Done</button>'+
+    '</div></div>';
+}
 function buildTodayLive(t,tm,dates,today){
   let sel=S.ui.todayDate;
   if(!sel||dates.indexOf(sel)===-1){
@@ -4493,16 +4526,8 @@ function buildTodayLive(t,tm,dates,today){
   const entries=rosEntriesForDate(t,sel).filter(function(e){return !e.isSentinel;});
   const journal=(tm.journal||{})[sel]||{};
   const nowD=new Date();const nowMins=nowD.getHours()*60+nowD.getMinutes();
-  let nowKey=null,nextKey=null;
-  if(isToday){
-    entries.forEach(function(e){
-      const k=e.id||(e.cls+'|'+e.text);const j=journal[k]||{};
-      if(j.done||j.skipped)return;
-      const m=timeToMins(e.time);
-      if(m<=nowMins)nowKey=k;
-      else if(nextKey===null)nextKey=k;
-    });
-  }
+  const nn=tmNowNext(entries,journal);
+  const nowKey=isToday?tmKey(nn.now):null, nextKey=isToday?tmKey(nn.next):null;
   const doneCount=entries.filter(function(e){const k=e.id||(e.cls+'|'+e.text);return (journal[k]||{}).done;}).length;
   const parkDay=(t.parks||[]).find(function(d){return d.date===sel;});
   // Show primary park even on travel days, plus hops
@@ -4561,6 +4586,8 @@ function buildTodayLive(t,tm,dates,today){
         <button onclick="pmShowEndDay('${sel}')" style="flex:1;background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff;border:none;border-radius:10px;padding:9px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;">📋 End Day</button>
       </div>
     </div>
+    ${isToday?tmNowBar(nn,sel):''}
+    ${buildWhereWeStand(t,sel,dates)}
     ${buildFoodLeft(t,sel,dates)}
     <div style="display:flex;gap:8px;padding:0 0 10px;justify-content:flex-end;">
       <button onclick="S.tab='map_modal';render()" style="background:#e0f2fe;border:none;border-radius:20px;padding:7px 14px;font-size:12px;font-weight:700;color:#0369a1;cursor:pointer;font-family:inherit;">&#128506;&#65039; Map</button>
@@ -5904,21 +5931,73 @@ function budgetTableDrop(ev) {
   render();
 }
 
+// ═══ Plan / Forecast / Actual budget model (build 2026-09-30-BROWNDUCK) ═══
+// Plan = what you set at setup (c.budgeted). Actual = charges logged (prepaid + on-trip).
+// Forecast = what you now expect to pay, by stage:
+//   pre-trip  → the live booking/itinerary total (or Plan), never below what's already paid
+//   on trip   → Actual so far + whatever is still planned from the as-of day forward (food & LL day-by-day)
+//   after     → Actual
+function tripStage(t){
+  var ds=(t.parks||[]).map(function(d){return d.date;}).filter(Boolean).sort();
+  var st=t.startDate||ds[0], en=t.endDate||ds[ds.length-1], td=todayISO();
+  if(!st||!en) return 'pre';
+  if(td<st) return 'pre'; if(td>en) return 'post'; return 'trip';
+}
+function _catKind(c){ var n=(c.name||'').toLowerCase();
+  if(/food|meal|dining/.test(n)) return 'food';
+  if(c.liveSource==='ll'||c.liveSource==='pa'||/lightning|premier/.test(n)) return 'll';
+  return ''; }
+function _plannedAhead(t,c,asOf,dayCost){
+  var byDay={}; (c.transactions||[]).forEach(function(x){ if(x.onTrip){ var d=x.tripDate||x.date||''; byDay[d]=(byDay[d]||0)+(Number(x.amount)||0);} });
+  var sum=0; (t.parks||[]).forEach(function(day){ if(!day.date||day.date<asOf) return; var plan=0; try{plan=dayCost(day,t)||0;}catch(e){} sum+=Math.max(0,plan-(byDay[day.date]||0)); });
+  return sum;
+}
+function budgetModel(t,asOf){
+  var stage=tripStage(t); asOf=asOf||todayISO();
+  var rows=((t.budget||{}).categories||[]).map(function(c){
+    var info=resolveActual(c,t), plan=c.budgeted||0, actual=catSpent(c);
+    var eff=info.actual!==null?info.actual:plan, kind=_catKind(c), fc;
+    if(stage==='post') fc=actual>0?actual:eff;
+    else if(stage==='trip'&&kind==='food') fc=actual+_plannedAhead(t,c,asOf,calcDayFoodCost);
+    else if(stage==='trip'&&kind==='ll'&&typeof calcDayLLCost==='function') fc=actual+_plannedAhead(t,c,asOf,calcDayLLCost);
+    else fc=Math.max(eff,actual);
+    return {cat:c,info:info,plan:plan,forecast:Math.round(fc*100)/100,actual:actual};
+  });
+  var tot=rows.reduce(function(a,r){a.plan+=r.plan;a.forecast+=r.forecast;a.actual+=r.actual;return a;},{plan:0,forecast:0,actual:0});
+  return {stage:stage,asOf:asOf,rows:rows,tot:tot};
+}
+function stageLabel(st){ return st==='pre'?'🗓️ Pre-trip — Forecast comes from your bookings and itinerary':st==='trip'?'🧳 On the trip — Forecast = spent so far + what\'s still planned':'🏁 Trip complete — Forecast equals what you actually spent'; }
+// Whole-trip "Where we stand" card for the live Today view
+function buildWhereWeStand(t,viewSel,dates){
+  var asOf=(S.ui.foodAsOf&&(dates||[]).indexOf(S.ui.foodAsOf)>-1)?S.ui.foodAsOf:viewSel;
+  var m=budgetModel(t,asOf); if(!m.rows.length) return '';
+  var sym=curSym(t), f=function(n){return sym+Math.round(n).toLocaleString();};
+  var vs=m.tot.plan-m.tot.forecast, col=vs>=0?'#15803d':'#dc2626';
+  var top=m.rows.filter(function(r){return Math.abs(r.forecast-r.plan)>=1&&r.plan>0;}).sort(function(a,b){return Math.abs(b.forecast-b.plan)-Math.abs(a.forecast-a.plan);}).slice(0,3);
+  return '<div style="background:#fff;border:1.5px solid #e4e4f0;border-radius:12px;padding:12px 14px;margin-bottom:10px;">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><span style="font-size:13px;font-weight:900;color:#1a1a5e;">💰 Where we stand</span><span style="font-size:11px;color:#9a9ab0;font-weight:700;">whole trip</span></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center;">'+
+      ['Plan|'+f(m.tot.plan)+'|#1a1a2e','Spent|'+f(m.tot.actual)+'|#1a1a2e','Forecast|'+f(m.tot.forecast)+'|#1a1a5e'].map(function(x){x=x.split('|');return '<div style="background:#f8f8fc;border-radius:9px;padding:7px 4px;"><div style="font-size:10px;font-weight:800;color:#9a9ab0;letter-spacing:.05em;">'+x[0].toUpperCase()+'</div><div style="font-size:15px;font-weight:900;color:'+x[2]+';">'+x[1]+'</div></div>';}).join('')+
+    '</div>'+
+    (m.tot.plan>0?'<div style="margin-top:8px;font-size:13px;font-weight:900;color:'+col+';">'+(vs>=0?'▼ On track to finish '+f(vs)+' under plan':'▲ Heading '+f(-vs)+' over plan')+'</div>':'<div style="margin-top:8px;font-size:12px;color:#94a3b8;">Set Plan amounts in Budget to see over/under.</div>')+
+    (top.length?'<div style="margin-top:5px;font-size:11.5px;color:#64748b;line-height:1.6;">'+top.map(function(r){var d=r.forecast-r.plan;return (r.cat.emoji||'')+' '+esc(r.cat.name)+' <b style="color:'+(d<=0?'#15803d':'#dc2626')+';">'+(d<=0?'−':'+')+f(Math.abs(d))+'</b>';}).join(' · ')+'</div>':'')+
+  '</div>';
+}
 function buildBudget(t) {
   const cats  = t.budget.categories;
   const sym = curSym(t);
   // Resolve actuals for each category
-  const resolved = cats.map(c => ({ cat:c, info: resolveActual(c, t) }));
-  // Use actual if available, else budgeted, for totals
-  const totalEffective = resolved.reduce((s,{cat,info}) => s + (info.actual !== null ? info.actual : (cat.budgeted||0)), 0);
-  const totalB = cats.reduce((s,c)=>s+(c.budgeted||0),0);
-  const totalS = cats.reduce((s,c)=>s+(c.spent||0),0);
+  const _bm = budgetModel(t);
+  const resolved = _bm.rows.map(r => ({ cat:r.cat, info: Object.assign({}, r.info, {forecast:r.forecast, plan:r.plan}) }));
+  const totalEffective = _bm.tot.forecast;
+  const totalB = _bm.tot.plan;
+  const totalS = _bm.tot.actual;
   const rem    = totalEffective - totalS;
   const hasActuals = resolved.some(({info}) => info.actual !== null && info.isLive);
   // Sort fully paid-off categories (nothing still owed, real total) to the bottom — stable within each group
   const isPaidOff = ({cat,info}) => {
-    const eff  = info.actual !== null ? info.actual : (cat.budgeted||0);
-    const owed = eff - (cat.spent||0);
+    const eff  = info.forecast;
+    const owed = eff - catSpent(cat);
     return eff > 0.5 && owed <= 0.5;
   };
   const orderedRows = [...resolved.filter(r=>!isPaidOff(r)), ...resolved.filter(r=>isPaidOff(r))];
@@ -5932,11 +6011,13 @@ function buildBudget(t) {
     <div class="card">
       <div class="card-header">💰 Budget Tracker</div>
       <div class="bpills">
-        <div class="bpill" style="background:#f0f4ff;color:#4338ca;">📊 Total: ${fmtDual(totalEffective,t)}</div>
-        <div class="bpill bpill-red">💸 Paid: ${fmtDual(totalS,t)}</div>
+        <div class="bpill" style="background:#f8f8fc;color:#475569;">📝 Plan: ${fmtDual(totalB,t)}</div>
+        <div class="bpill" style="background:#f0f4ff;color:#4338ca;">📊 Forecast: ${fmtDual(totalEffective,t)}</div>
+        <div class="bpill bpill-red">💸 Actual: ${fmtDual(totalS,t)}</div>
         <div class="bpill ${rem>=0?'bpill-green':'bpill-red'}">${rem>=0?'✅':'🚨'} Still Owed: ${fmtDual(Math.abs(rem),t)}${rem<0?' OVER':''}</div>
       </div>
-      ${(totalB>0 && Math.abs(totalEffective-totalB)>=1) ? `<div style="font-size:11px;color:#9ca3af;margin:6px 0 2px;padding-left:2px;">Originally budgeted ${fmtDual(totalB,t)} · ${totalEffective>totalB?'+':'−'}${fmtDual(Math.abs(totalEffective-totalB),t)} since</div>` : ''}
+      <div style="font-size:12px;color:#475569;margin:8px 0 2px;padding:7px 10px;background:#f8fafc;border-radius:8px;">${stageLabel(_bm.stage)}${totalB>0?` · <b style="color:${totalEffective<=totalB?'#15803d':'#dc2626'};">${totalEffective<=totalB?'▼ '+fmtDual(totalB-totalEffective,t)+' under plan':'▲ '+fmtDual(totalEffective-totalB,t)+' over plan'}</b>`:''}</div>
+      ${false ? `<div style="font-size:11px;color:#9ca3af;margin:6px 0 2px;padding-left:2px;">Originally budgeted ${fmtDual(totalB,t)} · ${totalEffective>totalB?'+':'−'}${fmtDual(Math.abs(totalEffective-totalB),t)} since</div>` : ''}
       ${(()=>{
         const elig=(t.parks||[]).filter(d=>PARK_LLMP_EST[d.park]);
         if(!elig.length) return '';
@@ -5977,13 +6058,13 @@ function buildBudget(t) {
       })()}
 
       <table class="budget-tbl" ondragover="budgetTableDragOver(event)" ondrop="budgetTableDrop(event)">
-        <thead><tr><th>Category</th><th>Due Date</th><th>Total</th><th>Paid</th><th>Still Owed</th><th>Progress</th><th style="width:80px;"></th></tr></thead>
+        <thead><tr><th>Category</th><th>Due Date</th><th>Plan</th><th>Forecast</th><th>Actual</th><th>Still Owed</th><th>Progress</th><th style="width:80px;"></th></tr></thead>
         <tbody>
           ${orderedRows.map(({cat,info}) => buildCatRow(cat, info, t)
-            + (S.ui.spendCatId===cat.id && !S.ui.editCatId ? `<tr class="spend-inline"><td colspan="7" style="padding:0 6px 10px;">${buildSpendPanel(t)}</td></tr>` : '')
-            + (S.ui.editCatId===cat.id ? `<tr class="spend-inline"><td colspan="7" style="padding:0 6px 10px;">${buildCatEditPanel(t)}</td></tr>` : '')
+            + (S.ui.spendCatId===cat.id && !S.ui.editCatId ? `<tr class="spend-inline"><td colspan="8" style="padding:0 6px 10px;">${buildSpendPanel(t)}</td></tr>` : '')
+            + (S.ui.editCatId===cat.id ? `<tr class="spend-inline"><td colspan="8" style="padding:0 6px 10px;">${buildCatEditPanel(t)}</td></tr>` : '')
           ).join('')}
-          ${!cats.length?`<tr><td colspan="7"><div class="empty-rich" style="margin:8px 0;"><div class="er-icon">💰</div><div class="er-title">No budget categories yet</div><div class="er-body">Add categories like Hotel, Flights, Food, and Park Tickets. You can set how much you've budgeted and track what you've spent.</div></div></td></tr>`:''}
+          ${!cats.length?`<tr><td colspan="8"><div class="empty-rich" style="margin:8px 0;"><div class="er-icon">💰</div><div class="er-title">No budget categories yet</div><div class="er-body">Add categories like Hotel, Flights, Food, and Park Tickets. You can set how much you've budgeted and track what you've spent.</div></div></td></tr>`:''}
         </tbody>
       </table>
 
@@ -6000,7 +6081,7 @@ function buildCatRow(c, info, t) {
   if (!info) info = { actual: null, label: '', source: 'manual', isLive: false, breakdown: '' };
 
   const spent      = c.spent || 0;
-  const effective  = info.actual !== null ? info.actual : (c.budgeted || 0);
+  const effective  = info.forecast != null ? info.forecast : (info.actual !== null ? info.actual : (c.budgeted || 0));
   const owed       = effective - spent;
   const pct        = effective > 0 ? Math.min(spent / effective * 100, 100) : 0;
   const pClass     = owed < 0 ? 'prog-red' : owed < effective * 0.2 ? 'prog-yellow' : 'prog-green';
@@ -6052,11 +6133,12 @@ function buildCatRow(c, info, t) {
         </div>
       </td>
       <td class="${dueDate?'':'mb-empty'}" data-l="Due" style="font-size:12px;color:${dueDate?'#374151':'#ccc'};white-space:nowrap;">${dueFmt}</td>
-      <td data-l="Total" style="font-weight:800;color:${isLive?'#15803d':'#1a1a2e'};" title="${isLive?'Real total from your trip data':'Your budgeted amount — no live data yet'}">
-        ${fmtDual(effective, t)}${!isLive?`<span style="font-size:10px;color:#bbb;font-weight:600;"> est</span>`:''}
-        ${(isLive && (c.budgeted||0)>0 && Math.abs(effective-(c.budgeted||0))>=1) ? `<div style="font-size:10px;color:#aaa;font-weight:500;">budgeted ${fmtDual(c.budgeted||0,t)}</div>` : ''}
+      <td data-l="Plan" style="color:#64748b;font-weight:700;" title="What you set at setup">${(c.budgeted||0)>0?fmtDual(c.budgeted||0,t):'<span style="color:#ccc;">—</span>'}</td>
+      <td data-l="Forecast" style="font-weight:800;color:${isLive?'#15803d':'#1a1a2e'};" title="What you now expect to pay for this category">
+        ${fmtDual(effective, t)}${!isLive&&info.forecast==null?`<span style="font-size:10px;color:#bbb;font-weight:600;"> est</span>`:''}
+        ${((c.budgeted||0)>0 && Math.abs(effective-(c.budgeted||0))>=1) ? `<div style="font-size:10px;font-weight:700;color:${effective<=(c.budgeted||0)?'#16a34a':'#dc2626'};">${effective<=(c.budgeted||0)?'▼ '+fmtDual((c.budgeted||0)-effective,t)+' under':'▲ '+fmtDual(effective-(c.budgeted||0),t)+' over'}</div>` : ''}
       </td>
-      <td data-l="Paid" style="color:${spent>0?'#374151':'#ccc'};">
+      <td data-l="Actual" style="color:${spent>0?'#374151':'#ccc'};">
         ${spent>0 ? fmtDual(spent, t) : '<span style="font-size:11px;">tap 💳 Pay</span>'}
       </td>
       <td data-l="Still owed" style="font-weight:800;color:${owedColor};">${fmtDual(Math.abs(owed), t)}${owed<0?' 🚨':''}</td>
@@ -14257,7 +14339,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-09-30-TRIPLOG";
+var SKIPPER_BUILD="2026-09-30-BROWNDUCK";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
