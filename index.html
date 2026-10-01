@@ -1296,6 +1296,15 @@ function loadStorage() {
 // Migrate old trip data to new schema
 function migrateAllTrips() {
   S.trips = S.trips.map(t => {
+    // Meal journal keys: 'meal|Lunch: Place' → stable 'meal-lunch' so renaming a restaurant never orphans its log (build 2026-09-30-TRIPLOG)
+    var _j=(t.tripMode||{}).journal;
+    if(_j&&typeof _j==='object') Object.keys(_j).forEach(function(dt){
+      var dj=_j[dt]; if(!dj||typeof dj!=='object') return;
+      Object.keys(dj).forEach(function(k){
+        var mm=/^meal\|(Breakfast|Lunch|Dinner|Snacks): /.exec(k);
+        if(mm){ var nk='meal-'+mm[1].toLowerCase(); if(!dj[nk]) dj[nk]=dj[k]; delete dj[k]; }
+      });
+    });
     // Re-key llBookings from raw ride names → safe slugs (raw names with "/" etc. broke Firebase sync)
     (t.parks||[]).forEach(function(d){
       if(d && d.ll){
@@ -3591,7 +3600,7 @@ function buildEntryActions(e,sel,kAttr,j,noteOpen,cashOpen,dim){
   if(!(!dim||j.done))return'';
   var btns='<div style="display:flex;gap:6px;margin-top:8px;">';
   if(!noteOpen)btns+='<button onclick="tmOpenNote(\''+sel+'\',\''+kAttr+'\')" style="flex:1;background:#fff;border:1.5px solid #e4e4f0;border-radius:8px;padding:7px 0;font-size:11.5px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">📝 '+(j.note?'Edit note':'Note')+'</button>';
-  if(!cashOpen)btns+='<button onclick="tmOpenCash(\''+sel+'\',\''+kAttr+'\')" style="flex:1;background:#fff;border:1.5px solid #e4e4f0;border-radius:8px;padding:7px 0;font-size:11.5px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">💵 '+(j.actual!=null?'$'+j.actual:'Actualize')+'</button>';
+  if(!cashOpen)btns+='<button onclick="tmOpenCash(\''+sel+'\',\''+kAttr+'\')" style="flex:1;background:#fff;border:1.5px solid #e4e4f0;border-radius:8px;padding:7px 0;font-size:11.5px;font-weight:700;color:#555;cursor:pointer;font-family:inherit;">💵 '+(j.actual!=null?tmMoney(j.actual):(/^meal-/.test(e.id||'')?'Log meal':'Log cost'))+'</button>';
   if(!j.done)btns+='<button onclick="tmToggleSkip(\''+sel+'\',\''+kAttr+'\')" style="flex:1;background:#fff;border:1.5px solid #e4e4f0;border-radius:8px;padding:7px 0;font-size:11.5px;font-weight:700;color:#999;cursor:pointer;font-family:inherit;">'+(j.skipped?'↺ Unskip':'⏭ Skip')+'</button>';
   btns+='</div>';
   return btns;
@@ -3647,11 +3656,39 @@ function tmGuessCat(t,e){
   if(e.cls==='hotel')return byName('hotel')||cats[0];
   return byName('extras')||byName('merch')||cats[0];
 }
+function tmMoney(n){ n=Number(n)||0; return '$'+(Math.round(n*100)%100? n.toFixed(2) : Math.round(n).toLocaleString()); }
+function tmParseAmt(v){ var x=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isNaN(x)?NaN:Math.round(x*100)/100; }
+// Big under/over-plan badge for an actualized item (build 2026-09-30-TRIPLOG)
+function tmDeltaBadge(est,actual){
+  if(est==null||!(est>0)||actual==null) return '';
+  var d=Math.round((est-actual)*100)/100;
+  if(Math.abs(d)<0.005) return '<span style="display:inline-block;background:#f1f5f9;color:#475569;font-size:12px;font-weight:900;padding:3px 9px;border-radius:999px;">right on plan</span>';
+  var under=d>0;
+  return '<span style="display:inline-block;background:'+(under?'#dcfce7':'#fee2e2')+';color:'+(under?'#15803d':'#b91c1c')+';font-size:12.5px;font-weight:900;padding:3px 10px;border-radius:999px;">'+(under?'▼ ':'▲ ')+tmMoney(Math.abs(d))+(under?' under plan':' over plan')+'</span>';
+}
+function tmCashPreview(est){
+  var el=document.getElementById('tm-cash-delta'); if(!el) return;
+  var a=tmParseAmt((document.getElementById('tm-cash-amt')||{}).value);
+  el.innerHTML=isNaN(a)?'':tmDeltaBadge(est,a);
+}
 function tmSaveCash(date,eKey,entryText){
   const t=trip();if(!t)return;
-  const amt=Math.round(parseFloat(document.getElementById('tm-cash-amt')?.value)||0);
+  const amt=tmParseAmt(document.getElementById('tm-cash-amt')?.value);
   const catId=document.getElementById('tm-cash-cat')?.value;
   if(isNaN(amt)){S.ui.todayCash=null;render();return;}
+  // Meal rename: update the itinerary's restaurant, remembering what was planned
+  const mm=/^meal-(breakfast|lunch|dinner|snacks)$/.exec(eKey||'');
+  const nameEl=document.getElementById('tm-cash-name');
+  if(mm&&nameEl){
+    const nm=(nameEl.value||'').trim();
+    const day=(t.parks||[]).find(function(d){return d.date===date;});
+    if(day&&nm){
+      day.meals=day.meals||blankMeals();
+      const meal=day.meals[mm[1]]=day.meals[mm[1]]||{};
+      if(nm!==(meal.place||'')){ if(meal.plannedPlace==null) meal.plannedPlace=meal.place||''; meal.place=nm; }
+      entryText=cap(mm[1])+': '+nm;
+    }
+  }
   const c=(((t.budget||{}).categories)||[]).find(cc=>cc.id===catId)||(((t.budget||{}).categories)||[])[0];
   if(c){
     c.transactions=c.transactions||[];
@@ -3692,7 +3729,7 @@ function geoDetect(){
 }
 function tmSaveQuickB(date){
   const t=trip();if(!t)return;
-  const amt=Math.round(parseFloat(document.getElementById('tm-cash-amt-b')?.value)||0);
+  const amt=tmParseAmt(document.getElementById('tm-cash-amt-b')?.value)||0;
   const catId=document.getElementById('tm-cash-cat')?.value;
   const label=(document.getElementById('tm-cash-label')?.value||'').trim()||'Quick spend';
   if(!amt){return;}
@@ -3727,6 +3764,22 @@ function tmAddUnplanned(date){
   setTimeout(function(){var el=document.getElementById('upl-text');if(el)el.focus();},60);
 }
 function _nowHHMM(){var n=new Date();return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
+// Trip-mode time entry: native picker + Now / ±15 (build 2026-09-30-TRIPLOG). Value read via getElementById(id).value like buildTP.
+function buildTPQuick(id,val){
+  var b='background:#fff;border:1.5px solid #c7d2fe;color:#4338ca;border-radius:8px;padding:7px 10px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;';
+  return '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">'+
+    '<input type="time" id="'+id+'" value="'+esc(val||_nowHHMM())+'" style="padding:7px 9px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">'+
+    '<button type="button" onclick="tpqSet(\''+id+'\',0,true)" style="'+b+'background:#4338ca;color:#fff;border-color:#4338ca;">Now</button>'+
+    '<button type="button" onclick="tpqSet(\''+id+'\',-15)" style="'+b+'">−15</button>'+
+    '<button type="button" onclick="tpqSet(\''+id+'\',15)" style="'+b+'">+15</button>'+
+  '</div>';
+}
+function tpqSet(id,delta,now){
+  var el=document.getElementById(id); if(!el) return;
+  var v=now?_nowHHMM():(el.value||_nowHHMM());
+  var p=v.split(':'), m=(parseInt(p[0])*60+parseInt(p[1])+delta+1440)%1440;
+  el.value=String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+}
 function buildTP(id,val,cb){
   var h=0,m=0,ap='AM';
   if(val&&/^\d{2}:\d{2}$/.test(val)){var p=val.split(':');h=parseInt(p[0]);m=parseInt(p[1]);ap=h>=12?'PM':'AM';h=h%12||12;}
@@ -3986,7 +4039,7 @@ function buildUnplannedCard(e,sel,editKey){
           '<option value="purchase"'+(e.uplType==='purchase'?' selected':'')+'>🛍️ Purchase</option>'+
           '<option value="moment"'+(e.uplType==='moment'?' selected':'')+'>✨ Moment</option>'+
         '</select>'+
-        buildTP('upl-edit-time',e.time,'')+
+        buildTPQuick('upl-edit-time',e.time)+
       '</div>'+
       '<input id="upl-edit-text" value="'+esc(e.text)+'" placeholder="What happened?" style="width:100%;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;box-sizing:border-box;">'+
       '<div style="display:flex;gap:6px;">'+
@@ -4057,7 +4110,7 @@ function buildParkMode(t,tm,dates,today,sel){
     '<div style="font-size:28px;font-weight:900;margin-bottom:8px;">'+nowItem.icon+' '+esc(nowItem.text)+'</div>'+
     '<div style="font-size:13px;opacity:.9;margin-bottom:12px;">'+(nowItem.time?fmt12(nowItem.time):'')+' • '+(nowItem.sub||'')+'</div>'+
     '<div style="display:flex;gap:8px;">'+
-      '<button onclick="tmToggleDone(\''+sel+'\',\''+esc(nowItem.id||(nowItem.cls+'|'+nowItem.text)).replace(/'/g,'&#39;')+'\');S.ui.parkMode=false;render()" style="flex:1;background:#fff;color:#6366f1;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:900;cursor:pointer;font-family:inherit;">✓ Mark Done</button>'+
+      '<button onclick="tmToggleDone(\''+sel+'\',\''+attrSafe(nowItem.id||(nowItem.cls+'|'+nowItem.text))+'\');S.ui.parkMode=false;render()" style="flex:1;background:#fff;color:#6366f1;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:900;cursor:pointer;font-family:inherit;">✓ Mark Done</button>'+
       '<button onclick="S.ui.parkModeWT=true;render()" style="flex:1;background:rgba(255,255,255,.2);color:#fff;border:2px solid #fff;border-radius:12px;padding:12px;font-size:15px;font-weight:900;cursor:pointer;font-family:inherit;">⏱️ Log Wait</button>'+
     '</div>'+
   '</div>':'';
@@ -4471,57 +4524,6 @@ function buildTodayLive(t,tm,dates,today){
   });});
   todayTxns.sort(function(a,b){return (a.createdAt||0)-(b.createdAt||0);});
 
-  const rows=entries.map(function(e){
-    const k=e.id||(e.cls+'|'+e.text);
-    const j=journal[k]||{};
-    const kAttr=attrSafe(k);
-    const txtAttr=esc(e.text).replace(/'/g,'&#39;');
-    const isNow=k===nowKey,isNext=k===nextKey;
-    const noteOpen=S.ui.todayNote===sel+'||'+k;
-    const cashOpen=S.ui.todayCash===sel+'||'+k;
-    const dim=j.done||j.skipped;
-    return `<div style="border:${isNow?'2.5px solid #6366f1':'1.5px solid #eee'};border-radius:11px;padding:10px 12px;background:${dim?'#fafafa':'#fff'};${dim?'opacity:.62;':''}">
-      <div style="display:flex;align-items:flex-start;gap:10px;">
-        ${e.cls==='auto'?
-          '<div style="width:30px;height:30px;flex-shrink:0;border-radius:9px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:13px;">ℹ️</div>'
-          :`<button onclick="tmToggleDone('${sel}','${kAttr}')" title="${j.done?'Undo':'Mark done'}"
-          style="width:30px;height:30px;flex-shrink:0;border-radius:50%;border:2px solid ${j.done?'#16a34a':'#cbd5e1'};background:${j.done?'#16a34a':'#fff'};color:${j.done?'#fff':'#d1d5db'};font-size:15px;cursor:pointer;font-family:inherit;line-height:1;display:flex;align-items:center;justify-content:center;">✓</button>`}
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            ${isNow?'<span style="background:#eef2ff;color:#4338ca;font-size:10px;font-weight:900;padding:2px 8px;border-radius:9px;">NOW</span>':''}
-            ${isNext?'<span style="background:#fffbeb;color:#b45309;font-size:10px;font-weight:900;padding:2px 8px;border-radius:9px;">NEXT</span>':''}
-            <span style="font-size:11px;color:#999;font-weight:700;">${e.time?fmt12(e.time):'—'}</span>
-          </div>
-          <div style="font-size:14px;font-weight:700;color:${j.skipped?'#bbb':'#333'};${dim?'text-decoration:line-through;':''}">${e.icon} ${e.text}</div>
-          ${e.sub&&!String(e.sub).startsWith('auto:dp-')?`<div style="font-size:11px;color:#999;">${e.sub}</div>`:''}
-          ${(e.est||j.actual!=null)?`<div style="font-size:11px;margin-top:3px;">
-            ${e.est?`<span style="color:#888;">est $${e.est}</span>`:''}
-            ${j.actual!=null?`${e.est?'<span style="color:#888;"> → </span>':''}<span style="font-weight:800;color:${e.est&&j.actual>e.est?'#dc2626':'#16a34a'};">actual $${j.actual}${e.est?(j.actual>e.est?' 🔺+'+Math.round(j.actual-e.est):j.actual<e.est?' 🔻−'+Math.round(e.est-j.actual):''):''}</span>`:''}
-          </div>`:''}
-          ${j.note&&!noteOpen?`<div style="font-size:12px;color:#6366f1;margin-top:4px;">📝 ${esc(j.note)}</div>`:''}
-          ${j.skipped?'<div style="font-size:11px;color:#bbb;margin-top:2px;">skipped</div>':''}
-        </div>
-      </div>
-      ${noteOpen?`<div style="margin-top:8px;display:flex;gap:6px;">
-        <input id="tm-note-input" value="${esc(j.note||'')}" placeholder="Ride broke down · food was meh · pure magic…"
-          onkeydown="if(event.key==='Enter')tmSaveNote('${sel}','${kAttr}')"
-          style="flex:1;min-width:0;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">
-        <button onclick="tmSaveNote('${sel}','${kAttr}')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button>
-        ${j.note?`<button onclick="tmClearNote('${sel}','${kAttr}')" title="Delete note" style="background:#fff;border:1.5px solid #fecdd3;color:#e11d48;border-radius:8px;padding:8px 11px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">🗑</button>`:''}
-      </div>`:''}
-      ${cashOpen?`<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-        <span style="font-size:12px;color:#888;">actual $</span>
-        <input id="tm-cash-amt" type="number" step="1" min="0" value="${j.actual!=null?j.actual:(e.est||'')}"
-          onkeydown="if(event.key==='Enter')tmSaveCash('${sel}','${kAttr}','${txtAttr}')"
-          style="width:90px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">
-        <select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:150px;">${catOpts((tmGuessCat(t,e)||{}).id)}</select>
-        <button onclick="tmSaveCash('${sel}','${kAttr}','${txtAttr}')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Log it</button>
-        ${j.actual!=null?`<button onclick="tmClearCash('${sel}','${kAttr}','${txtAttr}')" title="Delete this actual" style="background:#fff;border:1.5px solid #fecdd3;color:#e11d48;border-radius:8px;padding:8px 11px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">🗑</button>`:''}
-      </div>`:''}
-      ${buildEntryActions(e,sel,kAttr,j,noteOpen,cashOpen,dim)}
-    </div>`;
-  }).join('');
-
   const quickOpen=S.ui.todayCash===sel+'||__quick__';
   const dayNote=(tm.dayNotes||{})[sel]||'';
   const prevD=dates[Math.max(0,di-1)],nextD=dates[Math.min(dates.length-1,di+1)];
@@ -4548,6 +4550,7 @@ function buildTodayLive(t,tm,dates,today){
           <div style="font-size:20px;font-weight:900;color:#1a1a5e;">${dayNum}${parkLbl?' · '+parkLbl:''}${dayLLIcons(parkDay)}${parkDay?dayPartyIcon(parkDay,t):''}</div>
           ${(()=>{const evs=parkDay?dayPartyEvents(parkDay,t):[];return evs.length?'<div style="font-size:11.5px;font-weight:800;color:#c026d3;margin-top:1px;">🎟️ '+evs.map(e=>esc(e.short)).join(' · ')+' tonight</div>':'';})()}
           <div style="font-size:13px;color:#555;">${dateLbl}${isToday?' · today':''} · ${doneCount} of ${entries.length} done${estToday?' · day est $'+Math.round(estToday):''}</div>
+          ${(function(){var n=0,d=0;entries.forEach(function(e){var k=e.id||(e.cls+'|'+e.text);var jj=journal[k]||{};if(e.est>0&&jj.actual!=null){n++;d+=e.est-jj.actual;}});if(!n)return '';d=Math.round(d*100)/100;var under=d>=0;return '<div style="margin-top:5px;"><span style="display:inline-block;background:'+(under?'#dcfce7':'#fee2e2')+';color:'+(under?'#15803d':'#b91c1c')+';font-size:13px;font-weight:900;padding:4px 11px;border-radius:999px;">'+(Math.abs(d)<0.005?'Today: right on plan':(under?'▼ Today: '+tmMoney(d)+' under plan':'▲ Today: '+tmMoney(-d)+' over plan'))+' <span style="font-weight:700;opacity:.75;">('+n+' logged)</span></span></div>';})()}
           ${(function(){var _ph=(SEPT_PARK_HOURS[parkDay&&parkDay.park]||DLP_PARK_HOURS[parkDay&&parkDay.park]||DLR_PARK_HOURS[parkDay&&parkDay.park]);return _ph?'<div style="font-size:12.5px;font-weight:700;color:#444;margin-top:3px;">🕘 '+_ph.open+' – '+_ph.close+(_ph.note?' <span style="font-weight:500;color:#aaa;">· '+esc(_ph.note)+'</span>':'')+'</div>':'';})()} 
           <div style="margin-top:2px;">${wxStrip(t,sel)}</div>
         </div>
@@ -4592,7 +4595,7 @@ function buildTodayLive(t,tm,dates,today){
           <div style="display:flex;gap:6px;">
             <input id="upl-note" placeholder="Quick note (optional)" onkeydown="if(event.key==='Enter')tmSaveUnplanned('${sel}')"
               style="flex:1;padding:10px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:16px;font-family:inherit;">
-            ${buildTP('upl-time',_nowHHMM(),'')}
+            ${buildTPQuick('upl-time',_nowHHMM())}
             <button onclick="tmSaveUnplanned('${sel}')" style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">Save</button>
           </div>
         </div>`:'<div style="font-size:12px;color:#c4b5fd;text-align:center;padding:4px 0;">Tap a type above to log</div>'}
@@ -4608,7 +4611,7 @@ function buildTodayLive(t,tm,dates,today){
           '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">'+
             '<input id="tm-cash-label" placeholder="or type…" style="flex:1;min-width:80px;padding:10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">'+
             '<span style="font-size:13px;color:#888;">$</span>'+
-            '<input id="tm-cash-amt-b" type="number" inputmode="numeric" step="1" min="0" onkeydown="if(event.key===\'Enter\')tmSaveQuickB(\''+sel+'\')" style="width:80px;padding:10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">'+
+            '<input id="tm-cash-amt-b" type="number" inputmode="decimal" step="0.01" min="0" onkeydown="if(event.key===\'Enter\')tmSaveQuickB(\''+sel+'\')" style="width:80px;padding:10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;">'+
             '<select id="tm-cash-cat" style="padding:10px 6px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:130px;">'+(catOpts(foodId))+'</select>'+
             '<button onclick="tmSaveQuickB(\''+sel+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:10px 16px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">Log it</button>'+
           '</div>';
@@ -4714,16 +4717,31 @@ function buildTodayLive(t,tm,dates,today){
               '</div>'+
               '<div style="font-size:14px;font-weight:700;color:'+(j.skipped?'#bbb':'#333')+';'+(dim?'text-decoration:line-through;':'')+'">'+e.icon+' '+esc(e.text)+'</div>'+
               (e.sub&&!String(e.sub).startsWith('auto:dp-')?'<div style="font-size:11px;color:#999;">'+esc(String(e.sub))+'</div>':'')+
-              ((e.est||j.actual!=null)?'<div style="font-size:11px;margin-top:3px;">'+(e.est?'<span style="color:#888;">est $'+e.est+'</span>':'')+
-                (j.actual!=null?(e.est?'<span style="color:#888;"> → </span>':'')+
-                  '<span style="font-weight:800;color:'+(e.est&&j.actual>e.est?'#dc2626':'#16a34a')+';">actual $'+j.actual+(e.est?(j.actual>e.est?' 🔺+'+Math.round(j.actual-e.est):j.actual<e.est?' 🔻−'+Math.round(e.est-j.actual):''):'')+'</span>':'')+
-              '</div>':'')+
+              (e.plannedPlace&&e.plannedPlace!==e.place?'<div style="font-size:11px;color:#94a3b8;">planned: '+esc(e.plannedPlace)+'</div>':'')+
+              ((e.est||j.actual!=null)?'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;font-size:12px;">'+(e.est?'<span style="color:#888;">plan '+tmMoney(e.est)+'</span>':'')+(j.actual!=null?'<span style="color:#334155;font-weight:800;">'+(e.est?'→ ':'')+'paid '+tmMoney(j.actual)+'</span>'+tmDeltaBadge(e.est,j.actual):'')+'</div>':'')+
               (j.note&&!noteOpen?'<div style="font-size:12px;color:#6366f1;margin-top:4px;">📝 '+esc(j.note)+'</div>':'')+
               (j.skipped?'<div style="font-size:11px;color:#bbb;margin-top:2px;">skipped</div>':'')+
             '</div>'+
           '</div>'+
-          (noteOpen?'<div style="margin-top:8px;display:flex;gap:6px;"><input id="tm-note-input" value="'+esc(j.note||'')+'" placeholder="Ride broke down · food was meh · pure magic…" onkeydown="if(event.key===\'Enter\')tmSaveNote(\''+sel+'\',\''+kAttr+'\')" style="flex:1;min-width:0;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><button onclick="tmSaveNote(\''+sel+'\',\''+kAttr+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button></div>':'')+
-          (cashOpen?'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span style="font-size:12px;color:#888;">actual $</span><input id="tm-cash-amt" type="number" step="1" min="0" value="'+(j.actual!=null?j.actual:(e.est||''))+'" onkeydown="if(event.key===\'Enter\')tmSaveCash(\''+sel+'\',\''+kAttr+'\',\''+attrSafe(e.text)+'\')" style="width:90px;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><select id="tm-cash-cat" style="padding:8px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-family:inherit;max-width:150px;">'+catOpts((tmGuessCat(t,e)||{}).id)+'</select><button onclick="tmSaveCash(\''+sel+'\',\''+kAttr+'\',\''+attrSafe(e.text)+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Log it</button></div>':'')+
+          (noteOpen?'<div style="margin-top:8px;display:flex;gap:6px;"><input id="tm-note-input" value="'+esc(j.note||'')+'" placeholder="Ride broke down · food was meh · pure magic…" onkeydown="if(event.key===\'Enter\')tmSaveNote(\''+sel+'\',\''+kAttr+'\')" style="flex:1;min-width:0;padding:8px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:16px;font-family:inherit;"><button onclick="tmSaveNote(\''+sel+'\',\''+kAttr+'\')" style="background:#1a1a5e;color:#FFD700;border:none;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Save</button>'+(j.note?'<button onclick="tmClearNote(\''+sel+'\',\''+kAttr+'\')" title="Delete note" style="background:#fff;border:1.5px solid #fecdd3;color:#e11d48;border-radius:8px;padding:8px 11px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">🗑</button>':'')+'</div>':'')+
+          (cashOpen?(function(){
+            var isMeal=/^meal-/.test(k);
+            var estN=e.est||null;
+            var save="tmSaveCash('"+sel+"','"+kAttr+"','"+attrSafe(e.text)+"')";
+            var inp='padding:9px 10px;border:1.5px solid #c7d2fe;border-radius:9px;font-size:16px;font-family:inherit;';
+            return '<div style="margin-top:9px;padding:11px;border:1.5px solid #e0e7ff;border-radius:11px;background:#f8faff;display:flex;flex-direction:column;gap:8px;">'+
+              (isMeal?'<label style="font-size:11px;font-weight:800;color:#64748b;">WHERE YOU ATE<input id="tm-cash-name" value="'+esc(e.place||'')+'" placeholder="Restaurant" style="display:block;width:100%;box-sizing:border-box;margin-top:3px;'+inp+'"></label>':'')+
+              '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">'+
+                '<label style="font-size:11px;font-weight:800;color:#64748b;">PAID $<input id="tm-cash-amt" type="number" inputmode="decimal" step="0.01" min="0" value="'+(j.actual!=null?j.actual:(estN||''))+'" oninput="tmCashPreview('+(estN||'null')+')" onkeydown="if(event.key===\'Enter\')'+save.replace(/"/g,'&quot;')+'" style="display:block;width:110px;margin-top:3px;'+inp+'"></label>'+
+                '<label style="font-size:11px;font-weight:800;color:#64748b;flex:1;min-width:120px;">CATEGORY<select id="tm-cash-cat" style="display:block;width:100%;margin-top:3px;'+inp+'font-size:14px;">'+catOpts((tmGuessCat(t,e)||{}).id)+'</select></label>'+
+              '</div>'+
+              (estN?'<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#888;">plan '+tmMoney(estN)+' <span id="tm-cash-delta">'+tmDeltaBadge(estN,j.actual!=null?j.actual:estN)+'</span></div>':'')+
+              '<div style="display:flex;gap:8px;">'+
+                '<button onclick="'+save.replace(/"/g,'&quot;')+'" style="flex:1;background:#1a1a5e;color:#FFD700;border:none;border-radius:9px;padding:10px;font-weight:900;font-size:14px;cursor:pointer;font-family:inherit;">Log it</button>'+
+                '<button onclick="S.ui.todayCash=null;render()" style="background:#fff;border:1.5px solid #e4e4f0;color:#64748b;border-radius:9px;padding:10px 14px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">Cancel</button>'+
+                (j.actual!=null?'<button onclick="tmClearCash(\''+sel+'\',\''+kAttr+'\',\''+attrSafe(e.text)+'\')" title="Delete this amount" style="background:#fff;border:1.5px solid #fecdd3;color:#e11d48;border-radius:9px;padding:10px 12px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;">🗑</button>':'')+
+              '</div></div>';
+          })():'')+
           buildEntryActions(e,sel,kAttr,j,noteOpen,cashOpen,dim)+
         '</div>';
       }).join('');
@@ -11310,8 +11328,11 @@ function rosEntriesForDate(t, date) {
                 text: cap(mt)+': '+(meal.place||'TBD'),
                 sub: fmtDualPlain(cost,t)+(String(meal.adrConfNum||'').trim()?' · ✓ ADR #'+esc(meal.adrConfNum):(meal.adrTime?' · ADR time set':'')),
                 cls:'meal',
+                id:'meal-'+mt,
                 est:(cost&&cost>0)?cost:null,
-                mealType:mt
+                mealType:mt,
+                place:meal.place||'',
+                plannedPlace:meal.plannedPlace
               });
             }
           });
@@ -11336,7 +11357,12 @@ function rosEntriesForDate(t, date) {
               icon: mIcon,
               text: `${cap(mt)}: ${meal.place||'TBD'}`,
               sub: `${fmtDualPlain(cost,t)}${String(meal.adrConfNum||'').trim()?` · ✓ ADR #${esc(meal.adrConfNum)}`:meal.adrTime?' · ADR time set':''}`,
-              cls: 'meal'
+              cls: 'meal',
+              id: 'meal-'+mt,
+              est: (cost&&cost>0)?cost:null,
+              mealType: mt,
+              place: meal.place||'',
+              plannedPlace: meal.plannedPlace
             });
           }
         });
@@ -14231,7 +14257,7 @@ render=function(){
 window.addEventListener('beforeunload',function(){if(SYNC.debounce){clearTimeout(SYNC.debounce);syncPushNow();}});
 
 // ═══ SELF-UPDATE CHECK ═══
-var SKIPPER_BUILD="2026-09-27-FOODDATE";
+var SKIPPER_BUILD="2026-09-30-TRIPLOG";
 function checkForUpdate(){
   try{
     fetch(location.pathname+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(txt){
